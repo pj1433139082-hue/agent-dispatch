@@ -1,0 +1,61 @@
+name: 🐛 Bug Report / 缺陷反馈
+description: 报告可复现的缺陷。
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先确认这不是已知问题，并尽量附上可复现的最小票据或命令。
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      options:
+        - ticket lint / parse
+        - 依赖分波 / 写域冲突
+        - 工单渲染 / 领取
+        - verify 验收门禁
+        - review 评审门禁
+        - status / export
+        - CLI / 打包
+        - 文档
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从空目录开始，按顺序写出命令。
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 附上退出码、完整报错或相关日志。
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 环境
+      description: 操作系统、Python 版本、agent-dispatch 版本。
+      placeholder: Windows 11, Python 3.13, agent-dispatch 0.1.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索过现有 issue，没有找到相同问题。
+          required: true
