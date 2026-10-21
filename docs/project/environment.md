@@ -1,24 +1,30 @@
 # 运行环境与实际入口
 
-技术选择、版本约束及理由以 tasks/kickoff/plan.md 为准；此页只记录实际核验及入口，不另抄要求或维护阶段状态。框架工具的 Python 要求不等于业务项目的运行时要求。此文件由模板生成，尚无业务环境检查证据。
-
-## 适用范围
-
-按实际项目说明业务运行时、开发/交付目标和需要核验的组件；纯文档项目记不适用，未定项记待确定并引用方案。不要填入其他项目的版本。
+技术选择与版本约束以 `tasks/kickoff/plan.md` 为准；本页只记录实际核验。
 
 ## 实际核验记录
 
-按需要检查解释器/运行时的实际版本与路径、操作系统/架构、隔离环境、依赖及锁定文件。区分框架工具和业务环境；没执行不能填通过。
-
-| 检查项 | 实际版本/位置或结果 | 状态：通过/失败/未执行/不适用 | 命令与证据位置 | 核验时间 |
-| --- | --- | --- | --- | --- |
+| 检查项 | 实际版本/位置或结果 | 状态 | 命令与证据位置 | 核验时间 |
+|---|---|---|---|---|
+| 操作系统 | Windows，`win32` | 通过 | 本机运行环境 | 2026-10-21 |
+| 运行时解释器 | Python 3.13.9（Anaconda 默认安装的 `python.exe`） | 通过 | `python -V` | 2026-10-21 |
+| 兼容解释器 | CPython 3.11.15（Astral） | 通过 | `py -V:Astral/CPython3.11.15 -m compileall -q src tests` | 2026-10-21 |
+| 运行时依赖 | 无第三方依赖（标准库） | 通过 | `pyproject.toml` 的 `dependencies = []` | 2026-10-21 |
+| 开发依赖 | pytest>=8 | 通过 | `pyproject.toml` 的 `[project.optional-dependencies].dev` | 2026-10-21 |
+| 全量测试 | 61 个测试通过，退出码 0 | 通过 | `python -m pytest -q`（项目根目录） | 2026-10-21 |
+| 干净安装 | 临时 venv 中 `pip install --no-deps .` 成功 | 通过 | 构建 wheel `agent_dispatch-0.1.0-py3-none-any.whl` | 2026-10-21 |
+| 控制台入口 | `dispatch --version` 输出 `dispatch 0.1.0` | 通过 | 临时 venv 的 `Scripts/dispatch.exe` | 2026-10-21 |
+| 系统 PATH | 当前系统 Python 未安装本包，直接执行 `dispatch` 为 ENOENT | 未执行/不适用 | 需按 README 在 venv 中 `pip install -e ".[dev]"` | 2026-10-21 |
+| CI | Ubuntu + Python 3.11，run 39546813087 success | 通过 | GitHub Actions `test` job | 2026-10-21 |
 
 ## 安装与运行
 
-记录真实依赖来源、所用锁定文件、安装命令、启动入口和代表性测试命令；标明执行目录、所用业务解释器/运行时及实际结果。安装、启动和测试分别核验，不能用框架 doctor 或骨架生成成功替代。
+```bash
+# 在项目根目录
+python -m venv .venv
+.venv/Scripts/python -m pip install -e ".[dev]"
+.venv/Scripts/python -m pytest -q
+.venv/Scripts/dispatch --version
+```
 
-仅在已交办的实际开发或配置范围内执行；优先使用项目隔离环境，不更改系统默认解释器或其他项目环境。配置只记录变量名及获取方式，凭据保留在项目约定的本机安全位置。
-
-## 未解决项与下一步
-
-未执行的检查写明原因及下一步；失败记录实际错误和影响。不因模板存在就写“环境已配置”，不把环境检查另设为启动规划的审批或阶段。
+Windows 下使用 `.venv\Scripts\`；Linux/macOS 使用 `.venv/bin/`。若不想建 venv，可直接用 `python -m agent_dispatch`，但需先把 `src` 放入 `PYTHONPATH` 或安装包。
