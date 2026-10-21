@@ -59,7 +59,8 @@ Base commit: {run.get("base_commit", "") or "(not a git repository)"}
 
 ## Verification
 
-Run these commands from the repository root:
+Run these commands from the repository root through the platform shell
+(`cmd.exe` on Windows, `/bin/sh` elsewhere; `&&`, pipes, and quoted paths are supported):
 
 \u0060\u0060\u0060bash
 {commands}

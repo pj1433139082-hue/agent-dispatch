@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agent_dispatch import __version__
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -17,7 +19,7 @@ def test_skill_wrapper_runs_without_install(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "dispatch 0.2.0"
+    assert result.stdout.strip() == f"dispatch {__version__}"
 
 
 def test_skill_wrapper_help_lists_dsh(tmp_path: Path) -> None:
@@ -59,7 +61,7 @@ def test_build_skill_produces_self_contained_directory(tmp_path: Path) -> None:
         check=False,
     )
     assert version.returncode == 0, version.stderr
-    assert version.stdout.strip() == "dispatch 0.2.0"
+    assert version.stdout.strip() == f"dispatch {__version__}"
 
 
 def test_skill_frontmatter_has_name() -> None:

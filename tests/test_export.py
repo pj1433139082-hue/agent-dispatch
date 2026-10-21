@@ -97,3 +97,18 @@ def test_export_only_includes_ready_tickets() -> None:
     payload = json.loads(export_text(tickets, "dsh-team"))
 
     assert [item["subject"] for item in payload] == ["Ticket A"]
+
+
+def test_status_marks_failed_ticket_as_retryable() -> None:
+    document = status_document([ticket("A")], {"A": "failed"})
+
+    rows = {row["id"]: row for row in document["tickets"]}
+    assert rows["A"]["state"] == "failed"
+    assert rows["A"]["next"] is True
+    assert document["frontier"] == ["A"]
+
+
+def test_export_includes_failed_tickets_for_a_retry() -> None:
+    payload = json.loads(export_text([ticket("A")], "dsh-team", {"A": "failed"}))
+
+    assert [item["subject"] for item in payload] == ["Ticket A"]

@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.2**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写。
+当前版本 **v0.2.1**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -49,7 +49,7 @@ ready ──render──> claimed ──start──> running ──verify(pass)�
 ```
 
 - 没有运行记录、但依赖未完成的票据，`status` 显示为 `blocked`。
-- `failed` 的运行可以重新 `render`（旧运行记录保留）。
+- `failed` 的运行可以重新 `render`（旧运行记录保留），并会继续出现在 `status` / `export` 的可重试 frontier 中；重新 `render` 后进入新一轮 `claimed`。
 - 状态存放在 `.dispatch/state.json`；`run.json` / `verify.json` / `review.json` 是每一次运行的证据链。
 
 ---
@@ -84,8 +84,9 @@ ready ──render──> claimed ──start──> running ──verify(pass)�
 
 - `# <id>: <title>` 是票据头；id 只允许字母、数字、`.`、`_`、`-`。
 - `**Blocked by:**` 写依赖 id，逗号分隔；没有依赖写 `None`。
-- `## Dispatch` 下重复的 `Write scope` / `Verify` 会累加。
+- `## Dispatch` 下的 `Owner`、`Risk`、`Write scope`、`Verify` 必填；重复的 `Write scope` / `Verify` 会累加。
 - 写域拒绝绝对路径、盘符、`..`、反斜杠；写域是 git 路径的相对前缀或 glob。
+- `Verify` 命令按当前平台 shell 执行（Windows 为 `cmd.exe`，其他平台为 `/bin/sh`），支持 `&&`、管道、带引号的参数和 Windows 反斜杠路径。
 - 风险等级：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU 环境、`L4` 必须人工确认。v0.2 把风险映射到 DSH 卡片 permission；唯一强制评审点是 L4 必须 `--human`。
 - `## Acceptance` 至少一条 `- [ ]`；验收命令必须能从仓库根目录复跑。
 
@@ -165,7 +166,7 @@ dispatch status --json
 
 - 票据在 `render` 之后没有被改过（sha256 对比）。
 - `receipt.json` 存在、JSON 合法、字段齐全。
-- 逐条复跑票据里的 `Verify` 命令，退出码必须为 0；stdout/stderr 存到 `logs/` 并算哈希。
+- 逐条按当前平台 shell 复跑票据里的 `Verify` 命令，退出码必须为 0；stdout/stderr 存到 `logs/` 并算哈希。
 - 真实 git diff 的每个文件都落在 `Write scope` 内。
 - 回执里的证据文件存在，并记录 sha256。
 
@@ -183,7 +184,7 @@ dispatch export --format generic
 dispatch export --format dsh-team --output ready.json
 ```
 
-> `export` 只读取 `ready` 票据，不调用任何远端 API；票据进入 `claimed` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后可以粘到 DSH、Codex 或别的执行端。
+> `export` 只读取可执行的 `ready` / `failed` 票据，不调用任何远端 API；票据进入 `claimed` / `running` / `review` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后可以粘到 DSH、Codex 或别的执行端。
 
 ### 直接投递到 DSH 任务看板（v0.2）
 
@@ -231,7 +232,7 @@ dispatch dsh outcome 01 --result succeeded --by worker-a --summary "tests and di
 | `dispatch dsh status` | 读回 DSH 看板状态并与本地映射对照 |
 | `dispatch dsh outcome <id> --result ... --by ...` | 把外部 agent 的结果回写到映射卡 |
 
-通用参数：`--tickets` 指定票据目录（默认 `tickets`），`--root` 指定仓库根（默认当前目录）。
+通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` / `dsh push` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
 
 ---
 
