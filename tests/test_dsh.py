@@ -19,6 +19,7 @@ from agent_dispatch.dsh import (
     load_map,
     outcome,
     push,
+    run_card,
     update_card,
 )
 from agent_dispatch.ticket import Ticket
@@ -129,6 +130,15 @@ class BoardStub:
                 if task is None:
                     raise ValueError("unknown task")
                 task["archivedAt"] = "2026-10-21T00:00:00+00:00"
+            elif kind == "run":
+                task_id = str(action["taskId"])
+                task = next((item for item in self.tasks if item["id"] == task_id), None)
+                if task is None:
+                    raise ValueError("unknown task")
+                task["status"] = "running"
+                executions = task.setdefault("executions", [])
+                assert isinstance(executions, list)
+                executions.append({"id": "exec-run", "result": "", "running": True})
             elif kind == "record-external-outcome":
                 task_id = str(action["taskId"])
                 task = next((item for item in self.tasks if item["id"] == task_id), None)
@@ -340,3 +350,15 @@ def test_http_error_is_wrapped(tmp_path: Path, board: BoardStub) -> None:
             initiated_by="worker",
             base_url=board.url + "/missing",
         )
+
+
+def test_run_card_sends_exact_action_and_reads_back(tmp_path: Path, board: BoardStub) -> None:
+    push([ticket("A")], root=tmp_path, base_url=board.url, project="probe")
+    task_id = _uuid_for("probe", "A")
+
+    result = run_card("A", root=tmp_path, base_url=board.url)
+
+    assert board.requests[-1] == {"kind": "run", "taskId": task_id}
+    assert result["action"] == "run"
+    assert result["status"] == "running"
+    assert result["task_id"] == task_id

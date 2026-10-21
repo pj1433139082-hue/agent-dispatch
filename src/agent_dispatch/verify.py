@@ -96,6 +96,10 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def _run_command(command: str, root: Path, log_path: Path, timeout: int) -> dict[str, object]:
     try:
         result = subprocess.run(
@@ -125,6 +129,143 @@ def _run_command(command: str, root: Path, log_path: Path, timeout: int) -> dict
     }
 
 
+def _evidence_path(value: object) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    if Path(value).is_absolute():
+        return None
+    return value
+
+
+def _evaluate_evidence(
+    item: object, *, run_dir: Path, prefix: str
+) -> tuple[dict[str, object] | None, str | None, bool]:
+    """Return (record, error, attested) for one evidence item."""
+    if not isinstance(item, dict):
+        return None, f"{prefix} must be an object", False
+    kind = item.get("kind")
+    if kind == "file":
+        value = _evidence_path(item.get("path"))
+        if value is None:
+            return None, f"{prefix}.path must be a non-empty relative path", False
+        path = run_dir / value
+        if not path.is_file():
+            return None, f"{prefix}: evidence file is missing: {value}", False
+        digest = _sha256(path)
+        supplied = item.get("sha256")
+        if supplied is not None and supplied != digest:
+            return None, f"{prefix}: file hash mismatch for {value}", False
+        return (
+            {"kind": "file", "path": value, "sha256": digest, "attested": False},
+            None,
+            False,
+        )
+    if kind == "inline":
+        content = item.get("content")
+        if not isinstance(content, str):
+            return None, f"{prefix}.content must be a string", False
+        digest = _sha256_text(content)
+        supplied = item.get("sha256")
+        if supplied is not None and supplied != digest:
+            return None, f"{prefix}: inline hash mismatch", False
+        return (
+            {"kind": "inline", "sha256": digest, "attested": False},
+            None,
+            False,
+        )
+    if kind == "absent":
+        value = _evidence_path(item.get("path"))
+        if value is None:
+            return None, f"{prefix}.path must be a non-empty relative path", False
+        if (run_dir / value).exists():
+            return None, f"{prefix}: absent evidence path exists: {value}", False
+        return {"kind": "absent", "path": value, "attested": False}, None, False
+    if kind == "command":
+        command = item.get("command")
+        exit_code = item.get("exit_code")
+        if not isinstance(command, str) or not command:
+            return None, f"{prefix}.command must be a non-empty string", False
+        if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+            return None, f"{prefix}.exit_code must be an integer", False
+        if exit_code != 0:
+            return None, f"{prefix}: command evidence reports exit code {exit_code}", False
+        return (
+            {"kind": "command", "command": command, "exit_code": exit_code, "attested": False},
+            None,
+            False,
+        )
+    if kind == "note":
+        note = item.get("note")
+        if not isinstance(note, str) or not note:
+            return None, f"{prefix}.note must be a non-empty string", False
+        return {"kind": "note", "note": note, "attested": True}, None, True
+    return None, f"{prefix}.kind must be file, inline, absent, command or note", False
+
+
+def _evaluate_criteria(
+    receipt: dict[str, object], ticket: Ticket, run_dir: Path
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str], bool]:
+    errors: list[str] = []
+    records: list[dict[str, object]] = []
+    evidence: list[dict[str, object]] = []
+    degraded = False
+    value = receipt.get("criteria")
+    if not isinstance(value, list) or not value:
+        return records, evidence, ["criteria must be a non-empty array"], False
+    seen: set[int] = set()
+    for index, item in enumerate(value, start=1):
+        prefix = f"criteria[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        criterion_id = item.get("id")
+        if not isinstance(criterion_id, int) or isinstance(criterion_id, bool) or criterion_id < 1:
+            errors.append(f"{prefix}.id must be a positive integer")
+            criterion_id = 0
+        elif criterion_id in seen:
+            errors.append(f"{prefix}.id is duplicated: {criterion_id}")
+        else:
+            seen.add(criterion_id)
+        verdict = item.get("verdict")
+        if verdict not in {"pass", "fail"}:
+            errors.append(f"{prefix}.verdict must be pass or fail")
+            verdict = "fail"
+        if verdict == "fail":
+            errors.append(f"{prefix} verdict is fail")
+        items = item.get("evidence")
+        item_records: list[dict[str, object]] = []
+        if not isinstance(items, list) or not items:
+            errors.append(f"{prefix}.evidence must be a non-empty array")
+            items = []
+        for evidence_index, evidence_item in enumerate(items, start=1):
+            record, error, attested = _evaluate_evidence(
+                evidence_item,
+                run_dir=run_dir,
+                prefix=f"{prefix}.evidence[{evidence_index}]",
+            )
+            if error:
+                errors.append(error)
+            if record is not None:
+                record["criterion_id"] = criterion_id
+                item_records.append(record)
+                evidence.append(record)
+            degraded = degraded or (bool(item_records) and all(bool(record.get("attested")) for record in item_records))
+        records.append(
+            {
+                "id": criterion_id,
+                "verdict": verdict,
+                "note": item.get("note", ""),
+                "evidence": item_records,
+            }
+        )
+    expected = set(range(1, len(ticket.acceptance) + 1))
+    if seen != expected:
+        errors.append(
+            f"criteria ids must be exactly 1..{len(ticket.acceptance)}, got {sorted(seen)}"
+        )
+    return records, evidence, errors, degraded
+
+
 def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tuple[dict[str, object], bool]:
     root = Path(root)
     run_dir = run.directory
@@ -150,6 +291,7 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
 
     receipt_path = run_dir / "receipt.json"
     receipt: dict[str, object] | None = None
+    receipt_kind = ""
     if not receipt_path.is_file():
         check("receipt", False, "receipt.json is missing")
     else:
@@ -171,9 +313,12 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
                     problems.append("run_id does not match")
                 if not isinstance(payload.get("summary"), str) or not payload.get("summary"):
                     problems.append("summary is required")
-                evidence_value = payload.get("evidence")
-                if not isinstance(evidence_value, list) or not evidence_value:
-                    problems.append("evidence must be a non-empty array")
+                if "criteria" in payload:
+                    receipt_kind = "criteria"
+                elif isinstance(payload.get("evidence"), list) and payload.get("evidence"):
+                    receipt_kind = "legacy"
+                else:
+                    problems.append("criteria must be a non-empty array (or legacy evidence)")
                 check(
                     "receipt",
                     not problems,
@@ -185,7 +330,7 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
         for index, command in enumerate(ticket.verify, start=1):
             record = _run_command(
                 command,
-                root,
+                run.execution_root,
                 run_dir / "logs" / f"{index:02d}.log",
                 timeout,
             )
@@ -197,8 +342,9 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
             )
 
     files: list[str] = []
+    execution_root = run.execution_root
     try:
-        files = changed_files(root, str(run.data.get("base_commit", "")))
+        files = changed_files(execution_root, str(run.data.get("base_commit", "")))
     except ValueError as error:
         check("git diff", False, str(error))
     else:
@@ -212,33 +358,60 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
             not out_of_scope,
             "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope",
         )
+        if execution_root.resolve() != root.resolve():
+            try:
+                main_files = changed_files(root, str(run.data.get("base_commit", "")))
+            except ValueError as error:
+                check("main checkout", False, str(error))
+            else:
+                check(
+                    "main checkout",
+                    not main_files,
+                    "main checkout has changes: " + ", ".join(main_files)
+                    if main_files
+                    else "clean",
+                )
+                files = sorted(set(files) | set(main_files))
 
     evidence: list[dict[str, object]] = []
-    if receipt is not None and isinstance(receipt.get("evidence"), list):
-        for item in receipt["evidence"]:
-            if not isinstance(item, str) or not item:
-                check("evidence", False, "evidence entries must be non-empty strings")
-                continue
-            candidate = Path(item)
-            if candidate.is_absolute():
-                check("evidence", False, f"absolute evidence path is not allowed: {item}")
-                continue
-            path = run_dir / candidate
-            if not path.is_file():
-                check("evidence", False, f"evidence file is missing: {item}")
-                continue
-            evidence.append({"path": item, "sha256": _sha256(path)})
+    criteria: list[dict[str, object]] = []
+    criteria_errors: list[str] = []
+    degraded = False
+    if receipt is not None:
+        if receipt_kind == "criteria":
+            criteria, evidence, criteria_errors, degraded = _evaluate_criteria(
+                receipt, ticket, run_dir
+            )
+        elif receipt_kind == "legacy":
+            for item in receipt.get("evidence", []):
+                if not isinstance(item, str) or not item:
+                    criteria_errors.append("evidence entries must be non-empty strings")
+                    continue
+                candidate = Path(item)
+                if candidate.is_absolute():
+                    criteria_errors.append(f"absolute evidence path is not allowed: {item}")
+                    continue
+                path = run_dir / candidate
+                if not path.is_file():
+                    criteria_errors.append(f"evidence file is missing: {item}")
+                    continue
+                evidence.append({"kind": "file", "path": item, "sha256": _sha256(path), "attested": False})
+    if criteria_errors:
+        check("criteria", False, "; ".join(criteria_errors))
 
-    passed = not errors
+    status = "failed" if errors else ("degraded" if degraded else "passed")
     record: dict[str, object] = {
         "run_id": run.id,
         "ticket_id": ticket.id,
         "verified_at": datetime.now(timezone.utc).isoformat(),
-        "status": "passed" if passed else "failed",
+        "status": status,
+        "receipt_kind": receipt_kind,
         "checks": checks,
         "changed_files": files,
         "commands": commands,
+        "criteria": criteria,
         "evidence": evidence,
+        "degraded": degraded,
         "errors": errors,
     }
     (run_dir / "verify.json").write_text(
@@ -246,10 +419,10 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
     )
 
     store = DispatchState(root)
-    if passed:
-        run.set_state("review")
-        store.set_ticket(ticket.id, run.id, "review")
-    else:
+    if status == "failed":
         run.set_state("failed")
         store.set_ticket(ticket.id, run.id, "failed")
-    return record, passed
+    else:
+        run.set_state("review")
+        store.set_ticket(ticket.id, run.id, "review")
+    return record, status != "failed"

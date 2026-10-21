@@ -168,6 +168,11 @@ def test_start_moves_claimed_to_running(tmp_path: Path) -> None:
     assert json.loads((only_run(tmp_path) / "run.json").read_text(encoding="utf-8"))["state"] == "running"
 
 
+def execution_root_for(project: Path, run: dict) -> Path:
+    value = Path(str(run.get("execution_root", "")))
+    return value if value.is_absolute() else project / value
+
+
 def test_render_and_verify_resolve_ticket_path_relative_to_root(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
@@ -211,8 +216,9 @@ def test_render_and_verify_resolve_ticket_path_relative_to_root(tmp_path: Path) 
         ),
         encoding="utf-8",
     )
-    (project / "src").mkdir()
-    (project / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
+    worktree = execution_root_for(project, run)
+    (worktree / "src").mkdir()
+    (worktree / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
 
     verified = run_dispatch(tmp_path, "verify", "01", "--root", "project")
 

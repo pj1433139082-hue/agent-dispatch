@@ -17,6 +17,7 @@ from .dsh import (
     format_status,
     outcome,
     push,
+    run_card,
     update_card,
 )
 from .export import export_text, status_document
@@ -48,6 +49,12 @@ def _parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--tickets", type=Path, default=None)
     render_parser.add_argument("--root", type=Path, default=Path("."))
     render_parser.add_argument("--agent", default="", help="Agent claiming the run.")
+    render_parser.add_argument(
+        "--no-worktree",
+        action="store_true",
+        dest="no_worktree",
+        help="Run in the main checkout instead of an isolated git worktree.",
+    )
 
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
@@ -64,6 +71,11 @@ def _parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--verdict", required=True, choices=("pass", "fail"))
     review_parser.add_argument("--notes", default="")
     review_parser.add_argument("--human", action="store_true")
+    review_parser.add_argument(
+        "--accept-degraded",
+        action="store_true",
+        help="Accept a degraded verification result (attested evidence only).",
+    )
     review_parser.add_argument("--root", type=Path, default=Path("."))
 
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
@@ -131,6 +143,14 @@ def _parser() -> argparse.ArgumentParser:
     dsh_archive.add_argument("--url", default=None)
     dsh_archive.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
     dsh_archive.add_argument("--json", action="store_true", dest="as_json")
+
+    dsh_run = dsh_sub.add_parser("run", help="Ask DSH to run a mapped card; returns once accepted.")
+    dsh_run.add_argument("ticket_id")
+    dsh_run.add_argument("--root", type=Path, default=Path("."))
+    dsh_run.add_argument("--url", default=None)
+    dsh_run.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
+    dsh_run.add_argument("--rerun", action="store_true", help="Send a rerun action instead of run.")
+    dsh_run.add_argument("--json", action="store_true", dest="as_json")
 
     dsh_delete = dsh_sub.add_parser("delete", help="Delete a mapped DSH card.")
     dsh_delete.add_argument("ticket_id")
@@ -318,10 +338,15 @@ def _cmd_render(args: argparse.Namespace) -> int:
         )
         return 1
 
-    run = Run.create(args.root, ticket, claimed_by=args.agent)
+    run = Run.create(
+        args.root, ticket, claimed_by=args.agent, use_worktree=not args.no_worktree
+    )
     store.set_ticket(ticket.id, run.id, "claimed")
     print(f"Rendered {ticket.id} -> {run.directory}")
     print(f"Run ID: {run.id}")
+    if run.data.get("use_worktree"):
+        print(f"Execution root: {run.execution_root}")
+        print(f"Worktree branch: {run.data.get('worktree_branch', '')}")
     return 0
 
 
@@ -359,6 +384,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     run = Run.load(args.root, str(existing["run_id"]))
     ticket = parse_ticket(run.ticket_path)
     record, passed = verify_run(args.root, ticket, run, timeout=args.timeout)
+    status = str(record.get("status", "failed"))
+    if passed and status == "degraded":
+        print(f"Verification degraded for {args.ticket_id} ({run.id})", file=sys.stderr)
+        return 2
     if passed:
         print(f"Verification passed for {args.ticket_id} ({run.id})")
         return 0
@@ -390,6 +419,7 @@ def _cmd_review(args: argparse.Namespace) -> int:
         verdict=args.verdict,
         notes=args.notes,
         human=args.human,
+        accept_degraded=args.accept_degraded,
     )
     if errors:
         for error in errors:
@@ -510,6 +540,26 @@ def _cmd_dsh_update(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_dsh_run(args: argparse.Namespace) -> int:
+    try:
+        result = run_card(
+            args.ticket_id,
+            root=args.root,
+            base_url=args.url,
+            task_id=args.task_id,
+            rerun=args.rerun,
+        )
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Triggered {result['action']} for {result['ticket_id']} ({result['task_id']})")
+        print(f"Status: {result.get('status', '')}")
+    return 0
+
+
 def _cmd_dsh_archive(args: argparse.Namespace) -> int:
     try:
         result = archive_card(
@@ -575,6 +625,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_dsh_update(args)
         if args.dsh_command == "archive":
             return _cmd_dsh_archive(args)
+        if args.dsh_command == "run":
+            return _cmd_dsh_run(args)
         if args.dsh_command == "delete":
             return _cmd_dsh_delete(args)
         return 2
