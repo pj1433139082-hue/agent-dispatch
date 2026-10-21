@@ -109,6 +109,7 @@ def _dsh_board(tickets: list[Ticket]) -> str:
 def _section(ticket: Ticket) -> str:
     acceptance = "\n".join(f"- [ ] {item}" for item in ticket.acceptance) or "- (none)"
     commands = "\n".join(ticket.verify) or "echo 'no verification command declared'"
+    write_scope = "".join(f"- {item}\n" for item in ticket.write_scope) or "- (none)\n"
     return f"""## {ticket.id}: {ticket.title}
 
 Owner: {ticket.owner}
@@ -120,16 +121,16 @@ Risk: {ticket.risk}
 
 ### Write scope
 
-{"".join(f"- {item}\n" for item in ticket.write_scope) or "- (none)"}
+{write_scope}
 ### Acceptance
 
 {acceptance}
 
 ### Verify
 
-\u0060\u0060\u0060bash
+```bash
 {commands}
-\u0060\u0060\u0060
+```
 """
 
 
