@@ -39,6 +39,7 @@
 - v0.4 全流程 e2e：临时 git 仓 `lint → render`（一票一 worktree）`→ start → verify`（criteria 级 file 证据，passed）`→ review`（异体 reviewer，pass）`→ status=done`；`.dispatch/ledger/reviews.jsonl` 追加一条带 `review_hash` 的记录，主检出 `git status` 干净。
 - `dsh run` 真实看板 e2e：`dsh push` 创建 probe 卡（task_id `7917af3c-fcea-5624-a86e-e620d0184921`），`dsh run` 返回 action=run、status=running、execution_id `4f203757-240c-4fcb-b78f-f12257a2d402`；约 32 秒后卡片 done、execution succeeded、summary `DSH_RUN_PROBE_OK`、sessionId `session-0afddb6b-3adb-4b43-9e91-f194fe05426d`；`dsh delete` 成功。
 - ADR 0003（框架项目边界）为 Proposed；ADR 0004（退役 agent-collab-runbook）为 Accepted。
+- 2026-10-21 退役 agent-collab-runbook：源码仓库提交 `ec70c51` 并打 tag `legacy-final-2026-10-21`；`skillshare uninstall` 后 6 个 target 各 pruned 1；清理 skillshare config 的 6 处 include；`skillshare sync` 后 68 skills，agent-dispatch 安装态 0.4.0。
 
 - v0.4 尚未实现 `dispatch land`：ADR 已定“只建 integration branch + 人工开 PR”，代码仍是后续项。
 - `rerun` envelope 仍待复测；`run` envelope 已由真实看板 e2e 验证。
