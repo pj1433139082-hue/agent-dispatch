@@ -9,6 +9,7 @@ dist/
 *.egg-info/
 .dispatch/runs/
 .dispatch/worktrees/
+.dispatch/landings/
 .dispatch/ledger/
 .dispatch/state.json
 .agent-workflow.local.json

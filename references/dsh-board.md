@@ -64,7 +64,7 @@
 {"kind": "run", "taskId": "<task-uuid>"}
 ```
 
-重新运行（尚未实测）：
+重新运行（2026-10-21 已实测）：
 
 ```json
 {"kind": "rerun", "taskId": "<task-uuid>"}
@@ -89,7 +89,7 @@
 - 父卡 execution 摘要包含 `PARENT_PROBE_OK` 与 `CHILD_PROBE_OK`，证明 Host 实际 spawn 了 teammate；
 - 探针卡已先删子卡、再删父卡，`remaining=[]`。
 - 2026-10-21 用 `dispatch dsh push` 创建一张探针卡，随后 `dsh update`（改 title/description/prompt）、`dsh archive`（回读 `archivedAt`）、`dsh delete` 依次成功；删除后按 task id 查看看板，`remaining=0`。
-- v0.4 的 `dispatch dsh run` 封装 `{kind:"run", taskId}`；该 envelope 已由上述显式 POST 实测，wrapper 也已做真实看板 e2e：2026-10-21 对 probe 卡（task_id `7917af3c-fcea-5624-a86e-e620d0184921`）执行 `dsh run`，返回 `action=run`、`status=running`、`execution_id=4f203757-240c-4fcb-b78f-f12257a2d402`；约 32 秒后卡片 `status=done`、execution `result=succeeded`、`summary.text=DSH_RUN_PROBE_OK`、`sessionId=session-0afddb6b-3adb-4b43-9e91-f194fe05426d`；随后 `dsh delete` 成功。`rerun` 仍未实测。
+- v0.4 的 `dispatch dsh run` 封装 `{kind:"run", taskId}`；该 envelope 已由上述显式 POST 实测，wrapper 也已做真实看板 e2e：2026-10-21 对 probe 卡（task_id `7917af3c-fcea-5624-a86e-e620d0184921`）执行 `dsh run`，返回 `action=run`、`status=running`、`execution_id=4f203757-240c-4fcb-b78f-f12257a2d402`；约 32 秒后卡片 `status=done`、execution `result=succeeded`、`summary.text=DSH_RUN_PROBE_OK`、`sessionId=session-0afddb6b-3adb-4b43-9e91-f194fe05426d`；随后 `dsh delete` 成功。2026-10-21 另用 probe 卡实测 `--rerun`：task_id `d102dd83-8c4f-5ef6-b0b8-464521fe299f`，第一次 execution `6619d7b5-5614-4709-9970-8f9d1e873834` succeeded；`--rerun` 后第二次 execution `adda3a78-8268-436d-a73f-205f80b91e37` 也 succeeded，summary 均为 `DSH_RERUN_PROBE_OK`；探针卡已删除。
 
 ## 已知怪癖
 

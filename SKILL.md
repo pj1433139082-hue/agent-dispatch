@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.4.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.5.0。
 
 ## 何时使用
 
@@ -74,7 +74,8 @@ python <技能目录>/scripts/dispatch.py new 01 \
 4. **执行者只写两处**：在 **execution root**（worktree）写业务文件；在运行目录写 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 在 execution root 复跑票据命令，按 acceptance 逐条核对 `criteria` 证据，检查 worktree 与主仓都没有越界改动。结论分 `passed` / `degraded` / `failed`，退出码 0 / 2 / 1。
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
-7. **回写外部执行**：DSH 卡执行完后可用 `dsh outcome` 写外部结果；它**不替代** `verify`。
+7. **落地**：`land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
+8. **回写外部执行**：DSH 卡执行完后可用 `dsh outcome` 写外部结果；它**不替代** `verify`。
 
 ## 命令速查
 
@@ -88,6 +89,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `start <id>` | claimed → running |
 | `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → done，并追加 review ledger |
+| `land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
 | `export --format <dsh-team / dsh-board / codex / generic>` | 只读导出 |
 | `dsh push [--mode <cards 或 team>] [--dry-run]` | 投递到本机 DSH 看板；只建卡，不运行 |
 | `dsh run <id> [--task-id ...] [--rerun]` | 触发已映射卡片运行；触发即返回，不等待终态 |
@@ -132,6 +134,19 @@ python <技能目录>/scripts/dispatch.py new 01 \
 - `Owner`、`Risk`、`Write scope`、`Verify` 必填；`Acceptance` 至少一条 checkbox。
 - `Verify` 必须能从 execution root 复跑；命令按当前平台 shell 执行（Windows `cmd.exe`，其他 `/bin/sh`），支持 `&&`、管道和带引号的参数。
 
+## 落地到 integration branch（v0.5）
+
+```bash
+python <技能目录>/scripts/dispatch.py land 01
+python <技能目录>/scripts/dispatch.py land 01 --into main --branch integration/demo --json
+```
+
+- 只接受已 `done` 且 review 通过的 worktree Run；主检出必须干净。
+- 默认目标分支 `main`（否则 `master`/当前分支），默认 integration branch `dispatch/land/<run-id>`。
+- 只创建本地 integration branch，**不 push、不切换、不合并目标分支**；写 `landing.json` 和 `.dispatch/ledger/landings.jsonl`。
+- land 前复核 `verify.json` 的 `diff_hash`；review 后 worktree 再被修改会拒绝，必须重新 verify/review。
+- 冲突时清理临时 worktree 与 integration branch，目标分支保持原样；成功后从 integration branch 人工开 PR。
+
 ## DSH 看板适配
 
 默认地址 `http://127.0.0.1:50567`，端口可用 `--url` 或 `DSH_TASK_BOARD_URL` 覆盖。
@@ -157,7 +172,7 @@ python <技能目录>/scripts/dispatch.py dsh delete 01
 
 边界：
 
-- `dsh push` 只建卡；`dsh run` 发送 `{kind:"run", taskId}` 触发运行，触发后立即返回 status/execution id，不等待终态。`--rerun` 发送 `{kind:"rerun", taskId}`（rerun 未实测）。
+- `dsh push` 只建卡；`dsh run` 发送 `{kind:"run", taskId}` 触发运行，触发后立即返回 status/execution id，不等待终态。`--rerun` 发送 `{kind:"rerun", taskId}`（2026-10-21 已用真实 probe 卡实测：同一卡两次 execution 均 succeeded）。
 - `dsh update` 发送 `{kind:"update", taskId, patch}`，`patch` 必须是非空 object；`dsh archive` 发送 `{kind:"archive", taskId}`；`dsh delete` 发送 `{kind:"delete", taskId}`。
 - `dsh archive` 只设置 `archivedAt`，不删除卡；`dsh delete` 会物理删除。删除有子卡的父卡前，先删除或解除子卡，否则看板返回 `task has subtasks; detach or delete them first`。
 - `dsh update/archive/delete` 只改看板卡，不改本地票据状态；验收仍走 `verify` / `review`。
@@ -186,6 +201,7 @@ codex exec --skip-git-repo-check --ephemeral -s read-only --color never -C <目�
 - `verify` 的门禁防误不防恶意：执行者与验收者若共享同一文件系统，执行者理论上能改 `.dispatch/`；高信任要求时用独立用户/容器隔离。
 - 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
 - L4 票据永远需要人工评审；不要用 `--human` 代替真实的人。
+- `dispatch land` 只创建本地 integration branch，绝不 push、不合并目标分支，也不替代人工 PR 审查；land 前会复核 verify 的 worktree diff 哈希。
 - 不要在票据里放真实凭据、私有绝对路径或生产密钥。
 
 ## 目录

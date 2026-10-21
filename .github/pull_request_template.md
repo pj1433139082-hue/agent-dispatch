@@ -15,7 +15,7 @@ Refs #<issue>
 
 ## 验证
 
-- [ ] `python -m pytest -q` 通过（当前基线：97 passed）
+- [ ] `python -m pytest -q` 通过（当前基线：104 passed）
 - [ ] 如改票据：`dispatch lint --tickets .scratch/agent-dispatch-v0/issues` 通过
 - [ ] 如改门禁：新增了正向 + 反向测试，或说明了未覆盖的原因
 

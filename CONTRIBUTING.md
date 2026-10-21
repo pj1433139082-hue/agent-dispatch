@@ -11,7 +11,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-当前基线是 **97 passed**。如果测试数量变了，请同步更新本文件与 PR 模板里的数字。
+当前基线是 **104 passed**。如果测试数量变了，请同步更新本文件与 PR 模板里的数字。
 
 ## 工作方式
 

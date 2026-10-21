@@ -88,6 +88,33 @@ def changed_files(root: Path, base_commit: str) -> list[str]:
     return sorted(path for path in paths if not _ignored(path))
 
 
+def worktree_diff_hash(root: Path, base_commit: str) -> str:
+    """Hash the reviewable worktree diff, including untracked file contents."""
+    if not base_commit:
+        raise ValueError("run has no base commit; render inside a git repository")
+    diff = _git(root, "diff", "--binary", "--no-color", base_commit)
+    if diff.returncode != 0:
+        raise ValueError(diff.stderr.decode("utf-8", errors="replace").strip())
+    untracked = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if untracked.returncode != 0:
+        raise ValueError(untracked.stderr.decode("utf-8", errors="replace").strip())
+    digest = hashlib.sha256()
+    digest.update(diff.stdout)
+    for raw in sorted(
+        path for path in untracked.stdout.decode("utf-8", errors="replace").split("\0") if path
+    ):
+        path = _normalize(raw)
+        if _ignored(path):
+            continue
+        candidate = root / path
+        if candidate.is_file():
+            digest.update(path.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(candidate.read_bytes())
+            digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -342,9 +369,11 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
             )
 
     files: list[str] = []
+    diff_hash = ""
     execution_root = run.execution_root
     try:
         files = changed_files(execution_root, str(run.data.get("base_commit", "")))
+        diff_hash = worktree_diff_hash(execution_root, str(run.data.get("base_commit", "")))
     except ValueError as error:
         check("git diff", False, str(error))
     else:
@@ -408,6 +437,7 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
         "receipt_kind": receipt_kind,
         "checks": checks,
         "changed_files": files,
+        "diff_hash": diff_hash,
         "commands": commands,
         "criteria": criteria,
         "evidence": evidence,
