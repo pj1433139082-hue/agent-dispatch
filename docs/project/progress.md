@@ -29,7 +29,7 @@
 - DSH HTTP 入口是本机插件接口，不是稳定公共 API；DSH 升级后需重跑真实投递探针。
 - 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
 - 分支保护 `enforce_admins=true`，管理员也不能绕过必需检查；紧急变更需临时关闭保护并记录。
-- 项目启动的 `plan-acceptance` 由 lead 代签，不是用户亲签。
+- 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
 
 ## 下一步候选
 
