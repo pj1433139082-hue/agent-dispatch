@@ -62,7 +62,7 @@ def status_document(
     }
 
 
-def _ready_tickets(
+def ready_tickets(
     tickets: list[Ticket], states: dict[str, str] | None = None
 ) -> list[Ticket]:
     states = dict(states or {})
@@ -91,22 +91,20 @@ def _dsh_team(tickets: list[Ticket]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
-def _dsh_board(tickets: list[Ticket]) -> str:
-    payload = [
-        {
-            "id": ticket.id,
-            "title": ticket.title,
-            "status": "todo",
-            "description": ticket.what_to_build,
-            "tags": ["dispatch", ticket.risk],
-            "permission": PERMISSIONS.get(ticket.risk, "workspace-write"),
-        }
-        for ticket in tickets
-    ]
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+def _dsh_board(tickets: list[Ticket], project: str) -> str:
+    from .dsh import build_card_actions, normalize_base_url
+
+    actions = build_card_actions(tickets, project=project)
+    document = {
+        "format": "dsh-board",
+        "version": 2,
+        "endpoint": normalize_base_url() + "/action",
+        "actions": actions,
+    }
+    return json.dumps(document, indent=2, ensure_ascii=False)
 
 
-def _section(ticket: Ticket) -> str:
+def ticket_section(ticket: Ticket) -> str:
     acceptance = "\n".join(f"- [ ] {item}" for item in ticket.acceptance) or "- (none)"
     commands = "\n".join(ticket.verify) or "echo 'no verification command declared'"
     write_scope = "".join(f"- {item}\n" for item in ticket.write_scope) or "- (none)\n"
@@ -138,17 +136,18 @@ def export_text(
     tickets: list[Ticket],
     fmt: str,
     states: dict[str, str] | None = None,
+    project: str = "default",
 ) -> str:
-    ready = _ready_tickets(tickets, states)
+    ready = ready_tickets(tickets, states)
     if fmt == "dsh-team":
         return _dsh_team(ready) + "\n"
     if fmt == "dsh-board":
-        return _dsh_board(ready) + "\n"
+        return _dsh_board(ready, project) + "\n"
     if fmt == "codex":
-        return "\n".join(_section(ticket) for ticket in ready).rstrip() + "\n"
+        return "\n".join(ticket_section(ticket) for ticket in ready).rstrip() + "\n"
     if fmt == "generic":
         if not ready:
             return "# Dispatch ready work\n\nNo ready tickets.\n"
-        body = "\n".join(_section(ticket) for ticket in ready).rstrip()
+        body = "\n".join(ticket_section(ticket) for ticket in ready).rstrip()
         return f"# Dispatch ready work\n\n{body}\n"
     raise ValueError(f"unknown export format: {fmt}")

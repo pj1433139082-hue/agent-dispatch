@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .dsh import TaskBoardError, board_status, format_status, outcome, push
 from .export import export_text, status_document
 from .graph import build_plan
 from .review import submit_review
@@ -72,6 +73,38 @@ def _parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--root", type=Path, default=Path("."))
     export_parser.add_argument("--output", type=Path)
 
+    dsh_parser = subparsers.add_parser(
+        "dsh", help="Push ready work to the DSH task board and read outcomes back."
+    )
+    dsh_sub = dsh_parser.add_subparsers(dest="dsh_command", required=True)
+
+    dsh_push = dsh_sub.add_parser("push", help="Create board cards for ready tickets; never runs them.")
+    dsh_push.add_argument("--tickets", type=Path, default=Path("tickets"))
+    dsh_push.add_argument("--root", type=Path, default=Path("."))
+    dsh_push.add_argument("--url", default=None, help="DSH base URL (default: DSH_TASK_BOARD_URL or http://127.0.0.1:50567).")
+    dsh_push.add_argument("--project", default=None, help="Project namespace for deterministic card ids.")
+    dsh_push.add_argument("--workspace", default=None, help="DSH workspace id; omit to let the board decide.")
+    dsh_push.add_argument("--mode", choices=("cards", "team"), default="cards", dest="push_mode")
+    dsh_push.add_argument("--dry-run", action="store_true", help="Print the action envelopes without calling DSH.")
+    dsh_push.add_argument("--json", action="store_true", dest="as_json")
+
+    dsh_status = dsh_sub.add_parser("status", help="Compare local ticket mappings with the DSH board.")
+    dsh_status.add_argument("--root", type=Path, default=Path("."))
+    dsh_status.add_argument("--url", default=None)
+    dsh_status.add_argument("--json", action="store_true", dest="as_json")
+
+    dsh_outcome = dsh_sub.add_parser(
+        "outcome", help="Record an external agent outcome on a mapped DSH card."
+    )
+    dsh_outcome.add_argument("ticket_id")
+    dsh_outcome.add_argument("--root", type=Path, default=Path("."))
+    dsh_outcome.add_argument("--url", default=None)
+    dsh_outcome.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
+    dsh_outcome.add_argument("--result", required=True, choices=("succeeded", "failed"))
+    dsh_outcome.add_argument("--by", required=True, dest="initiated_by", help="Who performed the work.")
+    dsh_outcome.add_argument("--summary", default="")
+    dsh_outcome.add_argument("--json", action="store_true", dest="as_json")
+
     new_parser = subparsers.add_parser("new", help="Create a new ticket file.")
     new_parser.add_argument("ticket_id")
     new_parser.add_argument("--title", required=True)
@@ -133,7 +166,9 @@ def _cmd_export(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(args.tickets)
     if tickets is None:
         return code
-    text = export_text(tickets, args.export_format, _state_map(args.root))
+    text = export_text(
+        tickets, args.export_format, _state_map(args.root), project=args.root.resolve().name
+    )
     if args.output:
         args.output.write_text(text, encoding="utf-8")
         print(f"Wrote {args.output}")
@@ -329,6 +364,78 @@ def _cmd_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_dsh_push(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(args.tickets)
+    if tickets is None:
+        return code
+    try:
+        report = push(
+            tickets,
+            _state_map(args.root),
+            root=args.root,
+            base_url=args.url,
+            project=args.project,
+            mode=args.push_mode,
+            workspace_id=args.workspace,
+            dry_run=args.dry_run,
+        )
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0
+    if report.get("dry_run"):
+        print(f"DSH dry run: {len(report['actions'])} action(s) for {report['project']}")
+        for item in report["planned"]:
+            print(f"  create {item['task_id']}  {item['title']}")
+        return 0
+    created = report.get("created", [])
+    existing = report.get("existing", [])
+    print(f"DSH board {report['base_url']} ({report['mode']}, project {report['project']})")
+    print(f"Created {len(created)} card(s), kept {len(existing)} existing card(s).")
+    for item in created:
+        print(f"  + {item['task_id']}  {item['title']}")
+    for item in existing:
+        print(f"  = {item['task_id']}  {item['title']} [{item.get('status', '')}]")
+    print(f"Map: {report['map_path']}")
+    return 0
+
+
+def _cmd_dsh_status(args: argparse.Namespace) -> int:
+    try:
+        document = board_status(root=args.root, base_url=args.url)
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(document, indent=2, ensure_ascii=False))
+    else:
+        print(format_status(document))
+    return 0
+
+
+def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
+    try:
+        result = outcome(
+            args.ticket_id,
+            root=args.root,
+            result=args.result,
+            initiated_by=args.initiated_by,
+            summary=args.summary,
+            base_url=args.url,
+            task_id=args.task_id,
+        )
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Recorded {result['status']} for {result['ticket_id']} ({result['task_id']})")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "lint":
@@ -347,6 +454,14 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status(args)
     if args.command == "export":
         return _cmd_export(args)
+    if args.command == "dsh":
+        if args.dsh_command == "push":
+            return _cmd_dsh_push(args)
+        if args.dsh_command == "status":
+            return _cmd_dsh_status(args)
+        if args.dsh_command == "outcome":
+            return _cmd_dsh_outcome(args)
+        return 2
     if args.command == "new":
         return _cmd_new(args)
     return 2

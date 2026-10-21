@@ -1,6 +1,6 @@
 # 项目架构
 
-本页记录 v0.1 的实际模块边界与数据流；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
+本页记录 v0.2 的实际模块边界与数据流；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
 
 ## 模块与边界
 
@@ -13,6 +13,7 @@
 | `verify.py` | 复跑验收命令、检查 git diff 写域、证据 sha256 | 不修改票据；拒绝时写 verify.json |
 | `review.py` | 异体评审与 final verdict | 拒绝自审；L4 必须人工 |
 | `export.py` | 把 ready 票据导出为 dsh-team / dsh-board / codex / generic | 只读；不调用远端 API |
+| `dsh.py` | 生成 DSH 看板 create 信封、投递到本机 loopback API、读回看板、回写外部结果 | 只 `create` 与 `record-external-outcome`；不运行卡，不替代 verify |
 | `cli.py` | argparse 命令路由、退出码和用户可见错误 | 不绕过各模块门禁 |
 
 运行时只依赖 Python 标准库；pytest 仅为开发依赖。
@@ -28,11 +29,17 @@ tickets/*.md
   -> verify.verify_run（命令、diff、哈希）
   -> review.submit_review（异体裁决）
   -> state: done / failed
+
+ready tickets
+  -> export.py（dsh-team / dsh-board / codex / generic，只读）
+  -> dsh.py dsh push（看板 create 信封；只建卡不运行）
+  -> dsh.py dsh outcome（外部执行结果回写；不替代 verify）
 ```
 
-机器事实源是 `.dispatch/state.json` 与 `.dispatch/runs/<run-id>/`；票据文件本身保持只读，避免执行者改票自证。`verify` 会比对票据内容哈希，票据在 render 后被改动会使旧 run 失效。
+机器事实源是 `.dispatch/state.json`、`.dispatch/runs/<run-id>/` 与 `.dispatch/dsh-map.json`；票据文件本身保持只读，避免执行者改票自证。`verify` 会比对票据内容哈希，票据在 render 后被改动会使旧 run 失效。
 
 ## 关键决策入口
 
 - `docs/adr/0001-file-first-cli.md`：文件优先、门禁命令独占状态推进。
+- `docs/adr/0002-dsh-loopback-push.md`：DSH 看板只作为投递与回读面，验收仍由本地门禁负责。
 - `tasks/kickoff/plan.md`：v0.1 技术选择、风险与验收方法。

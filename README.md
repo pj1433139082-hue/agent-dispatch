@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.1**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。
+当前版本 **v0.2**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写。
 
 ---
 
@@ -23,7 +23,7 @@
 - `verify` 复跑票据里的验收命令，检查真实 git diff 是否越出写域，并给证据算哈希。
 - `review` 要求评审者不是票据 owner，也不是实际领取人；L4 风险必须显式 `--human`。
 
-v0.1 刻意不做：Web UI、多用户权限、云沙箱、自动合并、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出”这条最小闭环。
+v0.2 仍刻意不做：Web UI、多用户权限、云沙箱、自动合并、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递”这条最小闭环。
 
 ---
 
@@ -84,7 +84,7 @@ ready ──render──> claimed ──start──> running ──verify(pass)�
 - `**Blocked by:**` 写依赖 id，逗号分隔；没有依赖写 `None`。
 - `## Dispatch` 下重复的 `Write scope` / `Verify` 会累加。
 - 写域拒绝绝对路径、盘符、`..`、反斜杠；写域是 git 路径的相对前缀或 glob。
-- 风险等级：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU 环境、`L4` 必须人工确认。v0.1 只记录等级；唯一强制点是 L4 评审必须 `--human`。
+- 风险等级：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU 环境、`L4` 必须人工确认。v0.2 把风险映射到 DSH 卡片 permission；唯一强制评审点是 L4 必须 `--human`。
 - `## Acceptance` 至少一条 `- [ ]`；验收命令必须能从仓库根目录复跑。
 
 ---
@@ -169,7 +169,9 @@ dispatch status --json
 
 `review` 会拒绝实现者自审：评审者不能等于票据的 `Owner`，也不能等于 `render --agent` 的领取人；L4 票据必须加 `--human`。
 
-当还有 `ready` 票据时（例如刚 `lint` / `plan` 之后），把就绪工作导出到执行端：
+当还有 `ready` 票据时（例如刚 `lint` / `plan` 之后），可以选择导出文件，或直接投递到本机 DSH 任务看板。
+
+### 导出为文件（只读）
 
 ```bash
 dispatch export --format dsh-team
@@ -179,7 +181,33 @@ dispatch export --format generic
 dispatch export --format dsh-team --output ready.json
 ```
 
-> 导出只读取 `ready` 票据，不会调用任何远端 API；票据进入 `claimed` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后由你粘到 DSH、Codex 或别的执行端。
+> `export` 只读取 `ready` 票据，不调用任何远端 API；票据进入 `claimed` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后可以粘到 DSH、Codex 或别的执行端。
+
+### 直接投递到 DSH 任务看板（v0.2）
+
+前置：DSH Desktop 正在运行，任务看板插件的 Web GUI 可访问。默认地址是 `http://127.0.0.1:50567`；端口不同用 `--url` 或环境变量 `DSH_TASK_BOARD_URL` 覆盖。
+
+```bash
+# 先看会创建哪些卡，不联网
+dispatch dsh push --dry-run --json
+
+# 创建卡片；只创建，不运行
+dispatch dsh push --project agent-dispatch
+
+# 团队模式：一张 teamRun 父卡 + 每票一张直接子卡
+dispatch dsh push --mode team --project agent-dispatch
+
+# 读回看板状态（本地映射 + 远端任务状态）
+dispatch dsh status
+
+# 外部 agent 完成后，把结果回写到映射卡
+dispatch dsh outcome 01 --result succeeded --by worker-a --summary "tests and diff checked"
+```
+
+- 卡片 id 由 `project` + 票据 id 确定性生成，重复 `push` 不会重复建卡。
+- `push` 只创建卡，**不会运行卡**；运行仍需在 DSH 看板里由人确认。
+- 映射写入 `.dispatch/dsh-map.json`，不提交到 Git。
+- `dsh outcome` 只是把外部执行结果记到看板执行记录，**不代替** `dispatch verify`；验收仍以本地命令、diff 和证据哈希为准。
 
 ---
 
@@ -195,7 +223,10 @@ dispatch export --format dsh-team --output ready.json
 | `dispatch verify <id>` | 独立验收；通过 → `review`，失败 → `failed` |
 | `dispatch review <id> --reviewer ... --verdict pass|fail` | 异体评审；通过 → `done` |
 | `dispatch status [--json]` | 每张票的 effective state、blocked_by、next frontier |
-| `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic |
+| `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic（只读） |
+| `dispatch dsh push [--mode cards|team] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
+| `dispatch dsh status` | 读回 DSH 看板状态并与本地映射对照 |
+| `dispatch dsh outcome <id> --result ... --by ...` | 把外部 agent 的结果回写到映射卡 |
 
 通用参数：`--tickets` 指定票据目录（默认 `tickets`），`--root` 指定仓库根（默认当前目录）。
 
@@ -206,7 +237,7 @@ dispatch export --format dsh-team --output ready.json
 | 格式 | 产物 | 用途 |
 |---|---|---|
 | `dsh-team` | JSON 数组：`subject` / `description` / `ownerName` / `blockedBy` / `writeScopes` | 投给 DSH `team_task_create` |
-| `dsh-board` | JSON 数组：`id` / `title` / `status` / `description` / `tags` / `permission` | 投给 DSH 看板卡 |
+| `dsh-board` | JSON 文档：`format` / `version` / `endpoint` / `actions`；每个 action 是 DSH 看板的 `create` 信封 | 可由 `dsh push` 直接投递，也可人工检查 |
 | `codex` | 每票一段 work-order 风格 Markdown | 粘给 Codex 会话 |
 | `generic` | 按 id 排序的确定性 Markdown | 任意执行端 / 人工阅读 |
 
@@ -223,11 +254,12 @@ agent-dispatch/
 │   ├── state.py       # state.json、Run 生命周期
 │   ├── verify.py      # 验收门禁
 │   ├── review.py      # 异体评审
-│   ├── export.py      # status / 导出适配器
+│   ├── export.py      # status / 文件导出适配器
+│   ├── dsh.py         # DSH 看板真实投递、状态回读、外部结果回写
 │   └── cli.py         # 命令行入口
 ├── tests/             # pytest；按票据逐张红→绿
 ├── tickets/           # 你的票据（一票一文件）
-├── .dispatch/         # 运行态：runs、state.json（一般不提交 runs）
+├── .dispatch/         # 运行态：runs、state.json、dsh-map.json（一般不提交）
 └── .scratch/          # 本项目的 spec 与实施票据
 ```
 
@@ -240,4 +272,4 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.1 的关键约束是：**票据是事实源，运行记录是证据链，状态只能由门禁推进。**
+设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.2 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；DSH 看板只是投递与回读面，不是验收面。**

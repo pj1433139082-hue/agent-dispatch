@@ -39,7 +39,7 @@ _Avoid_: assignee、执行人
 _Avoid_: 修改范围、touch list
 
 **Risk（风险等级）**:
-L0–L4 的风险分级；v0.1 只在 L4 强制 `--human` 评审。
+L0–L4 的风险分级；v0.2 只在 L4 强制 `--human` 评审，并映射到 DSH 卡片的 permission。
 _Avoid_: priority、severity
 
 **Wave（波次）**:
@@ -51,8 +51,16 @@ _Avoid_: batch、stage
 _Avoid_: backlog、queue
 
 **Export（导出）**:
-把 ready 票据转换到 DSH team、DSH board、Codex 或 generic 载荷；只读，不调用远端 API。
+把 ready 票据转换到 DSH team、DSH board、Codex 或 generic 的离线载荷；只读，不调用远端 API。
 _Avoid_: sync、publish
+
+**DSH Push（投递）**:
+把 ready 票据的 create 信封发到本机 DSH 看板 API，建立可追踪的卡；只建卡，不运行卡。
+_Avoid_: 自动执行、自动派活
+
+**External outcome（外部结果）**:
+外部 agent 完成工作后写回 DSH 看板执行记录的结果；它是看板事实，不是本项目的验收结论。
+_Avoid_: verify、验收通过
 
 ## Rules
 

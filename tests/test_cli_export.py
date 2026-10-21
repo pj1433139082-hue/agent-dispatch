@@ -121,3 +121,28 @@ def test_new_creates_a_lintable_ticket(tmp_path: Path) -> None:
     assert (directory / "03-third-ticket.md").is_file()
     lint = run_dispatch(tmp_path, "lint", "--tickets", str(directory))
     assert lint.returncode == 0, lint.stderr
+
+
+def test_dsh_push_dry_run_is_json_and_does_not_need_a_server(tmp_path: Path) -> None:
+    directory = make_tickets(tmp_path)
+
+    result = run_dispatch(
+        tmp_path,
+        "dsh",
+        "push",
+        "--tickets",
+        str(directory),
+        "--root",
+        str(tmp_path),
+        "--project",
+        "probe",
+        "--dry-run",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["dry_run"] is True
+    assert payload["mode"] == "cards"
+    assert payload["planned"][0]["ticket_id"] == "01"
+    assert payload["planned"][0]["task_id"]
