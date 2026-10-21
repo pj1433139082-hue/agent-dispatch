@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.9.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.10.0。
 
 ## 何时使用
 
@@ -80,6 +80,21 @@ python <技能目录>/scripts/dispatch.py new 01 \
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
 7. **落地**：`land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
 
+## 选型角色（v0.10.0）
+
+S2 的角色是**必须有**的，不是可选的：
+
+| 角色 id | 必须 | 产出 | 证据门槛 |
+|---|---|---|---|
+| `oss-scout` | 是 | `01-oss.md` | ≥2 个开源参照，指到具体文件:函数或提交哈希，并写明不采用的理由 |
+| `search-scout` | 是 | `02-sources.md` | 每条事实附 URL + 原文摘录 + 抓取日期 + 版本号；查不到写「未证实」 |
+| `adversary` | 是 | `03-adversary.md` | 列出方案没写出来的假设，每条给一个可证伪的最小实验或反例（≤7 条） |
+| `domain-owner` | 否（`--with`） | `04-domain.md` | 硬约束逐条，标「绝对不行 / 代价高但可行」，给最小可行落点 |
+| `cost-keeper` | 否（`--with`） | `05-cost.md` | 依赖与体积（gzip）、运行开销、维护活跃度，全部给数字 |
+| 自定义 | `--add id:persona` | `9N-<id>.md` | 按自带 persona 的判据 |
+
+人设文件随技能分发（`agents/personas/`），用 `personas list` 可查；`--add` 可以挂你自己的角色卡。汇总表 `99-summary.md` 留了**甲方签字行**——按 ADR-0007 Q1，选型结论必须你签。
+
 ## 上下文包、两阶段与收口（v0.8.0）
 
 新会话只拿到票面就会跑偏。两个补丁：
@@ -112,6 +127,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `context <id> [--json]` | 生成 `.dispatch/context/<id>.md`：入口文档摘录 / 同票历史运行 / 阻塞邻居 / 踩坑索引 |
 | `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
 | `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
+| `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
 | `align <slug> [--level quick 或 standard 或 thorough]` | S1：出需求问卷 `docs/questions/<slug>.md`，第一段就是档位选择（3 / 6 / 10 问） |
 | `spec <slug> [--force]` | S3：问卷答满才允许写规格骨架 `docs/specs/<slug>.md`（Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope） |
 | `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` || `closeout <id> [--json]` | 对照票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |

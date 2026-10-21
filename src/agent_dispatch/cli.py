@@ -39,6 +39,7 @@ from .align import (
 from .brief import approve_brief, approval_status, check_brief, ensure_brief
 from .checkpoints import list_generations, publish as publish_checkpoint
 from .closeout import write as write_closeout
+from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as write_selection_pack
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
@@ -147,6 +148,20 @@ def _parser() -> argparse.ArgumentParser:
     tickets_parser.add_argument("slug")
     tickets_parser.add_argument("--root", type=Path, default=Path("."))
     tickets_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    select_parser = subparsers.add_parser(
+        "select", help="Build the S2 selection panel (roles, personas, evidence briefs)."
+    )
+    select_parser.add_argument("slug", nargs="?", default="")
+    select_parser.add_argument("--title", default="")
+    select_parser.add_argument("--with", dest="with_roles", default="", help="逗号分隔的可选角色，如 domain-owner,cost-keeper")
+    select_parser.add_argument(
+        "--add", dest="extra_roles", action="append", default=[],
+        metavar="ID[:PERSONA]", help="追加自定义角色，可重复",
+    )
+    select_parser.add_argument("--list", action="store_true", dest="list_only")
+    select_parser.add_argument("--root", type=Path, default=Path("."))
+    select_parser.add_argument("--json", action="store_true", dest="as_json")
 
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
@@ -753,6 +768,45 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     print(f"Brief: {target}")
     return 0
 
+def _cmd_select(args: argparse.Namespace) -> int:
+    if args.list_only:
+        rows = [
+            {"id": role.id, "name": role.name, "required": role.required, "persona": role.persona, "deliverable": role.deliverable}
+            for role in all_roles().values()
+        ]
+        if args.as_json:
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+            return 0
+        for row in rows:
+            mark = "必须" if row["required"] else "可选"
+            print(f"{row['id']:<14} {mark}  {row['name']}  -> {row['deliverable']}")
+        return 0
+    slug = (args.slug or "").strip()
+    if not slug:
+        print("slug is required (or use --list)", file=sys.stderr)
+        return 1
+    optional = [part.strip() for part in args.with_roles.split(",") if part.strip()]
+    extra: list[tuple[str, str]] = []
+    for raw in args.extra_roles:
+        role_id, _, persona = raw.partition(":")
+        extra.append((role_id, persona))
+    try:
+        roles = panel(optional, extra)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    title = args.title.strip() or slug
+    written = write_selection_pack(args.root, slug, title, roles)
+    if args.as_json:
+        print(json.dumps({"slug": slug, "roles": [role.id for role in roles], "files": [str(path) for path in written]}, ensure_ascii=False))
+        return 0
+    print(f"Selection pack: {pack_dir(args.root, slug)}")
+    for path in written:
+        print(f"  - {path.name}")
+    print("Next: hand each brief to its agent; collect evidence; fill 99-summary.md; wait for the client signature.")
+    return 0
+
+
 def _cmd_align(args: argparse.Namespace) -> int:
     slug = args.slug.strip()
     if not slug:
@@ -1243,6 +1297,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_context(args)
     if args.command == "brief":
         return _cmd_brief(args)
+    if args.command == "select":
+        return _cmd_select(args)
     if args.command == "align":
         return _cmd_align(args)
     if args.command == "spec":

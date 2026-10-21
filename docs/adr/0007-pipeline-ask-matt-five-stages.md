@@ -63,5 +63,5 @@
 | S1 | `dispatch align <slug> [--level quick\|standard\|thorough]` | 已实现：出 `docs/questions/<slug>.md`，含档位表与分级问题 |
 | S3 | `dispatch spec <slug>` | 已实现：问卷未答满（仍有空 `>` 行）时拒绝写规格；`--force` 可跳过 |
 | S4 | `dispatch tickets <slug>` | 已实现：从规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`（`Status: draft`，补 Write scope/Verify 后才进 `tickets/`） |
-| S2 | `grill-with-docs` + 子 agent 并行 + `persona` | 技能侧执行，证据门槛见 Q8；本仓只提供 `export --format agent-team` |
+| S2 | `dispatch select <slug>` | 已实现：出 `docs/selection/<slug>/` 证据包。**三角色必须**（`oss-scout` / `search-scout` / `adversary`，人设随技能分发），可选 `domain-owner` / `cost-keeper`，`--add id:persona` 可挂自定义角色；汇总表留甲方签字行 |
 | S5 | `render/context/brief/checkpoint/verify/review/closeout/land` | 已实现（v0.7.1–v0.8.0） |
