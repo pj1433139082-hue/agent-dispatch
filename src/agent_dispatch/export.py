@@ -1,0 +1,153 @@
+"""Read-only status views and export adapters."""
+
+from __future__ import annotations
+
+import json
+
+from .graph import build_plan
+from .ticket import Ticket
+
+PERMISSIONS = {
+    "L0": "read-only",
+    "L1": "workspace-write",
+    "L2": "workspace-write",
+    "L3": "danger-full-access",
+    "L4": "danger-full-access",
+}
+
+
+def _done(states: dict[str, str]) -> set[str]:
+    return {ticket_id for ticket_id, state in states.items() if state == "done"}
+
+
+def _blocked_by(ticket: Ticket, done: set[str]) -> list[str]:
+    return sorted(dep for dep in ticket.depends_on if dep not in done)
+
+
+def status_document(
+    tickets: list[Ticket],
+    states: dict[str, str] | None = None,
+    done: set[str] | None = None,
+) -> dict[str, object]:
+    states = dict(states or {})
+    done = done if done is not None else _done(states)
+    plan = build_plan(tickets, done=done)
+    ready_frontier = [
+        ticket_id
+        for ticket_id in plan.frontier
+        if states.get(ticket_id) in (None, "ready")
+    ]
+    rows: list[dict[str, object]] = []
+    for ticket in sorted(tickets, key=lambda item: item.id):
+        stored = states.get(ticket.id)
+        if stored is None:
+            state = "blocked" if _blocked_by(ticket, done) else "ready"
+        else:
+            state = stored
+        rows.append(
+            {
+                "id": ticket.id,
+                "title": ticket.title,
+                "state": state,
+                "blocked_by": _blocked_by(ticket, done),
+                "next": ticket.id in ready_frontier,
+                "owner": ticket.owner,
+                "risk": ticket.risk,
+            }
+        )
+    return {
+        "tickets": rows,
+        "frontier": ready_frontier,
+        "conflicts": [conflict.to_dict() for conflict in plan.conflicts],
+    }
+
+
+def _ready_tickets(
+    tickets: list[Ticket], states: dict[str, str] | None = None
+) -> list[Ticket]:
+    states = dict(states or {})
+    done = _done(states)
+    plan = build_plan(tickets, done=done)
+    ready = [
+        ticket_id
+        for ticket_id in plan.frontier
+        if states.get(ticket_id) in (None, "ready")
+    ]
+    by_id = {ticket.id: ticket for ticket in tickets}
+    return [by_id[ticket_id] for ticket_id in sorted(ready)]
+
+
+def _dsh_team(tickets: list[Ticket]) -> str:
+    payload = [
+        {
+            "subject": ticket.title,
+            "description": ticket.what_to_build,
+            "ownerName": ticket.owner,
+            "blockedBy": [],
+            "writeScopes": list(ticket.write_scope),
+        }
+        for ticket in tickets
+    ]
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _dsh_board(tickets: list[Ticket]) -> str:
+    payload = [
+        {
+            "id": ticket.id,
+            "title": ticket.title,
+            "status": "todo",
+            "description": ticket.what_to_build,
+            "tags": ["dispatch", ticket.risk],
+            "permission": PERMISSIONS.get(ticket.risk, "workspace-write"),
+        }
+        for ticket in tickets
+    ]
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _section(ticket: Ticket) -> str:
+    acceptance = "\n".join(f"- [ ] {item}" for item in ticket.acceptance) or "- (none)"
+    commands = "\n".join(ticket.verify) or "echo 'no verification command declared'"
+    return f"""## {ticket.id}: {ticket.title}
+
+Owner: {ticket.owner}
+Risk: {ticket.risk}
+
+### Goal
+
+{ticket.what_to_build}
+
+### Write scope
+
+{"".join(f"- {item}\n" for item in ticket.write_scope) or "- (none)"}
+### Acceptance
+
+{acceptance}
+
+### Verify
+
+\u0060\u0060\u0060bash
+{commands}
+\u0060\u0060\u0060
+"""
+
+
+def export_text(
+    tickets: list[Ticket],
+    fmt: str,
+    states: dict[str, str] | None = None,
+) -> str:
+    ready = _ready_tickets(tickets, states)
+    if fmt == "dsh-team":
+        return _dsh_team(ready) + "\n"
+    if fmt == "dsh-board":
+        return _dsh_board(ready) + "\n"
+    if fmt == "codex":
+        return "\n".join(_section(ticket) for ticket in ready).rstrip() + "\n"
+    if fmt == "generic":
+        if not ready:
+            return "# Dispatch ready work\n\nNo ready tickets.\n"
+        body = "\n".join(_section(ticket) for ticket in ready).rstrip()
+        return f"# Dispatch ready work\n\n{body}\n"
+    raise ValueError(f"unknown export format: {fmt}")

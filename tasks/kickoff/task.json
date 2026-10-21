@@ -1,0 +1,17 @@
+{
+  "decisions": {
+    "plan-acceptance": {
+      "answer": "accept",
+      "by": "lead",
+      "evidence_digest": "b7c4bbd3006d1cfd1d8bddc7b94846ceacf3baa228b4a1eb93bf965ac025c5ed"
+    }
+  },
+  "id": "kickoff",
+  "mode": "assisted",
+  "next_action": "Run context/status and follow the current business stage.",
+  "pack_digest": "0d21da205d834831c5bb2a1d1c24818d2d599172d0a6ea3a1f953eee19683f7c",
+  "project_id": "agent-dispatch",
+  "schema_version": "1.0",
+  "stage": "ready",
+  "workflow": "project-planning"
+}

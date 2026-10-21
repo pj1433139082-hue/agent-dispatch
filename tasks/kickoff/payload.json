@@ -1,0 +1,8 @@
+{
+  "goal": "做一个任务编排分发系统，结合 ask-matt 技能流程与 DSH/Codex 多智能体执行；文件优先、带票据契约、状态机与证据门禁。",
+  "in_scope": "v0.1 本地 CLI（Python 3.11+，运行时零第三方依赖）：1) ask-matt 兼容的 Markdown 票据解析与 lint；2) 依赖图拓扑分波、环检测、同波写域冲突提示；3) WorkOrder 渲染（目标、读写域、验收、验证命令、receipt 契约）；4) receipt + 独立 verify 门禁（验证命令退出码、git diff 写域检查、证据文件 sha256）；5) review 门禁（异体复核）与状态机；6) status/plan 的文本与 JSON 输出；7) export 适配 DSH team、DSH board、Codex、generic；8) pytest 测试、README 快速开始、示例票据。",
+  "out_of_scope": "Web UI；多用户与权限系统；云沙箱/容器编排；自动合并、自动部署、自动发布；替代 DSH Agent Teams 或 Codex；Multica/Wanman/CubeSandbox 集成；真实模型 API 调用；Obsidian 库写入自动化；票据的图形化编辑器。",
+  "project_name": "派单台",
+  "success_criteria": "1) 对缺字段/自依赖/环/未知依赖的票据，dispatch lint 非零退出并给出稳定错误码；2) dispatch plan 输出拓扑波次，并对同波重叠写域给出冲突提示；3) dispatch render 生成含读写域、验收项、验证命令和 receipt 契约的 work-order.md；4) dispatch verify 在验证命令失败、改动越界、receipt 缺失或证据缺失时拒绝通过，在全部满足时进入 review；5) dispatch review 拒绝自审，pass 后票据进入 done；6) dispatch status --json 可读出全部票据状态，export 能产出四种目标格式；7) 全量 pytest 通过，README 的快速开始可在干净临时目录复现。",
+  "users": "单人开发者（仓库所有者）及其 DSH/Codex 多智能体会话；v0.1 不做多用户、团队权限或远程服务。"
+}
