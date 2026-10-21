@@ -3,3 +3,6 @@ contact_links:
   - name: "📖 使用说明"
     url: https://github.com/pj1433139082-hue/agent-dispatch#readme
     about: 安装、目录结构与快速开始。
+  - name: "🔐 报告安全漏洞"
+    url: https://github.com/pj1433139082-hue/agent-dispatch/security/advisories/new
+    about: 请使用私有漏洞报告，不要开公开 issue。
