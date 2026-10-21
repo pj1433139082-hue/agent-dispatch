@@ -41,7 +41,7 @@
     "project.json": "0a65e4fe046f9a70cc096ec97c925eec59314fcb5a34edc6a026355b5d5cbbb3",
     "tasks/kickoff/payload.json": "8ee1241555848ef921d6fa2587e916e8ae3ae3bc04522872543d0311235dfeef",
     "tasks/kickoff/plan.md": "e7a874388201c4414f6e48d1a991141c9147279bc9cbf66df9ff31113f5d4d68",
-    "tasks/kickoff/task.json": "181a81088abd4a3314361e20d6b33b6bede30f7ff499c1282ee31e8fe053a67f"
+    "tasks/kickoff/task.json": "404479359ce77f1fd5ca67f16064ecb263392bac6659149ef91be9990c8c02e9"
   },
   "task": {
     "id": "kickoff",
