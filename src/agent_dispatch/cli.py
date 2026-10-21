@@ -27,6 +27,8 @@ from .dsh import (
 )
 from .export import export_text, status_document
 from .brief import approve_brief, approval_status, check_brief, ensure_brief
+from .checkpoints import list_generations, publish as publish_checkpoint
+from .closeout import write as write_closeout
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
@@ -94,6 +96,23 @@ def _parser() -> argparse.ArgumentParser:
     brief_parser.add_argument("--approve", default="", metavar="NAME")
     brief_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    checkpoint_parser = subparsers.add_parser(
+        "checkpoint", help="Publish or list immutable run checkpoints."
+    )
+    checkpoint_parser.add_argument("ticket_id")
+    checkpoint_parser.add_argument("--label", default="manual")
+    checkpoint_parser.add_argument("--list", action="store_true", dest="list_only")
+    checkpoint_parser.add_argument("--root", type=Path, default=Path("."))
+    checkpoint_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    closeout_parser = subparsers.add_parser(
+        "closeout", help="Compare ticket, brief and diff; write the closeout report."
+    )
+    closeout_parser.add_argument("ticket_id")
+    closeout_parser.add_argument("--tickets", type=Path, default=None)
+    closeout_parser.add_argument("--root", type=Path, default=Path("."))
+    closeout_parser.add_argument("--json", action="store_true", dest="as_json")
+
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
     start_parser.add_argument("--root", type=Path, default=Path("."))
@@ -132,6 +151,12 @@ def _parser() -> argparse.ArgumentParser:
         help="Integration branch name (default: dispatch/land/<run-id>).",
     )
     land_parser.add_argument("--root", type=Path, default=Path("."))
+    land_parser.add_argument(
+        "--require-closeout",
+        action="store_true",
+        dest="require_closeout",
+        help="Refuse to land unless closeout.json reports pass.",
+    )
     land_parser.add_argument("--json", action="store_true", dest="as_json")
 
     auto_parser = subparsers.add_parser(
@@ -693,6 +718,57 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     print(f"Brief: {target}")
     return 0
 
+def _cmd_checkpoint(args: argparse.Namespace) -> int:
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
+        return 1
+    if args.list_only:
+        generations = list_generations(run)
+        if args.as_json:
+            print(json.dumps(generations, ensure_ascii=False, indent=2))
+            return 0
+        if not generations:
+            print("(no checkpoints)")
+            return 0
+        for item in generations:
+            mark = "*" if item.get("current") else " "
+            print(f"{mark} {item.get('generation')}  {item.get('label')}  files={len(item.get('files') or [])}")
+        return 0
+    try:
+        target = publish_checkpoint(run, args.label)
+    except (OSError, FileExistsError) as error:
+        print(f"checkpoint failed: {error}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps({"generation": target.name, "path": str(target)}, ensure_ascii=False))
+    else:
+        print(f"Checkpoint: {target}")
+    return 0
+
+
+def _cmd_closeout(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
+        return 1
+    report_file, report = write_closeout(args.root, ticket, run)
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(f"Closeout {report['status'].upper()}: {report_file}")
+        for finding in report.get("findings", []):
+            print(f"  - {finding}")
+    return 0 if report["status"] == "pass" else 1
+
+
 def _cmd_start(args: argparse.Namespace) -> int:
     store = DispatchState(args.root)
     existing = store.ticket(args.ticket_id)
@@ -769,7 +845,34 @@ def _cmd_review(args: argparse.Namespace) -> int:
     print(f"Review {record['verdict']} recorded for {args.ticket_id} ({run.id})")
     return 0
 
+def _current_run(root: Path, ticket_id: str):
+    store = DispatchState(root)
+    existing = store.ticket(ticket_id)
+    if not existing:
+        return None, None
+    return store, Run.load(root, str(existing["run_id"]))
+
+
 def _cmd_land(args: argparse.Namespace) -> int:
+    if getattr(args, "require_closeout", False):
+        _, run = _current_run(args.root, args.ticket_id)
+        if run is None:
+            print(f"ticket {args.ticket_id}: no run to close out", file=sys.stderr)
+            return 1
+        report_file = run.directory / "closeout.json"
+        if not report_file.is_file():
+            print(f"ticket {args.ticket_id}: no closeout.json (run dispatch closeout first)", file=sys.stderr)
+            return 1
+        try:
+            report = json.loads(report_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"ticket {args.ticket_id}: closeout.json unreadable: {error}", file=sys.stderr)
+            return 1
+        if str(report.get("status", "")) != "pass":
+            print(f"ticket {args.ticket_id}: closeout is {report.get('status')}; refusing to land", file=sys.stderr)
+            for finding in report.get("findings", []):
+                print(f"  - {finding}", file=sys.stderr)
+            return 1
     try:
         record = land_run(
             args.root,
@@ -1041,6 +1144,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_context(args)
     if args.command == "brief":
         return _cmd_brief(args)
+    if args.command == "checkpoint":
+        return _cmd_checkpoint(args)
+    if args.command == "closeout":
+        return _cmd_closeout(args)
     if args.command == "start":
         return _cmd_start(args)
     if args.command == "verify":

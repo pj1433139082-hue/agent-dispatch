@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.7.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.8.0。
 
 ## 何时使用
 
@@ -80,13 +80,16 @@ python <技能目录>/scripts/dispatch.py new 01 \
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
 7. **落地**：`land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
 
-## 上下文包与两阶段（v0.7.1）
+## 上下文包、两阶段与收口（v0.8.0）
 
 新会话只拿到票面就会跑偏。两个补丁：
 
 - `context <id>` → `.dispatch/context/<id>.md`：票面框架、目标、写/读域、完成定义、**项目入口文档摘录**（AGENTS.md / CLAUDE.md / CONTEXT.md）、**同票历史运行**（state / verify / error）、**阻塞邻居**、**踩坑笔记索引**。只读、确定性、不调模型。`render --with-context` 会把它写进 run 目录并附到 `work-order.md`。
 - `brief <id>` → `.dispatch/briefs/<id>.md`：只读阶段的五段式 brief；`--check` 校验非空非占位，`--approve <人>` 记录审批（brief 与票据的 sha256 一起记），`render --require-brief` 无有效审批直接拒绝开局。
 - `auto` 重试不再原样重跑：第 n 次尝试前把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。
+
+- `checkpoint <id>` → `<run>/checkpoints/<NNN>-<label>/`：`checkpoint.json`（逐文件 sha256 + diff_hash + parent）、`diff.patch`、`status.txt`、`restore.md`；发布后 `current.json` 原子切换，代际只追加不覆盖。
+- `closeout <id>` → `<run>/closeout.json` + `closeout.md`：verify 状态、receipt criteria 与票面 acceptance 的条数对应、越出写域的改动、brief 声明却没改 / 没声明却改了；不过就列出 findings。`land --require-closeout` 会在 closeout 不是 pass 时拒绝落地。
 
 ## 命令速查
 
@@ -106,6 +109,10 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `personas list [--search-root <目录>] [--json]` | 搜索可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
 | `personas show <文件或短名> [--json]` | 读取单个 persona 的身份、能力与提示词 |
 | `export --format <agent-team / dsh-team / codex / generic>` | 只读导出；`agent-team` 生成 Team Lead 简报 + 每票工单 |
+| `context <id> [--json]` | 生成 `.dispatch/context/<id>.md`：入口文档摘录 / 同票历史运行 / 阻塞邻居 / 踩坑索引 |
+| `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
+| `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
+| `closeout <id> [--json]` | 对照票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |
 
 通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
 
