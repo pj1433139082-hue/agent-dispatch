@@ -16,6 +16,10 @@
 | 控制台入口 | `dispatch --version` 输出 `dispatch 0.2.0` | 通过 | 临时 venv 的 `Scripts/dispatch.exe` | 2026-10-21 |
 | 系统 PATH | 当前系统 Python 未安装本包，直接执行 `dispatch` 为 ENOENT | 未执行/不适用 | 需按 README 在 venv 中 `pip install -e ".[dev]"` | 2026-10-21 |
 | CI | v0.1 run 39546813087 success；v0.2 run 39550571925（commit d60b164）success | 通过 | GitHub Actions `test` job | 2026-10-21 |
+| DSH teamRun 实测 | 父卡/子卡最终 done、succeeded；父卡摘要含 PARENT_PROBE_OK 与 CHILD_PROBE_OK | 通过 | `docs/verification/2026-10-21-v0.2-boundaries.md` | 2026-10-21 |
+| Codex CLI | codex-cli 0.159.2；实际消费 codex 工单并返回 `CODEX1 → python -c "print('codex-ok')"` | 通过 | `docs/verification/2026-10-21-v0.2-boundaries.md` | 2026-10-21 |
+| issue forms | bug_report.yml / feature_request.yml 通过 SchemaStore schema 校验 | schema 通过；UI 未核验 | `docs/verification/2026-10-21-v0.2-boundaries.md` | 2026-10-21 |
+| GitHub Release | v0.2.0，2026-10-21T05:55:56Z，target main | 通过 | https://github.com/pj1433139082-hue/agent-dispatch/releases/tag/v0.2.0 | 2026-10-21 |
 
 ## 安装与运行
 

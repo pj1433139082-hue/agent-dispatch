@@ -208,6 +208,7 @@ dispatch dsh outcome 01 --result succeeded --by worker-a --summary "tests and di
 - `push` 只创建卡，**不会运行卡**；运行仍需在 DSH 看板里由人确认。
 - 映射写入 `.dispatch/dsh-map.json`，不提交到 Git。
 - `dsh outcome` 只是把外部执行结果记到看板执行记录，**不代替** `dispatch verify`；验收仍以本地命令、diff 和证据哈希为准。
+- 2026-10-21 实测：人工触发一张 `teamRun` 卡后，Host 实际启动 Lead + teammate，父卡摘要回传子任务结果；`dispatch` 本身仍只建卡，不自动运行。证据见 `docs/verification/2026-10-21-v0.2-boundaries.md`。
 
 ---
 
