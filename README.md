@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.2.1**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性。
+当前版本 **v0.3.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -25,7 +25,7 @@
 - `verify` 复跑票据里的验收命令，检查真实 git diff 是否越出写域，并给证据算哈希。
 - `review` 要求评审者不是票据 owner，也不是实际领取人；L4 风险必须显式 `--human`。
 
-v0.2 仍刻意不做：Web UI、多用户权限、云沙箱、自动合并、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递”这条最小闭环。
+v0.3 仍刻意不做：Web UI、多用户权限、云沙箱、自动合并、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递”这条最小闭环。
 
 ---
 
@@ -186,7 +186,7 @@ dispatch export --format dsh-team --output ready.json
 
 > `export` 只读取可执行的 `ready` / `failed` 票据，不调用任何远端 API；票据进入 `claimed` / `running` / `review` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后可以粘到 DSH、Codex 或别的执行端。
 
-### 直接投递到 DSH 任务看板（v0.2）
+### 直接投递到 DSH 任务看板（v0.2 → v0.3）
 
 前置：DSH Desktop 正在运行，任务看板插件的 Web GUI 可访问。默认地址是 `http://127.0.0.1:50567`；端口不同用 `--url` 或环境变量 `DSH_TASK_BOARD_URL` 覆盖。
 
@@ -205,10 +205,20 @@ dispatch dsh status
 
 # 外部 agent 完成后，把结果回写到映射卡
 dispatch dsh outcome 01 --result succeeded --by worker-a --summary "tests and diff checked"
+
+# 修改已映射卡片（不运行）；--patch 可传任意非空 JSON object
+dispatch dsh update 01 --title "新标题" --description "补充说明" --prompt "新的提示词"
+
+# 归档或删除已映射卡片
+dispatch dsh archive 01
+dispatch dsh delete 01
 ```
 
 - 卡片 id 由 `project` + 票据 id 确定性生成，重复 `push` 不会重复建卡。
 - `push` 只创建卡，**不会运行卡**；运行仍需在 DSH 看板里由人确认。
+- `update` 发送 `{kind:"update", taskId, patch}`，`patch` 必须是非空 object；`archive` / `delete` 只发送 `{kind, taskId}`。
+- `archive` 只写 `archivedAt`，不删除卡；`delete` 会物理删除。删除有子卡的父卡前，先删除或解除子卡，否则看板返回 `task has subtasks; detach or delete them first`。
+- 这三个命令只改看板卡，不改本地票据状态；验收仍走 `dispatch verify` / `dispatch review`。
 - 映射写入 `.dispatch/dsh-map.json`，不提交到 Git。
 - `dsh outcome` 只是把外部执行结果记到看板执行记录，**不代替** `dispatch verify`；验收仍以本地命令、diff 和证据哈希为准。
 - 2026-10-21 实测：人工触发一张 `teamRun` 卡后，Host 实际启动 Lead + teammate，父卡摘要回传子任务结果；`dispatch` 本身仍只建卡，不自动运行。证据见 `docs/verification/2026-10-21-v0.2-boundaries.md`。
@@ -230,6 +240,9 @@ dispatch dsh outcome 01 --result succeeded --by worker-a --summary "tests and di
 | `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic（只读） |
 | `dispatch dsh push [--mode <cards 或 team>] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
 | `dispatch dsh status` | 读回 DSH 看板状态并与本地映射对照 |
+| `dispatch dsh update <id> [--title/--description/--prompt/--patch JSON]` | 修改已映射卡片；不运行 |
+| `dispatch dsh archive <id>` | 归档已映射卡片；不删除 |
+| `dispatch dsh delete <id>` | 删除已映射卡片；有子卡先处理子卡 |
 | `dispatch dsh outcome <id> --result ... --by ...` | 把外部 agent 的结果回写到映射卡 |
 
 通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` / `dsh push` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
@@ -259,7 +272,7 @@ agent-dispatch/
 │   ├── verify.py      # 验收门禁
 │   ├── review.py      # 异体评审
 │   ├── export.py      # status / 文件导出适配器
-│   ├── dsh.py         # DSH 看板真实投递、状态回读、外部结果回写
+│   ├── dsh.py         # DSH 看板投递、回读、外部结果回写、卡片变更
 │   └── cli.py         # 命令行入口
 ├── tests/             # pytest；按票据逐张红→绿
 ├── tickets/           # 你的票据（一票一文件）
@@ -276,7 +289,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.2 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；DSH 看板只是投递与回读面，不是验收面。**
+设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.3 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；DSH 看板只是投递与回读面，不是验收面。**
 
 ## 9. 作为技能使用（跨项目）
 

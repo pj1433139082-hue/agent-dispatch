@@ -237,6 +237,20 @@ class TaskBoardClient:
         }
         return self._request("POST", "/action", envelope)
 
+    def update(self, task_id: str, patch: dict[str, object]) -> dict[str, object]:
+        """Patch one card. DSH update actions accept only taskId and patch."""
+        if not isinstance(patch, dict) or not patch:
+            raise ValueError("patch must be a non-empty object")
+        return self.apply({"kind": "update", "taskId": task_id, "patch": patch})
+
+    def archive(self, task_id: str) -> dict[str, object]:
+        """Archive one card. DSH archive actions accept only taskId."""
+        return self.apply({"kind": "archive", "taskId": task_id})
+
+    def delete(self, task_id: str) -> dict[str, object]:
+        """Delete one card. DSH delete actions accept only taskId."""
+        return self.apply({"kind": "delete", "taskId": task_id})
+
 
 def load_map(root: Path) -> dict[str, object]:
     path = Path(root) / ".dispatch" / "dsh-map.json"
@@ -272,6 +286,44 @@ def _task_index(state: dict[str, object]) -> dict[str, dict[str, object]]:
         for task in tasks
         if isinstance(task, dict) and task.get("id")
     }
+
+
+def _resolve_mapping(
+    root: Path, ticket_id: str, task_id: str | None
+) -> tuple[dict[str, object], dict[str, object] | None, str]:
+    map_data = load_map(root)
+    entries = map_data.get("tickets", {})
+    entry = entries.get(ticket_id) if isinstance(entries, dict) else None
+    if task_id is None:
+        if not isinstance(entry, dict) or not entry.get("task_id"):
+            raise ValueError(
+                f"ticket {ticket_id!r} has no DSH card mapping; run 'dispatch dsh push' first "
+                "or pass --task-id"
+            )
+        task_id = str(entry["task_id"])
+    return map_data, entry if isinstance(entry, dict) else None, task_id
+
+
+def _mutation_result(
+    snapshot: dict[str, object], *, ticket_id: str, task_id: str, action: str
+) -> dict[str, object]:
+    task = _task_index(snapshot).get(task_id, {})
+    result: dict[str, object] = {
+        "ok": True,
+        "ticket_id": ticket_id,
+        "task_id": task_id,
+        "action": action,
+    }
+    if task:
+        result["status"] = task.get("status", "")
+        result["title"] = task.get("title", "")
+        if task.get("archivedAt"):
+            result["archived_at"] = task["archivedAt"]
+    if action == "archive":
+        result["archived"] = True
+    if action == "delete":
+        result["deleted"] = True
+    return result
 
 
 def push(
@@ -409,16 +461,7 @@ def outcome(
         raise ValueError("result must be 'succeeded' or 'failed'")
     if not initiated_by.strip():
         raise ValueError("initiated_by must not be empty")
-    map_data = load_map(root)
-    entries = map_data.get("tickets", {})
-    entry = entries.get(ticket_id) if isinstance(entries, dict) else None
-    if task_id is None:
-        if not isinstance(entry, dict) or not entry.get("task_id"):
-            raise ValueError(
-                f"ticket {ticket_id!r} has no DSH card mapping; run 'dispatch dsh push' first "
-                "or pass --task-id"
-            )
-        task_id = str(entry["task_id"])
+    map_data, entry, task_id = _resolve_mapping(root, ticket_id, task_id)
     client = TaskBoardClient(base_url or str(map_data.get("base_url") or ""))
     action: dict[str, object] = {
         "kind": "record-external-outcome",
@@ -445,6 +488,49 @@ def outcome(
         "status": task.get("status", ""),
         "title": task.get("title", ""),
     }
+
+
+def update_card(
+    ticket_id: str,
+    *,
+    root: Path,
+    patch: dict[str, object],
+    base_url: str | None = None,
+    task_id: str | None = None,
+) -> dict[str, object]:
+    """Patch a mapped DSH card without running it."""
+    map_data, _entry, task_id = _resolve_mapping(root, ticket_id, task_id)
+    client = TaskBoardClient(base_url or str(map_data.get("base_url") or ""))
+    snapshot = client.update(task_id, patch)
+    return _mutation_result(snapshot, ticket_id=ticket_id, task_id=task_id, action="update")
+
+
+def archive_card(
+    ticket_id: str,
+    *,
+    root: Path,
+    base_url: str | None = None,
+    task_id: str | None = None,
+) -> dict[str, object]:
+    """Archive a mapped DSH card without running it."""
+    map_data, _entry, task_id = _resolve_mapping(root, ticket_id, task_id)
+    client = TaskBoardClient(base_url or str(map_data.get("base_url") or ""))
+    snapshot = client.archive(task_id)
+    return _mutation_result(snapshot, ticket_id=ticket_id, task_id=task_id, action="archive")
+
+
+def delete_card(
+    ticket_id: str,
+    *,
+    root: Path,
+    base_url: str | None = None,
+    task_id: str | None = None,
+) -> dict[str, object]:
+    """Delete a mapped DSH card without running it."""
+    map_data, _entry, task_id = _resolve_mapping(root, ticket_id, task_id)
+    client = TaskBoardClient(base_url or str(map_data.get("base_url") or ""))
+    snapshot = client.delete(task_id)
+    return _mutation_result(snapshot, ticket_id=ticket_id, task_id=task_id, action="delete")
 
 
 def board_status(*, root: Path, base_url: str | None = None) -> dict[str, object]:

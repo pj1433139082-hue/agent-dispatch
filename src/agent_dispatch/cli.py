@@ -9,7 +9,16 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .dsh import TaskBoardError, board_status, format_status, outcome, push
+from .dsh import (
+    TaskBoardError,
+    archive_card,
+    board_status,
+    delete_card,
+    format_status,
+    outcome,
+    push,
+    update_card,
+)
 from .export import export_text, status_document
 from .graph import build_plan
 from .review import submit_review
@@ -104,6 +113,31 @@ def _parser() -> argparse.ArgumentParser:
     dsh_outcome.add_argument("--by", required=True, dest="initiated_by", help="Who performed the work.")
     dsh_outcome.add_argument("--summary", default="")
     dsh_outcome.add_argument("--json", action="store_true", dest="as_json")
+
+    dsh_update = dsh_sub.add_parser("update", help="Patch fields on a mapped DSH card.")
+    dsh_update.add_argument("ticket_id")
+    dsh_update.add_argument("--root", type=Path, default=Path("."))
+    dsh_update.add_argument("--url", default=None)
+    dsh_update.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
+    dsh_update.add_argument("--title", default=None)
+    dsh_update.add_argument("--description", default=None)
+    dsh_update.add_argument("--prompt", default=None)
+    dsh_update.add_argument("--patch", default=None, dest="patch_json", help="JSON object merged into the patch.")
+    dsh_update.add_argument("--json", action="store_true", dest="as_json")
+
+    dsh_archive = dsh_sub.add_parser("archive", help="Archive a mapped DSH card.")
+    dsh_archive.add_argument("ticket_id")
+    dsh_archive.add_argument("--root", type=Path, default=Path("."))
+    dsh_archive.add_argument("--url", default=None)
+    dsh_archive.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
+    dsh_archive.add_argument("--json", action="store_true", dest="as_json")
+
+    dsh_delete = dsh_sub.add_parser("delete", help="Delete a mapped DSH card.")
+    dsh_delete.add_argument("ticket_id")
+    dsh_delete.add_argument("--root", type=Path, default=Path("."))
+    dsh_delete.add_argument("--url", default=None)
+    dsh_delete.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
+    dsh_delete.add_argument("--json", action="store_true", dest="as_json")
 
     new_parser = subparsers.add_parser("new", help="Create a new ticket file.")
     new_parser.add_argument("ticket_id")
@@ -437,6 +471,81 @@ def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_dsh_update(args: argparse.Namespace) -> int:
+    patch: dict[str, object] = {}
+    if args.title is not None:
+        patch["title"] = args.title
+    if args.description is not None:
+        patch["description"] = args.description
+    if args.prompt is not None:
+        patch["prompt"] = args.prompt
+    if args.patch_json:
+        try:
+            extra = json.loads(args.patch_json)
+        except json.JSONDecodeError as exc:
+            print(f"DSH: --patch is not valid JSON: {exc}", file=sys.stderr)
+            return 1
+        if not isinstance(extra, dict):
+            print("DSH: --patch must be a JSON object", file=sys.stderr)
+            return 1
+        patch.update(extra)
+    if not patch:
+        print("DSH: provide --title, --description, --prompt or --patch", file=sys.stderr)
+        return 1
+    try:
+        result = update_card(
+            args.ticket_id,
+            root=args.root,
+            patch=patch,
+            base_url=args.url,
+            task_id=args.task_id,
+        )
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Updated {result['ticket_id']} ({result['task_id']}): {result.get('title', '')}")
+    return 0
+
+
+def _cmd_dsh_archive(args: argparse.Namespace) -> int:
+    try:
+        result = archive_card(
+            args.ticket_id,
+            root=args.root,
+            base_url=args.url,
+            task_id=args.task_id,
+        )
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Archived {result['ticket_id']} ({result['task_id']})")
+    return 0
+
+
+def _cmd_dsh_delete(args: argparse.Namespace) -> int:
+    try:
+        result = delete_card(
+            args.ticket_id,
+            root=args.root,
+            base_url=args.url,
+            task_id=args.task_id,
+        )
+    except (TaskBoardError, ValueError) as exc:
+        print(f"DSH: {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Deleted {result['ticket_id']} ({result['task_id']})")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "lint":
@@ -462,6 +571,12 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_dsh_status(args)
         if args.dsh_command == "outcome":
             return _cmd_dsh_outcome(args)
+        if args.dsh_command == "update":
+            return _cmd_dsh_update(args)
+        if args.dsh_command == "archive":
+            return _cmd_dsh_archive(args)
+        if args.dsh_command == "delete":
+            return _cmd_dsh_delete(args)
         return 2
     if args.command == "new":
         return _cmd_new(args)

@@ -69,7 +69,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 2. **校验与分波**：`lint` 拒绝缺字段、自依赖、环、未知依赖；`plan` 输出拓扑波次、frontier 和同波写域冲突。
 3. **派发**：
    - 本地执行：`render <id> --agent <name>` 生成 `work-order.md`，票据进入 `claimed`。
-   - DSH 看板：`dsh push` 创建卡；`--mode team` 创建一张 `teamRun` 父卡和每票一张子卡。
+   - DSH 看板：`dsh push` 创建卡；`--mode team` 创建一张 `teamRun` 父卡和每票一张子卡；`dsh update` / `dsh archive` / `dsh delete` 管理已映射卡。
    - Codex：`export --format codex` 生成工单，交给 Codex 会话。
 4. **执行者只写两处**：业务文件 + 运行目录里的 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 按当前平台 shell 复跑票据命令、检查 git diff 是否越出写域、核对证据哈希；失败进入 `failed`，可重新 `render` 重试。
@@ -91,6 +91,9 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `export --format <dsh-team / dsh-board / codex / generic>` | 只读导出 |
 | `dsh push [--mode <cards 或 team>] [--dry-run]` | 投递到本机 DSH 看板；只建卡，不运行 |
 | `dsh status` | 读回看板状态并与本地映射对照 |
+| `dsh update <id> [--title/--description/--prompt/--patch JSON]` | 修改已映射卡片；不运行 |
+| `dsh archive <id>` | 归档已映射卡片；不删除 |
+| `dsh delete <id>` | 删除已映射卡片；有子卡先处理子卡 |
 | `dsh outcome <id> --result <succeeded 或 failed> --by <name>` | 把外部执行结果写回映射卡 |
 
 通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` / `dsh push` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
@@ -141,11 +144,19 @@ python <技能目录>/scripts/dispatch.py dsh push --project <项目名>
 
 # 团队模式：父卡 teamRun + 每票子卡
 python <技能目录>/scripts/dispatch.py dsh push --mode team --project <项目名>
+
+# 修改、归档、删除已映射卡（都不运行卡）
+python <技能目录>/scripts/dispatch.py dsh update 01 --title "新标题" --description "补充说明"
+python <技能目录>/scripts/dispatch.py dsh archive 01
+python <技能目录>/scripts/dispatch.py dsh delete 01
 ```
 
 边界：
 
 - `dsh push` 不运行卡；运行需要在 DSH 看板里由人确认，或显式调用看板的 `run` action。
+- `dsh update` 发送 `{kind:"update", taskId, patch}`，`patch` 必须是非空 object；`dsh archive` 发送 `{kind:"archive", taskId}`；`dsh delete` 发送 `{kind:"delete", taskId}`。
+- `dsh archive` 只设置 `archivedAt`，不删除卡；`dsh delete` 会物理删除。删除有子卡的父卡前，先删除或解除子卡，否则看板返回 `task has subtasks; detach or delete them first`。
+- `dsh update/archive/delete` 只改看板卡，不改本地票据状态；验收仍走 `verify` / `review`。
 - `dsh outcome` 写的是外部执行记录，不是本地验收结论。
 - DSH 端点把 `record-external-outcome` 的 `summary` 写进 `execution.error` 字段，成功结果也如此；回读时以 `result=succeeded` 为准，不要用 `error` 是否存在判断失败。
 - DSH HTTP 入口是本机插件接口，不是稳定公共 API；升级 DSH 后重跑一次真实投递探针。

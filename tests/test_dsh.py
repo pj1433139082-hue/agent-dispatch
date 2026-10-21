@@ -10,13 +10,16 @@ import pytest
 from agent_dispatch.dsh import (
     TaskBoardError,
     _uuid_for,
+    archive_card,
     board_status,
     build_card_actions,
     build_team_actions,
+    delete_card,
     format_status,
     load_map,
     outcome,
     push,
+    update_card,
 )
 from agent_dispatch.ticket import Ticket
 
@@ -111,6 +114,21 @@ class BoardStub:
             elif kind == "delete":
                 task_id = str(action["taskId"])
                 self.tasks = [task for task in self.tasks if task["id"] != task_id]
+            elif kind == "update":
+                task_id = str(action["taskId"])
+                task = next((item for item in self.tasks if item["id"] == task_id), None)
+                if task is None:
+                    raise ValueError("unknown task")
+                patch = action.get("patch")
+                if not isinstance(patch, dict):
+                    raise ValueError("patch must be an object")
+                task.update(patch)
+            elif kind == "archive":
+                task_id = str(action["taskId"])
+                task = next((item for item in self.tasks if item["id"] == task_id), None)
+                if task is None:
+                    raise ValueError("unknown task")
+                task["archivedAt"] = "2026-10-21T00:00:00+00:00"
             elif kind == "record-external-outcome":
                 task_id = str(action["taskId"])
                 task = next((item for item in self.tasks if item["id"] == task_id), None)
@@ -228,6 +246,67 @@ def test_outcome_records_external_result_and_status(tmp_path: Path, board: Board
     assert status["rows"][0]["state"] == "done"
     assert status["rows"][0]["external"] is True
     assert "external succeeded" in format_status(status)
+
+
+def test_update_card_sends_exact_action_and_reads_back(tmp_path: Path, board: BoardStub) -> None:
+    push([ticket("A")], root=tmp_path, base_url=board.url, project="probe")
+    task_id = _uuid_for("probe", "A")
+
+    result = update_card(
+        "A",
+        root=tmp_path,
+        patch={"title": "Renamed", "description": "New description"},
+        base_url=board.url,
+    )
+
+    assert board.requests[-1] == {
+        "kind": "update",
+        "taskId": task_id,
+        "patch": {"title": "Renamed", "description": "New description"},
+    }
+    assert result["action"] == "update"
+    assert result["title"] == "Renamed"
+    assert board.snapshot()["tasks"][0]["description"] == "New description"
+
+
+def test_archive_card_sends_exact_action(tmp_path: Path, board: BoardStub) -> None:
+    push([ticket("A")], root=tmp_path, base_url=board.url, project="probe")
+    task_id = _uuid_for("probe", "A")
+
+    result = archive_card("A", root=tmp_path, base_url=board.url)
+
+    assert board.requests[-1] == {"kind": "archive", "taskId": task_id}
+    assert result["action"] == "archive"
+    assert result["archived"] is True
+    assert board.snapshot()["tasks"][0]["archivedAt"]
+
+
+def test_delete_card_sends_exact_action_and_removes_card(tmp_path: Path, board: BoardStub) -> None:
+    push([ticket("A")], root=tmp_path, base_url=board.url, project="probe")
+    task_id = _uuid_for("probe", "A")
+
+    result = delete_card("A", root=tmp_path, base_url=board.url)
+
+    assert board.requests[-1] == {"kind": "delete", "taskId": task_id}
+    assert result["action"] == "delete"
+    assert result["deleted"] is True
+    assert board.snapshot()["tasks"] == []
+
+
+def test_mutation_can_override_a_missing_mapping(tmp_path: Path, board: BoardStub) -> None:
+    push([ticket("A")], root=tmp_path, base_url=board.url, project="probe")
+    task_id = _uuid_for("probe", "A")
+
+    result = update_card(
+        "external",
+        root=tmp_path,
+        patch={"title": "External card"},
+        base_url=board.url,
+        task_id=task_id,
+    )
+
+    assert result["task_id"] == task_id
+    assert result["title"] == "External card"
 
 
 def test_outcome_without_mapping_is_rejected(tmp_path: Path) -> None:
