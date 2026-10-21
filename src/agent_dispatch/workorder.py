@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from .persona import persona_section
 from .ticket import Ticket
 
 EVIDENCE_ITEM_SCHEMA: dict[str, object] = {
@@ -61,6 +62,8 @@ def render_work_order(ticket: Ticket, run: dict[str, object]) -> str:
     acceptance = "\n".join(f"- [ ] {item}" for item in ticket.acceptance) or "- (none)"
     commands = "\n".join(ticket.verify) or "echo 'no verification command declared'"
     receipt = json.dumps(RECEIPT_SCHEMA, indent=2, ensure_ascii=False)
+    persona = persona_section(ticket, "##")
+    persona_block = f"\n{persona}\n" if persona else ""
     execution_root = str(run.get("execution_root") or "(main checkout)")
     branch = str(run.get("worktree_branch") or "(none)")
     return f"""# Work order: {ticket.id}: {ticket.title}
@@ -80,7 +83,7 @@ Run directory: .dispatch/runs/{run.get("run_id", "")}
 
 - Owner: {ticket.owner}
 - Risk: {ticket.risk}
-
+{persona_block}
 ## Write scope
 
 {_bullets(ticket.write_scope)}

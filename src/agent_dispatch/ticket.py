@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
+from .persona import PERSONA_UNSET, Persona, PersonaError, load_persona
+
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 HEADING_RE = re.compile(r"^#\s+(?P<id>[^:]+):\s*(?P<title>.+?)\s*$")
 SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
@@ -28,6 +30,7 @@ _META_KEYS = {
     "verify",
     "depends on",
     "blocked by",
+    "persona",
 }
 
 
@@ -45,6 +48,9 @@ class Ticket:
     read_scope: tuple[str, ...] = ()
     verify: tuple[str, ...] = ()
     acceptance: tuple[str, ...] = ()
+    persona: str = ""
+    persona_profile: Persona | None = field(default=None, compare=False, repr=False)
+    persona_error: str = ""
 
     @property
     def content_hash(self) -> str:
@@ -101,6 +107,7 @@ def parse_ticket(path: Path) -> Ticket:
     read_scope: list[str] = []
     verify: list[str] = []
     acceptance: list[str] = []
+    persona_spec = ""
     section = ""
     capture_what = False
     in_fence = False
@@ -162,6 +169,9 @@ def parse_ticket(path: Path) -> Ticket:
                 if command:
                     verify.append(command)
                 capture_what = False
+            elif key == "persona":
+                persona_spec = _clean_value(value)
+                capture_what = False
             elif key in {"depends on", "blocked by"}:
                 depends.extend(_dependencies(value))
                 capture_what = False
@@ -186,6 +196,8 @@ def parse_ticket(path: Path) -> Ticket:
                     owner = value
                 elif key == "risk":
                     risk = value.upper()
+                elif key == "persona":
+                    persona_spec = _clean_value(value)
                 capture_what = False
                 continue
 
@@ -206,6 +218,14 @@ def parse_ticket(path: Path) -> Ticket:
     if not ticket_id:
         ticket_id = path.stem
     what_to_build = " ".join(part for part in what_parts if part).strip()
+    persona = "" if persona_spec.lower() in PERSONA_UNSET else persona_spec
+    persona_profile = None
+    persona_error = ""
+    if persona:
+        try:
+            persona_profile = load_persona(persona, base_dir=path.parent)
+        except PersonaError as exc:
+            persona_error = str(exc)
     return Ticket(
         id=ticket_id,
         title=title,
@@ -219,6 +239,9 @@ def parse_ticket(path: Path) -> Ticket:
         read_scope=tuple(dict.fromkeys(read_scope)),
         verify=tuple(verify),
         acceptance=tuple(acceptance),
+        persona=persona,
+        persona_profile=persona_profile,
+        persona_error=persona_error,
     )
 
 
@@ -296,6 +319,8 @@ def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
             issues.append(Issue("missing_verify", ticket.id, "at least one Verify command is required"))
         if not ticket.acceptance:
             issues.append(Issue("missing_acceptance", ticket.id, "at least one '- [ ]' acceptance item is required"))
+        if ticket.persona and ticket.persona_error:
+            issues.append(Issue("invalid_persona", ticket.id, ticket.persona_error))
         for scope in (*ticket.write_scope, *ticket.read_scope):
             error = _scope_error(scope)
             if error:

@@ -9,6 +9,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .feedback import write_feedback
 from .landing import LandingError, land_run
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run, current_commit
@@ -313,11 +314,21 @@ def auto_run(
         if attempt_number > 1:
             run.set_state("running")
             store.set_ticket(ticket.id, run.id, "running")
+        feedback_path = ""
+        if attempt_number > 1 and last_errors:
+            written = write_feedback(
+                run.directory,
+                attempt_number - 1,
+                last_errors,
+                log_name="attempt-" + str(attempt_number - 1).zfill(2) + ".log",
+            )
+            feedback_path = str(written)
         execution = _execute(
             command=executor,
             run=run,
             attempt=attempt_number,
             timeout=timeout,
+            extra_env={"DISPATCH_FEEDBACK": feedback_path} if feedback_path else None,
         )
         record, passed = verify_run(root, ticket, run, timeout=verify_timeout)
         verify_status = str(record.get("status", "failed"))
@@ -333,6 +344,7 @@ def auto_run(
                 },
                 "verify_status": verify_status,
                 "verify_errors": errors,
+                "feedback": feedback_path,
                 "at": _now(),
             }
         )

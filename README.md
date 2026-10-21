@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.6.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`；v0.5 新增 `dispatch land`（只建本地 integration branch，人工开 PR），并让 land 复核 verify 记录的 worktree diff 哈希；v0.6 新增 `dispatch auto`，调用外部执行器自动完成 render → 执行 → verify，可配置失败重试，并可用独立 reviewer 命令继续到 land。
+当前版本 **v0.7.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`；v0.5 新增 `dispatch land`（只建本地 integration branch，人工开 PR），并让 land 复核 verify 记录的 worktree diff 哈希；v0.6 新增 `dispatch auto`，调用外部执行器自动完成 render → 执行 → verify，可配置失败重试，并可用独立 reviewer 命令继续到 land；v0.7 新增 Persona 人设字段、assign / personas 命令与 agent-team 简报，默认派发给 DSH 子智能体或 Agent Team。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -45,6 +45,7 @@ v0.6 仍刻意不做：Web UI、多用户权限、云沙箱、自动 push、自�
 | **Review 评审** | `review.json` | 异体评审结论；通过后票据才 `done` |
 | **Landing 落地记录** | `.dispatch/runs/<run-id>/landing.json` + `.dispatch/ledger/landings.jsonl` | 把已验证 Run 合入本地 integration branch；不 push、不改目标分支 |
 | **Auto 自动化记录** | `.dispatch/runs/<run-id>/auto.json` | 每次自动尝试的执行器退出码、日志哈希、verify 结论，以及可选评审/landing 记录 |
+| **Persona 人设** | `tickets/personas/*.md` 或外部角色卡 | 派单员为票据选择的可复用角色；渲染工单时注入紧凑 preamble |
 
 ### 状态机
 
@@ -76,6 +77,7 @@ ready ──render──> claimed ──start──> running ──verify(pass/d
 
 - Owner: implementer
 - Risk: L1
+- Persona: (unassigned)
 - Write scope: greeting.txt
 - Write scope: tests/
 - Read scope: README.md
@@ -92,9 +94,10 @@ ready ──render──> claimed ──start──> running ──verify(pass/d
 - `# <id>: <title>` 是票据头；id 只允许字母、数字、`.`、`_`、`-`。
 - `**Blocked by:**` 写依赖 id，逗号分隔；没有依赖写 `None`。
 - `## Dispatch` 下的 `Owner`、`Risk`、`Write scope`、`Verify` 必填；重复的 `Write scope` / `Verify` 会累加。
+- `Persona` 可选；写相对票据目录的人设文件路径或短名。`assign` 会复制源文件到 `tickets/personas/` 并写入该行；`lint` 会拒绝解析失败的人设。
 - 写域拒绝绝对路径、盘符、`..`、反斜杠；写域是 git 路径的相对前缀或 glob。
 - `Verify` 命令按当前平台 shell 执行（Windows 为 `cmd.exe`，其他平台为 `/bin/sh`），支持 `&&`、管道、带引号的参数和 Windows 反斜杠路径。
-- 风险等级：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU 环境、`L4` 必须人工确认。v0.2 把风险映射到 DSH 卡片 permission；唯一强制评审点是 L4 必须 `--human`。
+- 风险等级：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU 环境、`L4` 必须人工确认。v0.7 仍按风险控制执行面；DSH 看板兼容层会把风险映射到卡片 permission，唯一强制评审点是 L4 必须 `--human`。
 - `## Acceptance` 至少一条 `- [ ]`；验收命令必须能从 execution root 复跑。
 
 ---
@@ -250,21 +253,34 @@ dispatch auto 01 --executor "python tools/executor.py" \
 - 执行器的退出码不是验收结论；`verify` 复跑票据命令、检查 diff 与证据，verify 通过才算通过。失败时若还有 `--max-attempts`，Run 会重置为 running 再执行一次；用尽后状态为 `failed`。
 - 每次尝试的执行器日志、日志哈希和 verify 结果写到 Run 目录的 `auto/` 与 `auto.json`；reviewer 命令的输出写 `auto/reviewer.log`，不覆盖执行器日志。不会因为自动推进而跳过 review 账本或 land 记录。
 
-当还有 `ready` 票据时（例如刚 `lint` / `plan` 之后），可以选择导出文件，或直接投递到本机 DSH 任务看板。
+当还有 `ready` 票据时（例如刚 `lint` / `plan` 之后），可以导出文件，或交给 DSH 子智能体 / Agent Team。
+
+### 先选人设（v0.7）
+
+```bash
+# 搜索可解析的人设；可重复 --search-root
+dispatch personas list --search-root <人设目录> --json
+
+# 写入票据 Persona；源文件复制到 tickets/personas/，并记 assignments.jsonl
+dispatch assign 01 --persona <文件或短名> --by dispatcher
+```
+
+> `assign` 只改 Persona 行，不改写域、验收或依赖；票据已 claimed / running / review / done 时拒绝。
 
 ### 导出为文件（只读）
 
 ```bash
-dispatch export --format dsh-team
-dispatch export --format dsh-board
+dispatch export --format agent-team
 dispatch export --format codex
 dispatch export --format generic
-dispatch export --format dsh-team --output ready.json
+dispatch export --format agent-team --output ready.md
 ```
 
-> `export` 只读取可执行的 `ready` / `failed` 票据，不调用任何远端 API；票据进入 `claimed` / `running` / `review` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后可以粘到 DSH、Codex 或别的执行端。
+> `export` 只读取可执行的 `ready` / `failed` 票据，不调用任何远端 API；票据进入 `claimed` / `running` / `review` / `done` 后不会再出现在导出里。`agent-team` 生成 Team Lead 简报 + 每票工单；旧执行端仍可使用 `dsh-team` JSON。
 
-### 直接投递到 DSH 任务看板（v0.2 → v0.5）
+### DSH 看板兼容层（v0.2 → v0.5，非推荐路径）
+
+以下命令只作兼容保留，不再出现在 `SKILL.md` 主流程；新任务优先使用 `agent-team` 导出或 `render` 单票工单。
 
 前置：DSH Desktop 正在运行，任务看板插件的 Web GUI 可访问。默认地址是 `http://127.0.0.1:50567`；端口不同用 `--url` 或环境变量 `DSH_TASK_BOARD_URL` 覆盖。
 
@@ -324,16 +340,11 @@ dispatch dsh delete 01
 | `dispatch land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
 | `dispatch auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 外部执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `dispatch status [--json]` | 每张票的 effective state、blocked_by、next frontier |
-| `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic（只读） |
-| `dispatch dsh push [--mode <cards 或 team>] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
-| `dispatch dsh run <id> [--task-id ...] [--rerun]` | 触发已映射卡片运行；触发即返回，不等待终态 |
-| `dispatch dsh status` | 读回 DSH 看板状态并与本地映射对照 |
-| `dispatch dsh update <id> [--title/--description/--prompt/--patch JSON]` | 修改已映射卡片；不运行 |
-| `dispatch dsh archive <id>` | 归档已映射卡片；不删除 |
-| `dispatch dsh delete <id>` | 删除已映射卡片；有子卡先处理子卡 |
-| `dispatch dsh outcome <id> --result ... --by ...` | 把外部 agent 的结果回写到映射卡 |
+| `dispatch assign <id> --persona <文件或短名> [--by <名字>]` | 为票据选择并写入人设；源文件复制到 `tickets/personas/`，记 `.dispatch/assignments.jsonl` |
+| `dispatch personas list/show ...` | 搜索 / 查看可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
+| `dispatch export --format ...` | 导出就绪工作到 agent-team / codex / generic（dsh-team 兼容；只读） |
 
-通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` / `dsh push` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
+通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
 
 ---
 
@@ -341,8 +352,9 @@ dispatch dsh delete 01
 
 | 格式 | 产物 | 用途 |
 |---|---|---|
-| `dsh-team` | JSON 数组：`subject` / `description` / `ownerName` / `blockedBy` / `writeScopes` | 投给 DSH `team_task_create` |
-| `dsh-board` | JSON 文档：`format` / `version` / `endpoint` / `actions`；每个 action 是 DSH 看板的 `create` 信封 | 可由 `dsh push` 直接投递，也可人工检查 |
+| `agent-team` | Markdown：Team Lead 简报 + 每票 ticket_section（含 Persona） | 交给 DSH Agent Team；Team Lead 先收 brief 再放行实现 |
+| `dsh-team` | JSON 数组：`subject` / `description` / `ownerName` / `blockedBy` / `writeScopes` | 兼容旧 DSH `team_task_create`；不再作为技能主路径 |
+| `dsh-board` | JSON 文档：`format` / `version` / `endpoint` / `actions` | 兼容旧 DSH 看板；非推荐路径 |
 | `codex` | 每票一段 work-order 风格 Markdown | 粘给 Codex 会话 |
 | `generic` | 按 id 排序的确定性 Markdown | 任意执行端 / 人工阅读 |
 
@@ -361,8 +373,9 @@ agent-dispatch/
 │   ├── review.py      # 异体评审、review ledger
 │   ├── landing.py     # integration branch、landing ledger
 │   ├── auto.py        # 外部执行器、重试、可选评审与落地
-│   ├── export.py      # status / 文件导出适配器
-│   ├── dsh.py         # DSH 看板投递、回读、外部结果回写、卡片变更
+│   ├── export.py      # status / 文件导出适配器（含 agent-team）
+│   ├── persona.py     # 人设解析、发现、注入
+│   ├── dsh.py         # DSH 看板兼容层（非技能主路径）
 │   └── cli.py         # 命令行入口
 ├── tests/             # pytest；按票据逐张红→绿
 ├── tickets/           # 你的票据（一票一文件）
@@ -379,7 +392,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.6 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；一票一 worktree；auto 只调用外部命令，不绕过 verify/review；land 只建 integration branch，人工开 PR；DSH 看板只是投递、触发与回读面，不是验收面。**
+设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.7 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；一票一 worktree；auto 只调用外部命令，不绕过 verify/review；land 只建 integration branch，人工开 PR；Persona 只补充角色上下文，冲突时以票据写域、Acceptance、Verify 为准；DSH 看板只是兼容投递面，不是验收面。**
 
 ## 9. 作为技能使用（跨项目）
 
@@ -390,8 +403,9 @@ SKILL.md                  # 技能入口与触发词
 scripts/dispatch.py       # 直接用仓库内 src 运行，不依赖 pip install
 scripts/build_skill.py    # 生成干净技能目录
 src/agent_dispatch/       # 自带框架
-references/               # 票据、DSH、Codex 细节
-templates/ticket.md       # 最小票据模板
+references/               # 票据、Codex 细节
+templates/ticket.md       # 最小票据模板（含 Persona 字段）
+agents/personas/          # 派单员等人设
 agents/openai.yaml        # 技能显示信息
 ```
 

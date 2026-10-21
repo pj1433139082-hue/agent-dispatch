@@ -76,6 +76,17 @@ def test_dsh_board_export_is_an_http_action_envelope() -> None:
     assert card["permission"] == "workspace-write"
 
 
+def test_agent_team_export_is_a_lead_brief_with_ticket_sections() -> None:
+    text = export_text([ticket("A")], "agent-team")
+
+    assert text.startswith("# Agent Team dispatch")
+    assert "You are the Team Lead" in text
+    assert "require a short brief" in text
+    assert "## A: Ticket A" in text
+    assert "Write scope" in text
+    assert "Verify" in text
+
+
 def test_codex_export_has_one_section_per_ready_ticket() -> None:
     text = export_text([ticket("B"), ticket("A")], "codex")
 

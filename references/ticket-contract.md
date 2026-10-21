@@ -12,7 +12,9 @@
 - `## Dispatch` 下的 `Owner`、`Risk`、`Write scope`、`Verify`
 - `## Acceptance` 至少一条 `- [ ]`
 
-可选：`Read scope`、`Status`。
+可选：`Read scope`、`Status`、`Persona`。
+
+`Persona` 写相对票据目录的人设文件路径或短名。`dispatch assign` 会复制源文件到 `tickets/personas/`、写入票据，并追加 `.dispatch/assignments.jsonl`；`personas list` 用于发现候选。解析失败会让 `lint` 报 `invalid_persona`。票据契约优先于人设：写域、Acceptance、Verify 冲突时以票据为准。
 
 `Verify` 命令按当前平台 shell 执行（Windows 为 `cmd.exe`，其他平台为 `/bin/sh`），支持 `&&`、管道、带引号的参数和 Windows 反斜杠路径；每条命令都必须能从 execution root 独立复跑。
 
@@ -112,4 +114,4 @@ ready -> claimed -> running -> review -> done
 - `L3`：宿主/GPU 环境。
 - `L4`：必须人工确认；`review` 必须加 `--human`。
 
-风险等级目前主要映射到 DSH 卡片 permission；本地 `verify` 的强制差异点是 L4 的人工评审。
+风险等级目前主要映射到 DSH 卡片 permission（兼容层）；本地 `verify` 的强制差异点是 L4 的人工评审。

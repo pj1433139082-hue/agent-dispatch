@@ -1,4 +1,4 @@
 interface:
   display_name: "票据派单台"
-  short_description: "用票据契约、依赖分波、独立验收和异体评审，把任务派给 DSH、Agent Team、Codex 或人工执行端"
-  default_prompt: "使用 $agent-dispatch 接管这次派单：先 lint/plan 看 frontier，再按票据写域和验收门禁推进。"
+  short_description: "用票据契约、依赖分波、独立验收和异体评审，把任务派给 DSH 子智能体、Agent Team、Codex 或人工执行端"
+  default_prompt: "使用 $agent-dispatch 接管这次派单：先用 personas list/assign 选人设，再 lint/plan 看 frontier，最后 render 单票或 export agent-team。"

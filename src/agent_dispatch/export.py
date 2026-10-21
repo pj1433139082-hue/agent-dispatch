@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from .graph import build_plan
+from .persona import persona_section
 from .ticket import Ticket
 
 PERMISSIONS = {
@@ -81,11 +82,34 @@ def ready_tickets(
     return [by_id[ticket_id] for ticket_id in sorted(ready)]
 
 
+def _description(ticket: Ticket) -> str:
+    persona = persona_section(ticket)
+    return ticket.what_to_build + (f"\n\n{persona}" if persona else "")
+
+
+def _agent_team(tickets: list[Ticket]) -> str:
+    if not tickets:
+        return "# Agent Team dispatch\n\nNo ready tickets.\n"
+    sections = "\n".join(ticket_section(ticket) for ticket in tickets).rstrip()
+    return f"""# Agent Team dispatch
+
+You are the Team Lead for this dispatch wave. Use one teammate per ticket.
+
+Before a teammate writes code, require a short brief: goal, files to touch, plan, risks, and open questions. Review that brief and approve, correct, or stop the teammate before implementation starts.
+
+Each teammate must stay inside the ticket's write scope, run the ticket's Verify command, and leave a receipt with evidence. Do not mark a ticket complete without verification evidence.
+
+## Tickets
+
+{sections}
+"""
+
+
 def _dsh_team(tickets: list[Ticket]) -> str:
     payload = [
         {
             "subject": ticket.title,
-            "description": ticket.what_to_build,
+            "description": _description(ticket),
             "ownerName": ticket.owner,
             "blockedBy": [],
             "writeScopes": list(ticket.write_scope),
@@ -112,11 +136,13 @@ def ticket_section(ticket: Ticket) -> str:
     acceptance = "\n".join(f"- [ ] {item}" for item in ticket.acceptance) or "- (none)"
     commands = "\n".join(ticket.verify) or "echo 'no verification command declared'"
     write_scope = "".join(f"- {item}\n" for item in ticket.write_scope) or "- (none)\n"
+    persona = persona_section(ticket)
+    persona_block = f"\n{persona}\n" if persona else ""
     return f"""## {ticket.id}: {ticket.title}
 
 Owner: {ticket.owner}
 Risk: {ticket.risk}
-
+{persona_block}
 ### Goal
 
 {ticket.what_to_build}
@@ -143,6 +169,8 @@ def export_text(
     project: str = "default",
 ) -> str:
     ready = ready_tickets(tickets, states)
+    if fmt == "agent-team":
+        return _agent_team(ready)
     if fmt == "dsh-team":
         return _dsh_team(ready) + "\n"
     if fmt == "dsh-board":
