@@ -1,6 +1,6 @@
 # 项目架构
 
-本页记录当前模块边界与数据流（v0.6）；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
+本页记录当前模块边界与数据流（v0.9；文档同步于提交 `6f46845`）；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
 
 ## 模块与边界
 
@@ -15,6 +15,13 @@
 | `landing.py` | 把已验证 Run 合入本地 integration branch，写 landing ledger | 不 push、不切换、不合并目标分支 |
 | `auto.py` | 调用外部执行器，串联 render → 执行 → verify，支持重试与可选独立评审/land | 不内置模型；不绕过 verify/review |
 | `export.py` | 把 ready 票据导出为 dsh-team / dsh-board / codex / generic | 只读；不调用远端 API |
+| `persona.py` | 发现、解析、写入 agent 人设；`assign` 复制到 `tickets/personas/` 并记 assignments | 只改票据 Persona 行；票据已领取后拒绝 |
+| `brief.py` | 两阶段的第一阶段：brief 模板、非空非占位校验、审批记录（brief 与票据 sha256） | 只读产物；不改代码；票据或 brief 变动即失效 |
+| `context.py` | 生成上下文包：票面框架、入口文档摘录、同票历史运行、阻塞邻居、踩坑索引 | 只读、确定性；不调模型、不联网 |
+| `feedback.py` | 把上一次 verify 失败原因写成 `auto/feedback-<n-1>.md` 并注入执行环境 | 只写 Run 目录；不改变重试次数语义 |
+| `checkpoints.py` | 为 Run 发布不可变检查点（代次目录、manifest、diff、恢复说明），原子替换 current.json | 只读源工作树；不删除旧代次 |
+| `closeout.py` | 票据 / brief 声明文件 / 实际 diff 三方对照，写收口报告 | 只读证据；不推进票据状态 |
+| `align.py` | 需求问卷（quick/standard/thorough）、spec 骨架、按交付标准切草稿票 | 只写 `docs/questions`、`docs/specs`、`.dispatch/drafts`；不代替思考 |
 | `dsh.py` | 生成 DSH 看板信封、投递/触发/读回/变更本机 loopback 卡片、回写外部结果 | 只操作看板；不替代 verify |
 | `cli.py` | argparse 命令路由、退出码和用户可见错误 | 不绕过各模块门禁 |
 
@@ -36,6 +43,15 @@ tickets/*.md
 auto: ticket -> Run/worktree -> 外部执行器 -> verify（可重试）
   -> 默认停在 review；--until land 需独立 reviewer -> landing
 
+两阶段：brief（只读，人工审批，记 sha256）
+  -> render --require-brief（无有效审批拒绝开局）
+  -> 实现 -> verify -> closeout（票据 / brief / diff 三方对照）-> review
+
+上下文：context 命令或 render --with-context
+  -> .dispatch/context/<id>.md（入口文档 / 历史运行 / 阻塞邻居 / 踩坑索引）
+
+检查点：checkpoint 命令 -> .dispatch/runs/<run-id>/checkpoints/<代次>/（不可变）
+
 ready tickets
   -> export.py（dsh-team / dsh-board / codex / generic，只读）
   -> dsh.py dsh push（看板 create 信封；只建卡不运行）
@@ -51,4 +67,6 @@ ready tickets
 - `docs/adr/0003-framework-project-boundary.md`：框架项目管启动事实，dispatch 管票级执行。
 - `docs/adr/0004-collab-runbook-consolidation.md`：退役 runbook，dispatch 成为唯一票级入口。
 - `docs/adr/0005-auto-execution.md`：auto 只编排外部执行器，验收与评审仍由本地门禁负责。
+- `docs/adr/0006-orchestration-context-and-gates.md`：上下文包、两阶段 brief、失败回灌与收口的选型（借形不引引擎）。
+- `docs/adr/0007-pipeline-ask-matt-five-stages.md`：五段主流程（需求对齐 → 拷问+选型 → 规格 → 拆票 → 实现）。
 - `tasks/kickoff/plan.md`：v0.1 技术选择、风险与验收方法。

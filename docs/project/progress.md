@@ -63,6 +63,31 @@
 - 证据见 `docs/verification/2026-10-21-v0.6-auto.md`。
 - ADR 0005（auto 只编排外部执行器，不接管验收与评审）为 Accepted。
 
+## 2026-10-22 — v0.7 / v0.7.1 编排协议：人设 + 上下文包 + 两阶段 + 失败回灌
+
+- Persona（`persona.py`）：`assign` 把 `--persona <文件或短名>` 写进票据 Persona 行并复制到 `tickets/personas/`，同时记 `.dispatch/assignments.jsonl`；`personas list/show` 可搜索本地角色卡、agency、GSD、ruflo 等来源。票据已 claimed 及之后状态拒绝改动。
+- 上下文包（`context.py`）：`dispatch context <id>` 生成 `.dispatch/context/<id>.md`，内容全部由仓库推导——票面框架、写/读域、完成定义与 Verify 命令、项目入口文档摘录（AGENTS.md / CLAUDE.md / CONTEXT.md 头部）、同票历史运行（state / verify / error）、阻塞邻居状态、踩坑笔记索引。只读、确定性、不调模型；`render --with-context` 把它写进 Run 目录并附到 `work-order.md`。
+- 两阶段（`brief.py`）：`dispatch brief <id>` 生成五段式只读 brief（理解的目标 / 计划 / 准备改动的文件 / 风险 / 疑问）；`--check` 校验非空且非占位；`--approve <人>` 写 `<id>-approval.json`，同时记 brief 的 sha256 与票据哈希——任一侧在审批后被改动，审批自动失效；`render --require-brief` 无有效审批直接拒绝开局。
+- 失败回灌（`feedback.py`）：`auto` 第 n 次尝试前把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，用环境变量 `DISPATCH_FEEDBACK` 指给执行端，重试不再原样重跑。
+- ADR-0006 Accepted；提交 `f8ab7a1`（含此前未提交的 persona 字段）；提交信息报全量 138 例通过。
+
+## 2026-10-22 — v0.8.0 检查点与收口
+
+- `checkpoints.py`：`dispatch checkpoint <id> [--label <名>] [--list]` 每次发布写一代目录（manifest 逐文件 sha256、diff、git status、恢复说明），最后原子替换 `current.json`；中断的发布不会把上一代挤掉，旧代次不删。
+- `closeout.py`：`dispatch closeout <id>` 把票据、brief 声明的文件、实际 diff 三方对照，写机器可读报告 + 人读页；执行者改了没人要求的文件、或没做 brief 承诺的文件，都会在这里露出来。
+- 提交 `2326592`。
+
+## 2026-10-22 — v0.9.0 需求对齐薄包装（align / spec / tickets）
+
+- `align.py`：`dispatch align <slug> [--level quick|standard|thorough]` 生成需求问卷（3 / 6 / 10 问，第一问即档位选择）到 `docs/questions/`；`dispatch spec <slug>` 在问卷答满后才放行，写 `docs/specs/` 骨架；`dispatch tickets <slug>` 按交付标准逐条切草稿票到 `.dispatch/drafts/`。三条命令只产出骨架与门禁，拷问、选型与规格正文仍由会话完成。
+- ADR-0007 定稿 Accepted：五段主流程 —— S1 需求对齐（问卷）→ S2 拷问 + 技术选型（子 agent 并行：开源借鉴 / 搜索取证 / 多角色对抗审查）→ S3 规格与交付标准 → S4 拆票与派单（persona）→ S5 实现（implement-spec / auto）。
+- 提交 `6f46845`；提交信息报全量 150 例通过（361s）。
+
+### 文档同步说明（2026-10-22 03:3x）
+
+- 本页与 `README.md`、`docs/project/architecture.md` 由接管会话补齐到提交 `6f46845`（v0.9.0）；此后由实施会话继续推进的版本（v0.10 起）不在本文范围内，以 `SKILL.md`、`pyproject.toml` 与 `git log` 为准。
+- 证据见 `docs/verification/2026-10-22-v0.9-trailing-docs.md`。
+
 ## 已知边界
 
 - DSH 看板已实际运行 teamRun 探针，Agent Team 真实 spawn 并回传子任务结果；`dsh push` 只建卡，v0.4 新增 `dsh run` 才触发运行。
@@ -74,6 +99,7 @@
 - `dispatch auto` 会执行任意 shell 命令，只应在受信任票据与受控环境中使用；它不内置模型调用，也不自动 push/合并目标分支。重试会复用同一 worktree，不会重建 Run。
 - 分支保护 `enforce_admins=true`，管理员也不能绕过必需检查；紧急变更需临时关闭保护并记录。
 - 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
+- 文档曾长期停在 v0.6：v0.7–v0.9 的实现提交只改 `SKILL.md` 与代码，`README.md` / `docs/project/` / `docs/verification/` 由接管会话于 2026-10-22 补齐。
 
 ## 下一步候选
 

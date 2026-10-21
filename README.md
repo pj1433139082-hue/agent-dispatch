@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.7.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`；v0.5 新增 `dispatch land`（只建本地 integration branch，人工开 PR），并让 land 复核 verify 记录的 worktree diff 哈希；v0.6 新增 `dispatch auto`，调用外部执行器自动完成 render → 执行 → verify，可配置失败重试，并可用独立 reviewer 命令继续到 land；v0.7 新增 Persona 人设字段、assign / personas 命令与 agent-team 简报，默认派发给 DSH 子智能体或 Agent Team。
+当前版本以 `pyproject.toml` 为准（`dispatch --version` 同值），Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。版本变化：v0.2 DSH 看板适配；v0.2.1 跨项目路径与 Windows verify 修复；v0.3 看板卡片 update / archive / delete；v0.4 一票一 worktree + 判据级证据 + review ledger + `dsh run`；v0.5 `dispatch land`（只建本地 integration branch，人工开 PR）；v0.6 `dispatch auto`（外部执行器 + 重试）；v0.7 Persona 人设字段与 `assign` / `personas`；v0.7.1 上下文包 `context`、两阶段 `brief` 门禁、`auto` 失败回灌；v0.8.0 运行检查点 `checkpoint` 与收口报告 `closeout`；v0.9.0 需求对齐薄包装 `align` / `spec` / `tickets`（问卷分级 + 交付标准切票）。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -267,6 +267,38 @@ dispatch assign 01 --persona <文件或短名> --by dispatcher
 
 > `assign` 只改 Persona 行，不改写域、验收或依赖；票据已 claimed / running / review / done 时拒绝。
 
+### 两阶段、上下文包与收口（v0.7.1 → v0.8）
+
+```bash
+# 1) 只读阶段：生成 brief 模板（理解的目标 / 计划 / 准备改动的文件 / 风险 / 疑问）
+dispatch brief 01
+dispatch brief 01 --check                 # 非空、非占位才返回 0
+dispatch brief 01 --approve 潘杰           # 记 brief 与票据的 sha256；任一被改，审批自动失效
+
+# 2) 实现阶段：没有有效审批直接拒绝开局
+dispatch render 01 --agent implementer --require-brief
+
+# 3) 上下文包：票面之外的项目事实（入口文档摘录 / 同票历史运行 / 阻塞邻居 / 踩坑索引）
+dispatch context 01
+dispatch render 01 --agent implementer --with-context   # 写进 Run 目录并附到 work-order.md
+
+# 4) 收口：检查点 + 票据 / brief / diff 三方对照
+dispatch checkpoint 01 --label before-review
+dispatch closeout 01
+```
+
+> `auto` 重试不再原样重跑：第 n 次尝试前会把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。
+
+### 需求对齐（v0.9）
+
+```bash
+dispatch align payment-import --level standard   # 写 docs/questions/to-questionnaire-<slug>.md
+dispatch spec  payment-import                   # 问卷答满才放行，写 docs/specs/<slug>.md 骨架
+dispatch tickets payment-import                  # 按交付标准逐条切草稿票到 .dispatch/drafts/
+```
+
+> 这三条只产出骨架与门禁，不代替思考：拷问、选型、规格正文仍由会话完成（ADR-0007 的五段主流程 S1/S3/S4）。
+
 ### 导出为文件（只读）
 
 ```bash
@@ -333,7 +365,7 @@ dispatch dsh delete 01
 | `dispatch new <id> --title ...` | 生成一张可 lint 的票据 |
 | `dispatch lint` | 校验所有票据；有错返回非 0 |
 | `dispatch plan` | 按依赖算拓扑波次、frontier、写域冲突 |
-| `dispatch render <id> --agent <name> [--no-worktree]` | 创建 Run + worktree + Work order，状态 `claimed`；`--no-worktree` 回退到主仓执行 |
+| `dispatch render <id> --agent <name> [--no-worktree] [--require-brief] [--with-context]` | 创建 Run + worktree + Work order，状态 `claimed`；`--no-worktree` 回退主仓；`--require-brief` 无有效 brief 审批拒绝开局；`--with-context` 把上下文包写进 Run 并附到工单 |
 | `dispatch start <id>` | `claimed` → `running` |
 | `dispatch verify <id>` | 独立验收；passed/degraded → `review`，failed → `failed`；退出码 0/2/1 |
 | `dispatch review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → `done`，并追加 review ledger |
@@ -342,6 +374,11 @@ dispatch dsh delete 01
 | `dispatch status [--json]` | 每张票的 effective state、blocked_by、next frontier |
 | `dispatch assign <id> --persona <文件或短名> [--by <名字>]` | 为票据选择并写入人设；源文件复制到 `tickets/personas/`，记 `.dispatch/assignments.jsonl` |
 | `dispatch personas list/show ...` | 搜索 / 查看可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
+| `dispatch context <id>` | 生成 `.dispatch/context/<id>.md` 上下文包：入口文档摘录、同票历史运行、阻塞邻居、踩坑索引；只读、确定性 |
+| `dispatch brief <id> [--check\|--approve <人>]` | 生成 / 校验 / 审批只读 brief（`.dispatch/briefs/<id>.md`）；审批记 brief 与票据的 sha256，任一被改即失效 |
+| `dispatch checkpoint <id> [--label <名>] [--list]` | 为 Run 发布不可变检查点（代次目录 + manifest + diff + 恢复说明），原子替换 `current.json` |
+| `dispatch closeout <id>` | 票据 / brief 声明文件 / 实际 diff 三方对照，写机器可读收口报告 + 人读页 |
+| `dispatch align <slug> [--level quick\|standard\|thorough]` / `spec <slug>` / `tickets <slug>` | 需求问卷（3/6/10 问）→ 问卷答满放行写 spec 骨架 → 按交付标准切草稿票 |
 | `dispatch export --format ...` | 导出就绪工作到 agent-team / codex / generic（dsh-team 兼容；只读） |
 
 通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
