@@ -10,3 +10,4 @@ dist/
 .dispatch/runs/
 .agent-workflow.local.json
 .dispatch/tmp/
+.dispatch/dsh-map.json

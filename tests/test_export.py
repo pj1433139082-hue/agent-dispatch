@@ -61,15 +61,18 @@ def test_dsh_team_export_has_the_team_task_fields() -> None:
     ]
 
 
-def test_dsh_board_export_has_the_card_fields() -> None:
-    payload = json.loads(export_text([ticket("A")], "dsh-board"))
+def test_dsh_board_export_is_an_http_action_envelope() -> None:
+    document = json.loads(export_text([ticket("A")], "dsh-board", project="probe"))
 
-    card = payload[0]
-    assert card["id"] == "A"
-    assert card["title"] == "Ticket A"
-    assert card["status"] == "todo"
+    assert document["format"] == "dsh-board"
+    assert document["version"] == 2
+    assert document["endpoint"].endswith("/api/task-board/action")
+    action = document["actions"][0]
+    assert action["action"]["kind"] == "create"
+    card = action["action"]["input"]
+    assert card["title"] == "A: Ticket A"
     assert card["description"] == "Ship A."
-    assert card["tags"] == ["dispatch", "L1"]
+    assert card["tags"] == [{"name": "dispatch"}, {"name": "dispatch:A"}, {"name": "L1"}]
     assert card["permission"] == "workspace-write"
 
 

@@ -9,15 +9,26 @@
 - CI job `test` 作为必需检查；PR #1 实测 `BLOCKED`（test queued）→ `CLEAN`（test success）后合并。
 - `SECURITY.md`、`CODE_OF_CONDUCT.md`、`docs/repository-gates.md`、issue forms、PR 模板、CONTRIBUTING 已就位。
 
+## 2026-10-21 — v0.2 DSH 看板适配
+
+- 新增 `dsh push`：把 ready 票据以确定性 id 投递到本机 DSH 看板；只建卡，不运行卡。
+- 新增 `dsh status`：读回看板状态并与 `.dispatch/dsh-map.json` 对照。
+- 新增 `dsh outcome`：把外部 agent 的结果写回映射卡；不替代 `dispatch verify`。
+- `dsh-board` 文件导出从裸卡数组改为完整 `create` 信封文档；`dispatch export` 仍只读。
+- 全量测试从 61 增至 70；真实 50567 探针完成 create/status/outcome 与 team 父子卡验证，探针卡已清理。
+- 版本升至 0.2.0；wheel 与干净 venv 控制台入口已复核。
+
 ## 已知边界
 
-- v0.1 只导出 DSH/Codex 可读载荷，不调用其真实 API；多智能体执行仍需人工粘贴或后续集成。
+- DSH 看板卡未在探针中实际运行；Agent Team 只验证了建卡字段与父子关系，未启动真实团队执行。
+- `dsh outcome` 写的是外部执行记录，不是本项目的验收结论；票据 done 仍必须经过 `verify` 与 `review`。
+- DSH HTTP 入口是本机插件接口，不是稳定公共 API；DSH 升级后需重跑真实投递探针。
 - 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
 - 分支保护 `enforce_admins=true`，管理员也不能绕过必需检查；紧急变更需临时关闭保护并记录。
 - 项目启动的 `plan-acceptance` 由 lead 代签，不是用户亲签。
 
 ## 下一步候选
 
-- 发布 v0.1.0 GitHub Release，并验证 issue forms 的 UI 渲染。
-- 接入 DSH 看板/Agent Teams 的真实 API，或增加 remote runner 适配。
+- 发布 v0.2.0 GitHub Release，并验证 issue forms 的 UI 渲染。
+- 增加 `dsh push --update` / 归档同步，或接入 Agent Teams 的团队运行结果回读。
 - 增加 Windows symlink 写域测试与发布流程。
