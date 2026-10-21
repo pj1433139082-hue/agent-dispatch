@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-当前只维护最新的 0.5.x 开发版本。
+当前只维护最新的 0.6.x 开发版本。
 
 ## Reporting a Vulnerability
 

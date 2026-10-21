@@ -50,6 +50,19 @@
 - issue forms 真实 UI 用 ego-browser 验证：Bug Report / Feature Request / Blank issue / 私有漏洞报告入口均可打开，Bug/Feature 表单字段正常；截图因窗口最小化失败，snapshot 作为证据。GitHub API 的 `issue_template` 字段仍返回 null，属于 API 枚举限制。
 - 版本升至 0.5.0；全量测试 104 passed；Python 3.11 compileall 通过。详细证据见 `docs/verification/2026-10-21-v0.5-boundaries.md`。
 
+## 2026-10-21 — v0.6 半自动推进 auto
+
+- 新增 `dispatch auto`：自动完成 render → start → 外部执行器 → verify；执行器是用户提供的 shell 命令，dispatch 不内置模型运行时。
+- 执行器在 Run 的 worktree 中运行，收到 `DISPATCH_TICKET_ID`、`DISPATCH_RUN_ID`、`DISPATCH_RUN_DIR`、`DISPATCH_EXECUTION_ROOT`、`DISPATCH_WORK_ORDER`、`DISPATCH_TICKET_PATH`、`DISPATCH_ATTEMPT`；业务文件写 worktree，`receipt.json` 与证据写 Run 目录。
+- 默认 `--until review`：verify passed/degraded 后停在 review；`--max-attempts` 控制失败重试；用尽后状态 failed。每次尝试的日志与结果写 `auto/attempt-NN.log` 与 `auto.json`。
+- `--until land` 要求同时提供独立 `--reviewer` 与 `--reviewer-command`；reviewer 写 `review-result.json`，只有退出码 0 且 verdict=pass 才记录 review 并 land。land 仍只建本地 integration branch，不 push、不合并目标分支。
+- 新增 7 个 auto 测试：默认停在 review、失败重试成功、重试用尽失败、`--until land` 缺 reviewer-command 拒绝、reviewer pass 后 land、reviewer fail 不 land、reviewer 日志不覆盖执行器日志。
+- 全量测试 111 passed；Python 3.11 compileall 通过；`dispatch --version` 为 0.6.0。
+- 真实 `--until land` e2e：临时仓 target `6c9c3658...` 保持不变，Run `01-20261021T142314350916Z-1781ca`，run commit `ae3622e6...`，integration branch `dispatch/land/01-20261021T142314350916Z-1781ca`，landing commit `602bae3f...`，status=landed；integration branch 中 `src/hello.txt` 为 `hello`，target 没有该文件。
+- 真实 `--until review` e2e：默认路径 exit 0、status=review、verify=passed，无 integration branch，target 不变。
+- 证据见 `docs/verification/2026-10-21-v0.6-auto.md`。
+- ADR 0005（auto 只编排外部执行器，不接管验收与评审）为 Accepted。
+
 ## 已知边界
 
 - DSH 看板已实际运行 teamRun 探针，Agent Team 真实 spawn 并回传子任务结果；`dsh push` 只建卡，v0.4 新增 `dsh run` 才触发运行。
@@ -58,11 +71,13 @@
 - `dsh outcome` 写的是外部执行记录，不是本项目的验收结论；票据 done 仍必须经过 `verify` 与 `review`。
 - DSH HTTP 入口是本机插件接口，不是稳定公共 API；DSH 升级后需重跑真实投递探针。
 - 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
+- `dispatch auto` 会执行任意 shell 命令，只应在受信任票据与受控环境中使用；它不内置模型调用，也不自动 push/合并目标分支。重试会复用同一 worktree，不会重建 Run。
 - 分支保护 `enforce_admins=true`，管理员也不能绕过必需检查；紧急变更需临时关闭保护并记录。
 - 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
 
 ## 下一步候选
 
 - 增加 `land --wave` 批量按依赖顺序合入，以及恢复点/回退的显式命令。
+- 增加 `auto --wave` 或 DSH 执行器适配层，但保持“外部执行器 + 本地门禁”的边界。
 - 增加 `dsh push --update` / 归档同步，或接入 Agent Teams 的团队运行结果回读。
 - 增加 Windows symlink 写域测试与发布流程。

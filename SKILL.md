@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.5.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.6.0。
 
 ## 何时使用
 
@@ -14,12 +14,13 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 - 需要一票一 worktree、独立复跑验证命令、检查真实 git diff、按 acceptance 逐条收证据。
 - 需要异体评审，避免实现者自己宣布完成。
 - 需要把 ready 票据投递到 DSH 任务看板，或导出成 Codex 工单。
+- 需要半自动推进：用 `auto` 调用外部执行器并自动跑 verify，可配置失败重试与独立评审。
 
 ## 何时不用
 
 - 单文件、一步就能完成的小改动：直接用目标项目的测试/评审流程即可。
 - 只需要讨论方案、还没有可执行任务：先用 `grill-with-docs` 或 `to-tickets`。
-- 需要替代 DSH Agent Teams、Codex 或 CI：本技能只做票据、工单、门禁与投递，不做执行器。
+- 需要替代 DSH Agent Teams、Codex 或 CI：本技能只做票据、工单、门禁与投递，不做执行器；`auto` 只调用你提供的外部命令，不内置模型运行时。
 
 ## 自带框架
 
@@ -71,6 +72,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
    - 本地执行：`render <id> --agent <name>` 创建 Run、独立 git worktree（分支 `dispatch/<run-id>`）和 `work-order.md`，票据进入 `claimed`。`--no-worktree` 仅作逃生口。
    - DSH 看板：`dsh push` 创建卡；`--mode team` 创建一张 `teamRun` 父卡和每票一张子卡；`dsh run` 触发运行（触发即返回）；`dsh update` / `dsh archive` / `dsh delete` 管理已映射卡。
    - Codex：`export --format codex` 生成工单，交给 Codex 会话。
+   - 半自动：`auto <id> --executor <shell>` 自动完成 render → 执行器 → verify；失败可 `--max-attempts` 重试。`--until land` 还必须提供独立 `--reviewer` 与 `--reviewer-command`。
 4. **执行者只写两处**：在 **execution root**（worktree）写业务文件；在运行目录写 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 在 execution root 复跑票据命令，按 acceptance 逐条核对 `criteria` 证据，检查 worktree 与主仓都没有越界改动。结论分 `passed` / `degraded` / `failed`，退出码 0 / 2 / 1。
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
@@ -90,6 +92,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → done，并追加 review ledger |
 | `land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
+| `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `export --format <dsh-team / dsh-board / codex / generic>` | 只读导出 |
 | `dsh push [--mode <cards 或 team>] [--dry-run]` | 投递到本机 DSH 看板；只建卡，不运行 |
 | `dsh run <id> [--task-id ...] [--rerun]` | 触发已映射卡片运行；触发即返回，不等待终态 |
@@ -133,6 +136,33 @@ python <技能目录>/scripts/dispatch.py new 01 \
 - 风险：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU、`L4` 人工确认。
 - `Owner`、`Risk`、`Write scope`、`Verify` 必填；`Acceptance` 至少一条 checkbox。
 - `Verify` 必须能从 execution root 复跑；命令按当前平台 shell 执行（Windows `cmd.exe`，其他 `/bin/sh`），支持 `&&`、管道和带引号的参数。
+
+## 半自动推进（v0.6）
+
+```bash
+# 默认停在 review（执行器负责写 receipt.json 与证据）
+python <技能目录>/scripts/dispatch.py auto 01 --executor "python tools/executor.py"
+
+# 失败最多重试 2 次
+python <技能目录>/scripts/dispatch.py auto 01 --executor "python tools/executor.py" --max-attempts 2
+
+# 独立 reviewer 通过后继续 land（只建本地 integration branch）
+python <技能目录>/scripts/dispatch.py auto 01 --executor "python tools/executor.py" \
+  --until land --reviewer reviewer-b --reviewer-command "python tools/reviewer.py"
+```
+
+执行器与 reviewer 在 Run 的 worktree 中运行，环境变量：
+
+- `DISPATCH_TICKET_ID`、`DISPATCH_RUN_ID`、`DISPATCH_RUN_DIR`、`DISPATCH_EXECUTION_ROOT`、`DISPATCH_WORK_ORDER`、`DISPATCH_TICKET_PATH`、`DISPATCH_ATTEMPT`。
+- reviewer 额外收到 `DISPATCH_REVIEWER`、`DISPATCH_VERIFY_JSON`、`DISPATCH_REVIEW_RESULT`；必须把 `{"verdict":"pass"|"fail","notes":"..."}` 写到 `DISPATCH_REVIEW_RESULT`。
+
+边界：
+
+- 执行器必须写 `receipt.json` 与证据到 `DISPATCH_RUN_DIR`；业务文件写到 `DISPATCH_EXECUTION_ROOT`。
+- 执行器退出码不等于验收通过；`verify` 复跑票据命令并检查 diff/证据，verify 通过才算通过。
+- 默认 `--until review`；degraded 退出码 2，仍需人工 `review --accept-degraded`。
+- `--until land` 必须有独立 reviewer；reviewer 退出码 0 且 verdict=pass 才记录评审并 land；land 仍不 push、不合并目标分支。
+- 每次尝试写 `auto/attempt-NN.log` 与 `auto.json`；reviewer 输出写 `auto/reviewer.log`；自动推进不跳过 review ledger 或 landing 记录。
 
 ## 落地到 integration branch（v0.5）
 
@@ -202,6 +232,7 @@ codex exec --skip-git-repo-check --ephemeral -s read-only --color never -C <目�
 - 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
 - L4 票据永远需要人工评审；不要用 `--human` 代替真实的人。
 - `dispatch land` 只创建本地 integration branch，绝不 push、不合并目标分支，也不替代人工 PR 审查；land 前会复核 verify 的 worktree diff 哈希。
+- `dispatch auto` 会执行你传入的任意 shell 命令；只在受信任的票据和受控环境中使用。它不绕过 verify/review，也不自动 push 或合并目标分支。
 - 不要在票据里放真实凭据、私有绝对路径或生产密钥。
 
 ## 目录

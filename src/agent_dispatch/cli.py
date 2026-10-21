@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .auto import AutoError, auto_run
 from .dsh import (
     TaskBoardError,
     archive_card,
@@ -96,6 +97,50 @@ def _parser() -> argparse.ArgumentParser:
     )
     land_parser.add_argument("--root", type=Path, default=Path("."))
     land_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    auto_parser = subparsers.add_parser(
+        "auto",
+        help="Run one ticket through an executor, verify, and optional review/land.",
+    )
+    auto_parser.add_argument("ticket_id")
+    auto_parser.add_argument(
+        "--executor", required=True, help="Shell command run inside the run worktree."
+    )
+    auto_parser.add_argument("--agent", default="", help="Agent claiming the run.")
+    auto_parser.add_argument(
+        "--max-attempts", type=int, default=1,
+        help="Total executor attempts before failing (default: 1).",
+    )
+    auto_parser.add_argument(
+        "--timeout", type=int, default=1800,
+        help="Seconds allowed per executor or reviewer command.",
+    )
+    auto_parser.add_argument(
+        "--verify-timeout", type=int, default=300,
+        help="Seconds allowed per Verify command.",
+    )
+    auto_parser.add_argument(
+        "--until", choices=("review", "land"), default="review",
+        help="Stop at the review gate (default) or continue through review and landing.",
+    )
+    auto_parser.add_argument(
+        "--reviewer", default="",
+        help="Independent reviewer name; required with --until land.",
+    )
+    auto_parser.add_argument(
+        "--reviewer-command", default="",
+        help="Shell command that writes review-result.json; required with --until land.",
+    )
+    auto_parser.add_argument(
+        "--accept-degraded", action="store_true",
+        help="Allow a degraded verification to continue to review.",
+    )
+    auto_parser.add_argument(
+        "--human", action="store_true", help="Mark the reviewer as human."
+    )
+    auto_parser.add_argument("--tickets", type=Path, default=None)
+    auto_parser.add_argument("--root", type=Path, default=Path("."))
+    auto_parser.add_argument("--json", action="store_true", dest="as_json")
 
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
     status_parser.add_argument("--tickets", type=Path, default=None)
@@ -471,6 +516,86 @@ def _cmd_land(args: argparse.Namespace) -> int:
     return 0
 
 
+def _auto_exit_code(result: dict[str, object]) -> int:
+    status = str(result.get("status", ""))
+    if status == "landed":
+        return 0
+    if status == "review":
+        return 2 if result.get("verify_status") == "degraded" else 0
+    return 1
+
+
+def _cmd_auto(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    try:
+        result = auto_run(
+            args.root,
+            ticket,
+            executor=args.executor,
+            agent=args.agent,
+            max_attempts=args.max_attempts,
+            timeout=args.timeout,
+            verify_timeout=args.verify_timeout,
+            until=args.until,
+            reviewer=args.reviewer,
+            reviewer_command=args.reviewer_command,
+            accept_degraded=args.accept_degraded,
+            human=args.human,
+        )
+    except AutoError as exc:
+        print(f"AUTO {exc}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return _auto_exit_code(result)
+
+    print(f"Auto {ticket.id} -> {result.get('run_directory', '')}")
+    attempts = result.get("attempts", [])
+    if isinstance(attempts, list):
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+            executor = attempt.get("executor", {})
+            exit_code = executor.get("exit_code", "?") if isinstance(executor, dict) else "?"
+            print(
+                f"Attempt {attempt.get('attempt', '?')}: executor exit {exit_code}; "
+                f"verification {attempt.get('verify_status', '?')}"
+            )
+    status = str(result.get("status", ""))
+    if status == "review":
+        print("Auto stopped at review.")
+        print(
+            "Next: dispatch review "
+            + ticket.id
+            + " --reviewer <name> --verdict pass|fail"
+        )
+    elif status == "landed":
+        landing = result.get("landing", {})
+        if isinstance(landing, dict):
+            print(f"Landed {ticket.id} -> {landing.get('integration_branch', '')}")
+            print(f"Target: {landing.get('target_branch', '')} ({landing.get('target_commit', '')})")
+        print("Pushed: no")
+        print("Next: push the integration branch and open a PR yourself.")
+    elif status == "review-failed":
+        print(f"AUTO review failed for {ticket.id}", file=sys.stderr)
+    elif status == "review-invalid":
+        print(f"AUTO review invalid: {result.get('error', '')}", file=sys.stderr)
+    elif status == "land-failed":
+        print(f"AUTO land failed: {result.get('error', '')}", file=sys.stderr)
+    else:
+        print(f"AUTO failed after {len(attempts) if isinstance(attempts, list) else 0} attempt(s)", file=sys.stderr)
+        for error in result.get("last_errors", []):
+            print(f"VERIFY {error}", file=sys.stderr)
+    return _auto_exit_code(result)
+
+
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
@@ -654,6 +779,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_review(args)
     if args.command == "land":
         return _cmd_land(args)
+    if args.command == "auto":
+        return _cmd_auto(args)
     if args.command == "status":
         return _cmd_status(args)
     if args.command == "export":

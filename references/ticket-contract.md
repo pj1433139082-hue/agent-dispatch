@@ -36,7 +36,7 @@ ready -> claimed -> running -> review -> done
 
 ## 回执
 
-`receipt.json` 放在本次 Run 的目录。v0.5 使用判据级回执：
+`receipt.json` 放在本次 Run 的目录。v0.5 起使用判据级回执：
 
 ```json
 {
@@ -83,6 +83,17 @@ ready -> claimed -> running -> review -> done
 ## 复核记账
 
 `review` 成功后写 `review.json`，并向 `.dispatch/ledger/reviews.jsonl` 追加一行。行内包含 `at`、`ticket_id`、`run_id`、`reviewer`、`verdict`、`notes`、`verify_status`、`accepted_degraded`、`review_hash`。ledger 是 append-only 的审计记录，不能代替 `review.json`。
+
+## 自动执行
+
+`dispatch auto <id> --executor <shell>` 会创建 Run 与 worktree，在 worktree 中运行执行器命令，然后调用与手动流程相同的 `verify`。执行器收到：
+
+- `DISPATCH_TICKET_ID`、`DISPATCH_RUN_ID`、`DISPATCH_RUN_DIR`、`DISPATCH_EXECUTION_ROOT`、`DISPATCH_WORK_ORDER`、`DISPATCH_TICKET_PATH`、`DISPATCH_ATTEMPT`。
+- 业务文件写在 `DISPATCH_EXECUTION_ROOT`；`receipt.json` 和证据写在 `DISPATCH_RUN_DIR`。
+
+执行器的退出码不是验收结论；verify 仍复跑票据命令、检查写域与证据。`--max-attempts` 控制失败重试，每次尝试的日志与结果写 `auto.json`。
+
+`--until land` 时必须提供独立的 `--reviewer` 和 `--reviewer-command`。reviewer 额外收到 `DISPATCH_REVIEWER`、`DISPATCH_VERIFY_JSON`、`DISPATCH_REVIEW_RESULT`，并把 `{"verdict":"pass"|"fail","notes":"..."}` 写到 `DISPATCH_REVIEW_RESULT`；只有退出码 0 且 verdict=pass 才会记录评审并 land。
 
 ## 落地
 

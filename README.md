@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.5.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`；v0.5 新增 `dispatch land`（只建本地 integration branch，人工开 PR），并让 land 复核 verify 记录的 worktree diff 哈希。
+当前版本 **v0.6.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`；v0.5 新增 `dispatch land`（只建本地 integration branch，人工开 PR），并让 land 复核 verify 记录的 worktree diff 哈希；v0.6 新增 `dispatch auto`，调用外部执行器自动完成 render → 执行 → verify，可配置失败重试，并可用独立 reviewer 命令继续到 land。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -27,7 +27,7 @@
 - `verify` 的结论是 `passed` / `degraded` / `failed`；degraded 必须由评审显式 `--accept-degraded` 才能放行。
 - `review` 要求评审者不是票据 owner，也不是实际领取人；L4 风险必须显式 `--human`；每次有效评审追加到 `.dispatch/ledger/reviews.jsonl`。
 
-v0.5 仍刻意不做：Web UI、多用户权限、云沙箱、自动 push、自动合并目标分支、恢复点、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递/触发”这条最小闭环。
+v0.6 仍刻意不做：Web UI、多用户权限、云沙箱、自动 push、自动合并目标分支、恢复点、内建 agent 运行时。`dispatch auto` 只调用你提供的外部命令，不内置模型调用；它把“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递/触发/半自动推进”串成最小闭环。
 
 ---
 
@@ -44,6 +44,7 @@ v0.5 仍刻意不做：Web UI、多用户权限、云沙箱、自动 push、自�
 | **Verify 验收** | `verify.json` | 独立复跑命令 + diff 写域检查 + 证据哈希 |
 | **Review 评审** | `review.json` | 异体评审结论；通过后票据才 `done` |
 | **Landing 落地记录** | `.dispatch/runs/<run-id>/landing.json` + `.dispatch/ledger/landings.jsonl` | 把已验证 Run 合入本地 integration branch；不 push、不改目标分支 |
+| **Auto 自动化记录** | `.dispatch/runs/<run-id>/auto.json` | 每次自动尝试的执行器退出码、日志哈希、verify 结论，以及可选评审/landing 记录 |
 
 ### 状态机
 
@@ -216,6 +217,39 @@ dispatch land 01 --into main --branch integration/demo --json
 - land 会把 worktree 里的未提交改动提交为 run commit；因此应先完成 review 再 land。land 前还会复核 `verify.json` 的 `diff_hash`，review 后 worktree 再被修改会被拒绝，必须重新 verify/review。
 - 合并冲突时清理临时 worktree 和 integration branch，目标分支保持原样；成功后从 integration branch 人工开 PR。
 
+### 半自动推进（v0.6）
+
+`dispatch auto` 把 `render → start → 外部执行器 → verify` 串起来。执行器是你提供的 shell 命令，dispatch 不内置 agent 运行时；是否“全自动”取决于你给它的命令，门禁仍由 dispatch 掌握。
+
+```bash
+# 默认停在 review：执行器实现 + 自己写回执，dispatch 自动 verify
+dispatch auto 01 --executor "python tools/executor.py"
+
+# 失败最多重试 2 次（每次重新执行同一个 worktree）
+dispatch auto 01 --executor "python tools/executor.py" --max-attempts 2
+
+# 继续到 land：必须另给独立 reviewer 命令，且 reviewer 写 review-result.json
+dispatch auto 01 --executor "python tools/executor.py" \
+  --until land --reviewer reviewer-b --reviewer-command "python tools/reviewer.py"
+```
+
+执行器和 reviewer 都在 Run 的 worktree 里运行，并收到这些环境变量：
+
+| 变量 | 含义 |
+|---|---|
+| `DISPATCH_TICKET_ID` / `DISPATCH_RUN_ID` | 当前票据与 Run |
+| `DISPATCH_RUN_DIR` | Run 目录；`receipt.json` 与证据必须写在这里 |
+| `DISPATCH_EXECUTION_ROOT` | 当前 worktree；业务文件写在这里 |
+| `DISPATCH_WORK_ORDER` | 工单路径 |
+| `DISPATCH_TICKET_PATH` | 票据路径 |
+| `DISPATCH_ATTEMPT` | 第几次尝试，从 1 开始 |
+| `DISPATCH_REVIEWER` / `DISPATCH_VERIFY_JSON` / `DISPATCH_REVIEW_RESULT` | 仅 reviewer 命令可见；reviewer 必须把 `{"verdict":"pass"|"fail","notes":"..."}` 写到 `DISPATCH_REVIEW_RESULT` |
+
+- 默认 `--until review`：verify passed（退出码 0）或 degraded（退出码 2）后停在 `review`；degraded 仍需人工 `review --accept-degraded`。
+- `--until land`：reviewer 退出码为 0 且 verdict=pass 才会记录评审并调用 `land`；reviewer 不能是 Owner 或领取人。land 仍只建本地 integration branch，不 push、不合并目标分支。
+- 执行器的退出码不是验收结论；`verify` 复跑票据命令、检查 diff 与证据，verify 通过才算通过。失败时若还有 `--max-attempts`，Run 会重置为 running 再执行一次；用尽后状态为 `failed`。
+- 每次尝试的执行器日志、日志哈希和 verify 结果写到 Run 目录的 `auto/` 与 `auto.json`；reviewer 命令的输出写 `auto/reviewer.log`，不覆盖执行器日志。不会因为自动推进而跳过 review 账本或 land 记录。
+
 当还有 `ready` 票据时（例如刚 `lint` / `plan` 之后），可以选择导出文件，或直接投递到本机 DSH 任务看板。
 
 ### 导出为文件（只读）
@@ -288,6 +322,7 @@ dispatch dsh delete 01
 | `dispatch verify <id>` | 独立验收；passed/degraded → `review`，failed → `failed`；退出码 0/2/1 |
 | `dispatch review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → `done`，并追加 review ledger |
 | `dispatch land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
+| `dispatch auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 外部执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `dispatch status [--json]` | 每张票的 effective state、blocked_by、next frontier |
 | `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic（只读） |
 | `dispatch dsh push [--mode <cards 或 team>] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
@@ -325,6 +360,7 @@ agent-dispatch/
 │   ├── verify.py      # 验收门禁、判据级证据
 │   ├── review.py      # 异体评审、review ledger
 │   ├── landing.py     # integration branch、landing ledger
+│   ├── auto.py        # 外部执行器、重试、可选评审与落地
 │   ├── export.py      # status / 文件导出适配器
 │   ├── dsh.py         # DSH 看板投递、回读、外部结果回写、卡片变更
 │   └── cli.py         # 命令行入口
@@ -343,7 +379,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.5 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；一票一 worktree；land 只建 integration branch，人工开 PR；DSH 看板只是投递、触发与回读面，不是验收面。**
+设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.6 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；一票一 worktree；auto 只调用外部命令，不绕过 verify/review；land 只建 integration branch，人工开 PR；DSH 看板只是投递、触发与回读面，不是验收面。**
 
 ## 9. 作为技能使用（跨项目）
 
