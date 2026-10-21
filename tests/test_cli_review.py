@@ -61,6 +61,14 @@ def read_state(tmp_path: Path) -> dict:
     return json.loads((tmp_path / ".dispatch" / "state.json").read_text(encoding="utf-8"))
 
 
+def execution_root(tmp_path: Path, run: dict) -> Path:
+    value = str(run.get("execution_root", ""))
+    if not value:
+        return tmp_path
+    path = Path(value)
+    return path if path.is_absolute() else tmp_path / path
+
+
 def prepare_verified(tmp_path: Path, owner: str = "implementer", agent: str | None = None) -> Path:
     directory = tmp_path / "tickets"
     directory.mkdir()
@@ -84,13 +92,20 @@ def prepare_verified(tmp_path: Path, owner: str = "implementer", agent: str | No
                 "run_id": run["run_id"],
                 "status": "done",
                 "summary": "implemented",
-                "evidence": ["evidence/proof.txt"],
+                "criteria": [
+                    {
+                        "id": 1,
+                        "verdict": "pass",
+                        "evidence": [{"kind": "file", "path": "evidence/proof.txt"}],
+                    }
+                ],
             }
         ),
         encoding="utf-8",
     )
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
+    worktree = execution_root(tmp_path, run)
+    (worktree / "src").mkdir()
+    (worktree / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
     assert run_dispatch(tmp_path, "verify", "01").returncode == 0
     return run_dir
 
@@ -153,6 +168,11 @@ def test_pass_moves_to_done_and_writes_review(tmp_path: Path) -> None:
     assert record["reviewer"] == "reviewer"
     assert record["notes"] == "looks good"
     assert read_state(tmp_path)["tickets"]["01"]["state"] == "done"
+    ledger = tmp_path / ".dispatch" / "ledger" / "reviews.jsonl"
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["ticket_id"] == "01"
+    assert rows[-1]["verdict"] == "pass"
+    assert rows[-1]["review_hash"]
 
 
 def test_fail_moves_to_failed(tmp_path: Path) -> None:
@@ -173,3 +193,65 @@ def test_empty_reviewer_is_refused(tmp_path: Path) -> None:
     result = run_dispatch(tmp_path, "review", "01", "--reviewer", "", "--verdict", "pass")
 
     assert result.returncode == 1
+
+
+def prepare_degraded(tmp_path: Path) -> Path:
+    directory = tmp_path / "tickets"
+    directory.mkdir()
+    (directory / "01-a.md").write_text(ticket_text(), encoding="utf-8")
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-q", "-m", "base")
+    assert run_dispatch(tmp_path, "render", "01", "--tickets", str(directory)).returncode == 0
+    assert run_dispatch(tmp_path, "start", "01").returncode == 0
+    run_dir = only_run(tmp_path)
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    (run_dir / "receipt.json").write_text(
+        json.dumps(
+            {
+                "ticket_id": "01",
+                "run_id": run["run_id"],
+                "status": "done",
+                "summary": "implemented",
+                "criteria": [
+                    {
+                        "id": 1,
+                        "verdict": "pass",
+                        "evidence": [{"kind": "note", "note": "checked by hand"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    worktree = execution_root(tmp_path, run)
+    (worktree / "src").mkdir()
+    (worktree / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
+    assert run_dispatch(tmp_path, "verify", "01").returncode == 2
+    return run_dir
+
+
+def test_degraded_verification_needs_explicit_review_acceptance(tmp_path: Path) -> None:
+    run_dir = prepare_degraded(tmp_path)
+
+    refused = run_dispatch(
+        tmp_path, "review", "01", "--reviewer", "reviewer", "--verdict", "pass"
+    )
+    assert refused.returncode == 1
+    assert "degraded" in refused.stderr.lower()
+
+    accepted = run_dispatch(
+        tmp_path,
+        "review",
+        "01",
+        "--reviewer",
+        "reviewer",
+        "--verdict",
+        "pass",
+        "--accept-degraded",
+    )
+    assert accepted.returncode == 0, accepted.stderr
+    record = json.loads((run_dir / "review.json").read_text(encoding="utf-8"))
+    assert record["verify_status"] == "degraded"
+    assert record["accepted_degraded"] is True
+    assert read_state(tmp_path)["tickets"]["01"]["state"] == "done"

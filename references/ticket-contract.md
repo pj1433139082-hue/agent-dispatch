@@ -14,7 +14,7 @@
 
 可选：`Read scope`、`Status`。
 
-`Verify` 命令按当前平台 shell 执行（Windows 为 `cmd.exe`，其他平台为 `/bin/sh`），支持 `&&`、管道、带引号的参数和 Windows 反斜杠路径；每条命令都必须能从仓库根目录独立复跑。
+`Verify` 命令按当前平台 shell 执行（Windows 为 `cmd.exe`，其他平台为 `/bin/sh`），支持 `&&`、管道、带引号的参数和 Windows 反斜杠路径；每条命令都必须能从 execution root 独立复跑。
 
 状态机：
 
@@ -26,9 +26,17 @@ ready -> claimed -> running -> review -> done
 
 执行者只能写业务文件和 `receipt.json`，不能改票据状态；状态只能由 `verify` / `review` 推进。`failed` 票据可重新 `render` 重试，并会继续出现在 `status` / `export` 的可重试 frontier 中。
 
+## Worktree 与执行根
+
+`render` 默认在 `.dispatch/worktrees/<run-id>` 创建独立 git worktree，分支为 `dispatch/<run-id>`，并把 `execution_root` 写进 `run.json`。执行者必须在 execution root 里写业务文件；verify 也在那里跑命令和算 git diff。
+
+- `--no-worktree` 是逃生口：`run.json` 不写 worktree 字段，执行根回退为主仓。
+- 旧版 run.json 没有 `execution_root` 时，按主仓执行，保持向后兼容。
+- verify 除检查 execution root 的 diff 外，还会检查 main checkout 在 base commit 之后是否被改动；主仓有业务改动会直接失败。
+
 ## 回执
 
-`receipt.json` 放在本次 Run 的目录，最小字段：
+`receipt.json` 放在本次 Run 的目录。v0.4 使用判据级回执：
 
 ```json
 {
@@ -36,11 +44,45 @@ ready -> claimed -> running -> review -> done
   "run_id": "01-...",
   "status": "done",
   "summary": "做了什么",
-  "evidence": ["evidence.txt"]
+  "criteria": [
+    {
+      "id": 1,
+      "verdict": "pass",
+      "note": "可选的说明",
+      "evidence": [
+        {"kind": "file", "path": "evidence/proof.txt", "sha256": "<可选>"},
+        {"kind": "inline", "content": "expected output\n", "sha256": "<可选>"},
+        {"kind": "absent", "path": "src/old.py"},
+        {"kind": "command", "command": "python -m pytest -q", "exit_code": 0},
+        {"kind": "note", "note": "人工核对过"}
+      ]
+    }
+  ]
 }
 ```
 
-证据文件路径必须相对 Run 目录，不能是绝对路径。`verify` 会计算证据文件 sha256，并检查 git diff 是否全部落在 `Write scope` 内。
+规则：
+
+- `criteria` 必须正好覆盖 `## Acceptance` 的每一项：id 为 `1..N`，不能缺、不能多、不能重复。
+- 每个 criterion 至少一条 evidence；`verdict` 只能是 `pass` 或 `fail`。
+- 证据路径相对 Run 目录，不能是绝对路径。
+- `file`：文件必须存在；带 `sha256` 就核对，不带则记录实际哈希。
+- `inline`：字面内容；带 `sha256` 就核对。
+- `absent`：该路径必须不存在。
+- `command`：执行者报告的命令与退出码；verify 不复跑，但 `exit_code` 必须为 0。
+- `note`：只有陈述，没有可复算物证。一个 criterion 如果只有 note 证据，会把该 criterion 记为 attested。
+
+结论：
+
+- `passed`：所有 criterion 都有可复算证据且全部 pass。
+- `degraded`：没有 fail，但至少一个 criterion 只有 note 证据；可进入 review，但必须 `review --accept-degraded`。
+- `failed`：任何 criterion fail、证据校验失败、命令复跑失败、写域越界或主仓污染。
+
+`dispatch verify` 退出码：0 = passed，2 = degraded，1 = failed。
+
+## 复核记账
+
+`review` 成功后写 `review.json`，并向 `.dispatch/ledger/reviews.jsonl` 追加一行。行内包含 `at`、`ticket_id`、`run_id`、`reviewer`、`verdict`、`notes`、`verify_status`、`accepted_degraded`、`review_hash`。ledger 是 append-only 的审计记录，不能代替 `review.json`。
 
 ## 风险等级
 

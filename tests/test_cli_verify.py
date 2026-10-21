@@ -69,6 +69,15 @@ def only_run(tmp_path: Path) -> Path:
     return sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]
 
 
+def execution_root(tmp_path: Path) -> Path:
+    run = json.loads((only_run(tmp_path) / "run.json").read_text(encoding="utf-8"))
+    value = str(run.get("execution_root", ""))
+    if not value:
+        return tmp_path
+    path = Path(value)
+    return path if path.is_absolute() else tmp_path / path
+
+
 def write_receipt(
     tmp_path: Path,
     *,
@@ -106,8 +115,8 @@ def test_passing_verification_moves_state_to_review(tmp_path: Path) -> None:
     prepare(tmp_path)
     run_dir = write_receipt(tmp_path)
     add_evidence(run_dir)
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
+    (execution_root(tmp_path) / "src").mkdir()
+    (execution_root(tmp_path) / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
 
     result = run_dispatch(tmp_path, "verify", "01")
 
@@ -162,7 +171,7 @@ def test_out_of_scope_file_fails(tmp_path: Path) -> None:
     prepare(tmp_path)
     run_dir = write_receipt(tmp_path)
     add_evidence(run_dir)
-    (tmp_path / "outside.txt").write_text("nope\n", encoding="utf-8")
+    (execution_root(tmp_path) / "outside.txt").write_text("nope\n", encoding="utf-8")
 
     result = run_dispatch(tmp_path, "verify", "01")
 

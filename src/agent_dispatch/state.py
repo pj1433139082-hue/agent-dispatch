@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +22,13 @@ def _now() -> str:
 
 def _safe_id(value: str) -> str:
     return "".join(char if char.isalnum() or char in "._-" else "-" for char in value)
+
+
+def _relative_to_root(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())
 
 
 def current_commit(root: Path) -> str:
@@ -82,6 +90,14 @@ class Run:
         return str(self.data["run_id"])
 
     @property
+    def execution_root(self) -> Path:
+        value = str(self.data.get("execution_root", ""))
+        if not value:
+            return self.root
+        path = Path(value)
+        return path if path.is_absolute() else self.root / path
+
+    @property
     def ticket_path(self) -> Path:
         path = Path(str(self.data["ticket_path"]))
         if path.is_absolute():
@@ -93,8 +109,14 @@ class Run:
         return path
 
     @classmethod
-    def create(cls, root: Path, ticket: Ticket, claimed_by: str = "") -> "Run":
-        root = Path(root)
+    def create(
+        cls,
+        root: Path,
+        ticket: Ticket,
+        claimed_by: str = "",
+        use_worktree: bool = True,
+    ) -> "Run":
+        root = Path(root).resolve()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         run_id = f"{_safe_id(ticket.id)}-{stamp}-{uuid.uuid4().hex[:6]}"
         directory = root / ".dispatch" / "runs" / run_id
@@ -103,18 +125,39 @@ class Run:
             ticket_path = ticket.path.resolve().relative_to(root.resolve()).as_posix()
         except ValueError:
             ticket_path = str(ticket.path.resolve())
+        base_commit = current_commit(root)
         data: dict[str, object] = {
             "run_id": run_id,
             "ticket_id": ticket.id,
             "ticket_path": ticket_path,
             "ticket_hash": ticket.content_hash,
-            "base_commit": current_commit(root),
+            "base_commit": base_commit,
             "state": "claimed",
             "owner": ticket.owner,
             "risk": ticket.risk,
             "claimed_by": claimed_by or ticket.owner,
             "created_at": _now(),
+            "use_worktree": False,
+            "execution_root": "",
         }
+        if use_worktree and base_commit:
+            worktree_path = root / ".dispatch" / "worktrees" / run_id
+            branch = f"dispatch/{run_id}"
+            result = subprocess.run(
+                ["git", "worktree", "add", "-b", branch, str(worktree_path), base_commit],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                shutil.rmtree(worktree_path, ignore_errors=True)
+                detail = (result.stderr or result.stdout or "git worktree add failed").strip()
+                raise ValueError("cannot create a worktree for this run: " + detail)
+            data["use_worktree"] = True
+            data["worktree_path"] = _relative_to_root(worktree_path, root)
+            data["worktree_branch"] = branch
+            data["execution_root"] = _relative_to_root(worktree_path, root)
         run = cls(root, directory, data)
         run.write()
         (directory / "work-order.md").write_text(

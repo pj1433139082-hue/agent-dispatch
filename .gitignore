@@ -8,6 +8,9 @@ build/
 dist/
 *.egg-info/
 .dispatch/runs/
+.dispatch/worktrees/
+.dispatch/ledger/
+.dispatch/state.json
 .agent-workflow.local.json
 .dispatch/tmp/
 .dispatch/dsh-map.json

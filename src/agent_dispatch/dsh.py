@@ -237,6 +237,10 @@ class TaskBoardClient:
         }
         return self._request("POST", "/action", envelope)
 
+    def run(self, task_id: str, rerun: bool = False) -> dict[str, object]:
+        """Ask DSH to run one card. Returns after the action is accepted."""
+        return self.apply({"kind": "rerun" if rerun else "run", "taskId": task_id})
+
     def update(self, task_id: str, patch: dict[str, object]) -> dict[str, object]:
         """Patch one card. DSH update actions accept only taskId and patch."""
         if not isinstance(patch, dict) or not patch:
@@ -488,6 +492,35 @@ def outcome(
         "status": task.get("status", ""),
         "title": task.get("title", ""),
     }
+
+
+def run_card(
+    ticket_id: str,
+    *,
+    root: Path,
+    base_url: str | None = None,
+    task_id: str | None = None,
+    rerun: bool = False,
+) -> dict[str, object]:
+    """Trigger a mapped DSH card. Returns when DSH accepts the action."""
+    map_data, _entry, task_id = _resolve_mapping(root, ticket_id, task_id)
+    client = TaskBoardClient(base_url or str(map_data.get("base_url") or ""))
+    snapshot = client.run(task_id, rerun=rerun)
+    task = _task_index(snapshot).get(task_id, {})
+    executions = task.get("executions", [])
+    latest = executions[-1] if isinstance(executions, list) and executions else {}
+    result: dict[str, object] = {
+        "ok": True,
+        "ticket_id": ticket_id,
+        "task_id": task_id,
+        "action": "rerun" if rerun else "run",
+        "status": task.get("status", ""),
+        "title": task.get("title", ""),
+    }
+    if isinstance(latest, dict):
+        result["execution_id"] = latest.get("id", "")
+        result["session_id"] = latest.get("sessionId", "")
+    return result
 
 
 def update_card(
