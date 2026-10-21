@@ -1,6 +1,6 @@
 # 项目架构
 
-本页记录 v0.2 的实际模块边界与数据流；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
+本页记录当前模块边界与数据流（v0.6）；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
 
 ## 模块与边界
 
@@ -12,8 +12,10 @@
 | `workorder.py` | 把票据渲染成 `work-order.md` | 只生成文本，不写业务文件 |
 | `verify.py` | 复跑验收命令、检查 git diff 写域、证据 sha256 | 不修改票据；拒绝时写 verify.json |
 | `review.py` | 异体评审与 final verdict | 拒绝自审；L4 必须人工 |
+| `landing.py` | 把已验证 Run 合入本地 integration branch，写 landing ledger | 不 push、不切换、不合并目标分支 |
+| `auto.py` | 调用外部执行器，串联 render → 执行 → verify，支持重试与可选独立评审/land | 不内置模型；不绕过 verify/review |
 | `export.py` | 把 ready 票据导出为 dsh-team / dsh-board / codex / generic | 只读；不调用远端 API |
-| `dsh.py` | 生成 DSH 看板 create 信封、投递到本机 loopback API、读回看板、回写外部结果 | 只 `create` 与 `record-external-outcome`；不运行卡，不替代 verify |
+| `dsh.py` | 生成 DSH 看板信封、投递/触发/读回/变更本机 loopback 卡片、回写外部结果 | 只操作看板；不替代 verify |
 | `cli.py` | argparse 命令路由、退出码和用户可见错误 | 不绕过各模块门禁 |
 
 运行时只依赖 Python 标准库；pytest 仅为开发依赖。
@@ -28,7 +30,11 @@ tickets/*.md
   -> 执行者写业务文件 + receipt.json + 证据文件
   -> verify.verify_run（命令、diff、哈希）
   -> review.submit_review（异体裁决）
+  -> landing.land_run（本地 integration branch，人工开 PR）
   -> state: done / failed
+
+auto: ticket -> Run/worktree -> 外部执行器 -> verify（可重试）
+  -> 默认停在 review；--until land 需独立 reviewer -> landing
 
 ready tickets
   -> export.py（dsh-team / dsh-board / codex / generic，只读）
@@ -42,4 +48,7 @@ ready tickets
 
 - `docs/adr/0001-file-first-cli.md`：文件优先、门禁命令独占状态推进。
 - `docs/adr/0002-dsh-loopback-push.md`：DSH 看板只作为投递与回读面，验收仍由本地门禁负责。
+- `docs/adr/0003-framework-project-boundary.md`：框架项目管启动事实，dispatch 管票级执行。
+- `docs/adr/0004-collab-runbook-consolidation.md`：退役 runbook，dispatch 成为唯一票级入口。
+- `docs/adr/0005-auto-execution.md`：auto 只编排外部执行器，验收与评审仍由本地门禁负责。
 - `tasks/kickoff/plan.md`：v0.1 技术选择、风险与验收方法。

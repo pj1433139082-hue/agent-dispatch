@@ -16,6 +16,14 @@ _Avoid_: 执行、job、session
 一次外部执行端（DSH session、Codex、人工）对某个 Run 的实际尝试；一个 Run 可以有多条 Execution，失败重试不改变 Run 的领取事实。
 _Avoid_: 运行、job、session
 
+**Auto run（自动推进）**:
+一次 `dispatch auto` 在同一个 Run 内调用外部执行器、跑 verify，并可按配置继续独立评审与 land；执行器退出码不是验收结论。
+_Avoid_: 全自动交付、自动验收
+
+**Executor（执行器）**:
+用户提供给 `dispatch auto` 的 shell 命令，在 Run 的 worktree 中写业务文件与回执；不是 dispatch 内置的模型运行时。
+_Avoid_: agent、模型、worker
+
 **Worktree（工作树）**:
 某个 Run 独占的 git worktree 与分支；代码改动发生在其中，主仓工作区不作为执行根。
 _Avoid_: 分支、目录、workspace（DSH workspace 是执行端概念）
