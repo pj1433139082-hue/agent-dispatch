@@ -10,7 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def ticket_text(ticket_id: str, title: str, blocked_by: str = "None") -> str:
+def ticket_text(
+    ticket_id: str,
+    title: str,
+    blocked_by: str = "None",
+    verify: str = "python -m pytest -q",
+) -> str:
     return f"""# {ticket_id}: {title}
 
 **What to build:** Ship {title}.
@@ -22,7 +27,7 @@ def ticket_text(ticket_id: str, title: str, blocked_by: str = "None") -> str:
 - Owner: implementer
 - Risk: L1
 - Write scope: src/{ticket_id}.py
-- Verify: python -m pytest -q
+- Verify: {verify}
 
 ## Acceptance
 
@@ -161,3 +166,54 @@ def test_start_moves_claimed_to_running(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert read_state(tmp_path)["tickets"]["01"]["state"] == "running"
     assert json.loads((only_run(tmp_path) / "run.json").read_text(encoding="utf-8"))["state"] == "running"
+
+
+def test_render_and_verify_resolve_ticket_path_relative_to_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    directory = project / "tickets"
+    directory.mkdir()
+    (directory / "01-a.md").write_text(
+        ticket_text("01", "A", verify='python -c "print(\'ok\')"'),
+        encoding="utf-8",
+    )
+    git(project, "init", "-q")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "base")
+
+    rendered = run_dispatch(
+        tmp_path,
+        "render",
+        "01",
+        "--root",
+        "project",
+        "--tickets",
+        "project/tickets",
+    )
+
+    assert rendered.returncode == 0, rendered.stderr
+    run_dir = only_run(project)
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert run["ticket_path"] == "tickets/01-a.md"
+    assert (project / run["ticket_path"]).is_file()
+    assert run_dispatch(tmp_path, "start", "01", "--root", "project").returncode == 0
+    (run_dir / "evidence").mkdir()
+    (run_dir / "evidence" / "proof.txt").write_text("proof\n", encoding="utf-8")
+    (run_dir / "receipt.json").write_text(
+        json.dumps(
+            {
+                "ticket_id": "01",
+                "run_id": run["run_id"],
+                "status": "done",
+                "summary": "implemented",
+                "evidence": ["evidence/proof.txt"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (project / "src").mkdir()
+    (project / "src" / "01.py").write_text("print('done')\n", encoding="utf-8")
+
+    verified = run_dispatch(tmp_path, "verify", "01", "--root", "project")
+
+    assert verified.returncode == 0, verified.stderr

@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,10 +97,10 @@ def _sha256(path: Path) -> str:
 
 
 def _run_command(command: str, root: Path, log_path: Path, timeout: int) -> dict[str, object]:
-    argv = shlex.split(command, posix=True)
     try:
         result = subprocess.run(
-            argv,
+            command,
+            shell=True,
             cwd=root,
             text=True,
             capture_output=True,
@@ -137,9 +136,7 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
         if not ok:
             errors.append(f"{name}: {detail}")
 
-    ticket_path = Path(str(run.data.get("ticket_path", "")))
-    if not ticket_path.is_absolute():
-        ticket_path = root / ticket_path
+    ticket_path = run.ticket_path
     if not ticket_path.is_file():
         check("ticket", False, f"ticket file is missing: {ticket_path}")
     else:

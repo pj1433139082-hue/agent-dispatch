@@ -81,6 +81,17 @@ class Run:
     def id(self) -> str:
         return str(self.data["run_id"])
 
+    @property
+    def ticket_path(self) -> Path:
+        path = Path(str(self.data["ticket_path"]))
+        if path.is_absolute():
+            return path
+        candidate = self.root / path
+        if candidate.exists():
+            return candidate
+        # Older runs stored a path relative to the process cwd, not the root.
+        return path
+
     @classmethod
     def create(cls, root: Path, ticket: Ticket, claimed_by: str = "") -> "Run":
         root = Path(root)
@@ -88,10 +99,14 @@ class Run:
         run_id = f"{_safe_id(ticket.id)}-{stamp}-{uuid.uuid4().hex[:6]}"
         directory = root / ".dispatch" / "runs" / run_id
         directory.mkdir(parents=True, exist_ok=False)
+        try:
+            ticket_path = ticket.path.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            ticket_path = str(ticket.path.resolve())
         data: dict[str, object] = {
             "run_id": run_id,
             "ticket_id": ticket.id,
-            "ticket_path": str(ticket.path),
+            "ticket_path": ticket_path,
             "ticket_hash": ticket.content_hash,
             "base_commit": current_commit(root),
             "state": "claimed",

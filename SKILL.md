@@ -65,14 +65,14 @@ python <技能目录>/scripts/dispatch.py new 01 \
 
 ## 主流程
 
-1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Write scope`、`Verify`、`Acceptance`。
+1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Owner`、`Risk`、`Write scope`、`Verify`、`Acceptance`。
 2. **校验与分波**：`lint` 拒绝缺字段、自依赖、环、未知依赖；`plan` 输出拓扑波次、frontier 和同波写域冲突。
 3. **派发**：
    - 本地执行：`render <id> --agent <name>` 生成 `work-order.md`，票据进入 `claimed`。
    - DSH 看板：`dsh push` 创建卡；`--mode team` 创建一张 `teamRun` 父卡和每票一张子卡。
    - Codex：`export --format codex` 生成工单，交给 Codex 会话。
 4. **执行者只写两处**：业务文件 + 运行目录里的 `receipt.json` 和证据文件；**不能改票据状态**。
-5. **独立验收**：`start` → `verify`。`verify` 复跑票据命令、检查 git diff 是否越出写域、核对证据哈希；失败进入 `failed`。
+5. **独立验收**：`start` → `verify`。`verify` 按当前平台 shell 复跑票据命令、检查 git diff 是否越出写域、核对证据哈希；失败进入 `failed`，可重新 `render` 重试。
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`。
 7. **回写外部执行**：DSH 卡执行完后可用 `dsh outcome` 写外部结果；它**不替代** `verify`。
 
@@ -93,7 +93,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `dsh status` | 读回看板状态并与本地映射对照 |
 | `dsh outcome <id> --result <succeeded 或 failed> --by <name>` | 把外部执行结果写回映射卡 |
 
-通用参数：`--tickets` 指定票据目录（默认 `tickets`），`--root` 指定仓库根（默认当前目录）。
+通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` / `dsh push` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
 
 ## 票据最小模板
 
@@ -125,7 +125,8 @@ python <技能目录>/scripts/dispatch.py new 01 \
 - `Blocked by` 写依赖 id，逗号分隔；没有依赖写 `None`。
 - 写域拒绝绝对路径、盘符、`..`、反斜杠；写域是 git 路径的相对前缀或 glob。
 - 风险：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU、`L4` 人工确认。
-- `Acceptance` 至少一条 checkbox；`Verify` 必须能从仓库根目录复跑。
+- `Owner`、`Risk`、`Write scope`、`Verify` 必填；`Acceptance` 至少一条 checkbox。
+- `Verify` 必须能从仓库根目录复跑；命令按当前平台 shell 执行（Windows `cmd.exe`，其他 `/bin/sh`），支持 `&&`、管道和带引号的参数。
 
 ## DSH 看板适配
 
@@ -166,7 +167,8 @@ codex exec --skip-git-repo-check --ephemeral -s read-only --color never -C <目�
 ## 安全边界
 
 - 执行者不能直接改票据状态；只有 `verify` / `review` 能推进状态。
-- `verify` 在目标仓库根运行票据声明的命令；票据是受信任输入，但仍建议只给 L0/L1 自动执行。
+- `verify` 在目标仓库根通过当前平台 shell 运行票据声明的命令；票据是受信任输入，但仍建议只给 L0/L1 自动执行。
+- `verify` 的门禁防误不防恶意：执行者与验收者若共享同一文件系统，执行者理论上能改 `.dispatch/`；高信任要求时用独立用户/容器隔离。
 - 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
 - L4 票据永远需要人工评审；不要用 `--human` 代替真实的人。
 - 不要在票据里放真实凭据、私有绝对路径或生产密钥。

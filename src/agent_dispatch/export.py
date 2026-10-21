@@ -20,6 +20,10 @@ def _done(states: dict[str, str]) -> set[str]:
     return {ticket_id for ticket_id, state in states.items() if state == "done"}
 
 
+def _dispatchable(state: str | None) -> bool:
+    return state in (None, "ready", "failed")
+
+
 def _blocked_by(ticket: Ticket, done: set[str]) -> list[str]:
     return sorted(dep for dep in ticket.depends_on if dep not in done)
 
@@ -35,7 +39,7 @@ def status_document(
     ready_frontier = [
         ticket_id
         for ticket_id in plan.frontier
-        if states.get(ticket_id) in (None, "ready")
+        if _dispatchable(states.get(ticket_id))
     ]
     rows: list[dict[str, object]] = []
     for ticket in sorted(tickets, key=lambda item: item.id):
@@ -71,7 +75,7 @@ def ready_tickets(
     ready = [
         ticket_id
         for ticket_id in plan.frontier
-        if states.get(ticket_id) in (None, "ready")
+        if _dispatchable(states.get(ticket_id))
     ]
     by_id = {ticket.id: ticket for ticket in tickets}
     return [by_id[ticket_id] for ticket_id in sorted(ready)]

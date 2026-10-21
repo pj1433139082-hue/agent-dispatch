@@ -36,7 +36,7 @@ def _parser() -> argparse.ArgumentParser:
 
     render_parser = subparsers.add_parser("render", help="Create a run and a work order.")
     render_parser.add_argument("ticket_id")
-    render_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
+    render_parser.add_argument("--tickets", type=Path, default=None)
     render_parser.add_argument("--root", type=Path, default=Path("."))
     render_parser.add_argument("--agent", default="", help="Agent claiming the run.")
 
@@ -58,7 +58,7 @@ def _parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--root", type=Path, default=Path("."))
 
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
-    status_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
+    status_parser.add_argument("--tickets", type=Path, default=None)
     status_parser.add_argument("--root", type=Path, default=Path("."))
     status_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -69,7 +69,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=("dsh-team", "dsh-board", "codex", "generic"),
         dest="export_format",
     )
-    export_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
+    export_parser.add_argument("--tickets", type=Path, default=None)
     export_parser.add_argument("--root", type=Path, default=Path("."))
     export_parser.add_argument("--output", type=Path)
 
@@ -79,7 +79,7 @@ def _parser() -> argparse.ArgumentParser:
     dsh_sub = dsh_parser.add_subparsers(dest="dsh_command", required=True)
 
     dsh_push = dsh_sub.add_parser("push", help="Create board cards for ready tickets; never runs them.")
-    dsh_push.add_argument("--tickets", type=Path, default=Path("tickets"))
+    dsh_push.add_argument("--tickets", type=Path, default=None)
     dsh_push.add_argument("--root", type=Path, default=Path("."))
     dsh_push.add_argument("--url", default=None, help="DSH base URL (default: DSH_TASK_BOARD_URL or http://127.0.0.1:50567).")
     dsh_push.add_argument("--project", default=None, help="Project namespace for deterministic card ids.")
@@ -118,6 +118,13 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _tickets_dir(args: argparse.Namespace) -> Path:
+    if args.tickets is not None:
+        return args.tickets
+    root = getattr(args, "root", Path("."))
+    return root / "tickets"
+
+
 def _load_and_lint(directory: Path):
     tickets = load_tickets(directory)
     issues = lint_tickets(tickets)
@@ -148,7 +155,7 @@ def _state_map(root: Path) -> dict[str, str]:
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(args.tickets)
+    tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
         return code
     document = status_document(tickets, _state_map(args.root))
@@ -163,7 +170,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
 
 
 def _cmd_export(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(args.tickets)
+    tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
         return code
     text = export_text(
@@ -245,7 +252,7 @@ def _find_ticket(tickets: list[Ticket], ticket_id: str) -> Ticket | None:
 
 
 def _cmd_render(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(args.tickets)
+    tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -316,10 +323,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         )
         return 1
     run = Run.load(args.root, str(existing["run_id"]))
-    ticket_path = Path(str(run.data["ticket_path"]))
-    if not ticket_path.is_absolute():
-        ticket_path = args.root / ticket_path
-    ticket = parse_ticket(ticket_path)
+    ticket = parse_ticket(run.ticket_path)
     record, passed = verify_run(args.root, ticket, run, timeout=args.timeout)
     if passed:
         print(f"Verification passed for {args.ticket_id} ({run.id})")
@@ -343,10 +347,7 @@ def _cmd_review(args: argparse.Namespace) -> int:
         )
         return 1
     run = Run.load(args.root, str(existing["run_id"]))
-    ticket_path = Path(str(run.data["ticket_path"]))
-    if not ticket_path.is_absolute():
-        ticket_path = args.root / ticket_path
-    ticket = parse_ticket(ticket_path)
+    ticket = parse_ticket(run.ticket_path)
     record, errors = submit_review(
         args.root,
         ticket,
@@ -365,7 +366,7 @@ def _cmd_review(args: argparse.Namespace) -> int:
 
 
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(args.tickets)
+    tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
         return code
     try:

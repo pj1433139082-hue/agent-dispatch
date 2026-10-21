@@ -9,10 +9,12 @@
 - 标题：`# <id>: <title>`
 - `**What to build:**` 或 `## What to build`
 - `**Blocked by:**`（无依赖写 `None`）
-- `## Dispatch` 下的 `Write scope` 和 `Verify`
+- `## Dispatch` 下的 `Owner`、`Risk`、`Write scope`、`Verify`
 - `## Acceptance` 至少一条 `- [ ]`
 
-可选：`Owner`、`Risk`、`Read scope`、`Status`。
+可选：`Read scope`、`Status`。
+
+`Verify` 命令按当前平台 shell 执行（Windows 为 `cmd.exe`，其他平台为 `/bin/sh`），支持 `&&`、管道、带引号的参数和 Windows 反斜杠路径；每条命令都必须能从仓库根目录独立复跑。
 
 状态机：
 
@@ -22,7 +24,7 @@ ready -> claimed -> running -> review -> done
                      +-> failed <+
 ```
 
-执行者只能写业务文件和 `receipt.json`，不能改票据状态；状态只能由 `verify` / `review` 推进。
+执行者只能写业务文件和 `receipt.json`，不能改票据状态；状态只能由 `verify` / `review` 推进。`failed` 票据可重新 `render` 重试，并会继续出现在 `status` / `export` 的可重试 frontier 中。
 
 ## 回执
 

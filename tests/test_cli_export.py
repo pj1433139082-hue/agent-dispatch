@@ -74,6 +74,32 @@ def test_status_text_shows_every_ticket(tmp_path: Path) -> None:
     assert "Frontier" in result.stdout
 
 
+def test_status_uses_tickets_under_root_by_default(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    directory = project / "tickets"
+    directory.mkdir(parents=True)
+    (directory / "01-a.md").write_text(ticket_text("01", "A"), encoding="utf-8")
+
+    result = run_dispatch(tmp_path, "status", "--root", str(project), "--json")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert [row["id"] for row in payload["tickets"]] == ["01"]
+    assert payload["frontier"] == ["01"]
+
+
+def test_export_uses_tickets_under_root_by_default(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    directory = project / "tickets"
+    directory.mkdir(parents=True)
+    (directory / "01-a.md").write_text(ticket_text("01", "A"), encoding="utf-8")
+
+    result = run_dispatch(tmp_path, "export", "--format", "generic", "--root", str(project))
+
+    assert result.returncode == 0, result.stderr
+    assert "## 01: A" in result.stdout
+
+
 def test_dsh_team_export_cli_is_valid_json(tmp_path: Path) -> None:
     directory = make_tickets(tmp_path)
 
@@ -146,3 +172,22 @@ def test_dsh_push_dry_run_is_json_and_does_not_need_a_server(tmp_path: Path) -> 
     assert payload["mode"] == "cards"
     assert payload["planned"][0]["ticket_id"] == "01"
     assert payload["planned"][0]["task_id"]
+
+
+def test_status_json_marks_failed_ticket_as_next(tmp_path: Path) -> None:
+    directory = make_tickets(tmp_path)
+    state_dir = tmp_path / ".dispatch"
+    state_dir.mkdir()
+    (state_dir / "state.json").write_text(
+        json.dumps({"version": 1, "tickets": {"01": {"run_id": "r1", "state": "failed"}}}),
+        encoding="utf-8",
+    )
+
+    result = run_dispatch(tmp_path, "status", "--tickets", str(directory), "--json")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    row = next(item for item in payload["tickets"] if item["id"] == "01")
+    assert row["state"] == "failed"
+    assert row["next"] is True
+    assert payload["frontier"] == ["01"]
