@@ -41,13 +41,19 @@
 - ADR 0003（框架项目边界）为 Proposed；ADR 0004（退役 agent-collab-runbook）为 Accepted。
 - 2026-10-21 退役 agent-collab-runbook：源码仓库提交 `ec70c51` 并打 tag `legacy-final-2026-10-21`；`skillshare uninstall` 后 6 个 target 各 pruned 1；清理 skillshare config 的 6 处 include；`skillshare sync` 后 68 skills，agent-dispatch 安装态 0.4.0。
 
-- v0.4 尚未实现 `dispatch land`：ADR 已定“只建 integration branch + 人工开 PR”，代码仍是后续项。
-- `rerun` envelope 仍待复测；`run` envelope 已由真实看板 e2e 验证。
+## 2026-10-21 — v0.5 landing 与边界实测
+
+- 新增 `dispatch land`：把已 review 的 Run 合并到本地 integration branch（默认 `dispatch/land/<run-id>`），写 `landing.json` 与 `.dispatch/ledger/landings.jsonl`；绝不 push、绝不合并目标分支，供人工开 PR。
+- land 前新增 worktree `diff_hash` 门禁：`verify` 记录完整 diff（含未跟踪文件）的哈希，land 复核；review 后再改 worktree 会被拒绝。新增对应反向测试。
+- land 真实 e2e（diff_hash 门禁后）：临时 git 仓中 `lint → render → start → verify → review → land` 全通过；target `main` 保持 `42a67fff...` 不变，integration branch 为 `dispatch/land/01-20261021T130139320970Z-36be2c`，landing commit `36b9f8f63f14...`，verify `diff_hash` 前缀 `a4f4a428...`，`landing.json` 与 ledger 均写入；target 未出现该文件。另一反向 e2e：review 后修改 worktree，land 返回 1 且不写 landing 记录。
+- `dsh run --rerun` 真实看板 e2e：同一 probe 卡（task_id `d102dd83-8c4f-5ef6-b0b8-464521fe299f`）第一次 execution `6619d7b5-...` succeeded；`--rerun` 后产生第二次 execution `adda3a78-...`，同样 succeeded，summary 均为 `DSH_RERUN_PROBE_OK`；探针卡已删除。
+- issue forms 真实 UI 用 ego-browser 验证：Bug Report / Feature Request / Blank issue / 私有漏洞报告入口均可打开，Bug/Feature 表单字段正常；截图因窗口最小化失败，snapshot 作为证据。GitHub API 的 `issue_template` 字段仍返回 null，属于 API 枚举限制。
+- 版本升至 0.5.0；全量测试 104 passed；Python 3.11 compileall 通过。详细证据见 `docs/verification/2026-10-21-v0.5-boundaries.md`。
 
 ## 已知边界
 
 - DSH 看板已实际运行 teamRun 探针，Agent Team 真实 spawn 并回传子任务结果；`dsh push` 只建卡，v0.4 新增 `dsh run` 才触发运行。
-- 未验证 issue forms 的真实 GitHub UI 渲染；GitHub API 的 `issue_template` 仍返回 null。
+- GitHub API 的 `issue_template` 仍返回 null（UI 表单已于 2026-10-21 用 ego-browser 验证：Bug/Feature 表单可打开）。
 - 没有实现 agent-dispatch 直接调用 Codex API；当前只保证 codex 工单可被 Codex CLI 消费。
 - `dsh outcome` 写的是外部执行记录，不是本项目的验收结论；票据 done 仍必须经过 `verify` 与 `review`。
 - DSH HTTP 入口是本机插件接口，不是稳定公共 API；DSH 升级后需重跑真实投递探针。
@@ -57,6 +63,6 @@
 
 ## 下一步候选
 
-- 验证 issue forms 的 GitHub UI 渲染（需要可用的网页登录态）。
+- 增加 `land --wave` 批量按依赖顺序合入，以及恢复点/回退的显式命令。
 - 增加 `dsh push --update` / 归档同步，或接入 Agent Teams 的团队运行结果回读。
 - 增加 Windows symlink 写域测试与发布流程。

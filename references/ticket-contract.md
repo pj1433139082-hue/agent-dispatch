@@ -36,7 +36,7 @@ ready -> claimed -> running -> review -> done
 
 ## 回执
 
-`receipt.json` 放在本次 Run 的目录。v0.4 使用判据级回执：
+`receipt.json` 放在本次 Run 的目录。v0.5 使用判据级回执：
 
 ```json
 {
@@ -83,6 +83,15 @@ ready -> claimed -> running -> review -> done
 ## 复核记账
 
 `review` 成功后写 `review.json`，并向 `.dispatch/ledger/reviews.jsonl` 追加一行。行内包含 `at`、`ticket_id`、`run_id`、`reviewer`、`verdict`、`notes`、`verify_status`、`accepted_degraded`、`review_hash`。ledger 是 append-only 的审计记录，不能代替 `review.json`。
+
+## 落地
+
+`dispatch land <id>` 只接受已 `done` 且 review 通过的 worktree Run；默认目标分支 `main`（否则 `master`/当前分支），默认 integration branch `dispatch/land/<run-id>`。
+
+- 只创建本地 integration branch；不 push、不切换、不合并目标分支。
+- 写 `landing.json` 到 Run 目录，并追加 `.dispatch/ledger/landings.jsonl`；`pushed=false`、`pr_url=null`。
+- land 会先核对 `verify.json` 的 `diff_hash`；review 后 worktree 再被修改会拒绝，必须重新 verify/review。
+- 冲突时清理临时 worktree 与 integration branch，目标分支保持原样。
 
 ## 风险等级
 

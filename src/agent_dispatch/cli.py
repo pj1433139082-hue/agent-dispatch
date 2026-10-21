@@ -22,6 +22,7 @@ from .dsh import (
 )
 from .export import export_text, status_document
 from .graph import build_plan
+from .landing import LandingError, land_run
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
 from .ticket import Ticket, lint_tickets, load_tickets, parse_ticket
@@ -77,6 +78,24 @@ def _parser() -> argparse.ArgumentParser:
         help="Accept a degraded verification result (attested evidence only).",
     )
     review_parser.add_argument("--root", type=Path, default=Path("."))
+
+    land_parser = subparsers.add_parser(
+        "land",
+        help="Create an integration branch for a reviewed run; never pushes or merges the target.",
+    )
+    land_parser.add_argument("ticket_id")
+    land_parser.add_argument(
+        "--into",
+        default=None,
+        help="Target branch (default: main when present, otherwise the current branch).",
+    )
+    land_parser.add_argument(
+        "--branch",
+        default=None,
+        help="Integration branch name (default: dispatch/land/<run-id>).",
+    )
+    land_parser.add_argument("--root", type=Path, default=Path("."))
+    land_parser.add_argument("--json", action="store_true", dest="as_json")
 
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
     status_parser.add_argument("--tickets", type=Path, default=None)
@@ -429,6 +448,29 @@ def _cmd_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_land(args: argparse.Namespace) -> int:
+    try:
+        record = land_run(
+            args.root,
+            args.ticket_id,
+            target_branch=args.into,
+            integration_branch=args.branch,
+        )
+    except LandingError as exc:
+        print(f"LAND {exc}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(record, ensure_ascii=False, indent=2))
+        return 0
+    print(f"Landed {args.ticket_id} -> {record['integration_branch']}")
+    print(f"Target: {record['target_branch']} ({record['target_commit']})")
+    print(f"Run commit: {record['run_commit']}")
+    print(f"Landing commit: {record['landing_commit']}")
+    print("Pushed: no")
+    print("Next: push the integration branch and open a PR yourself.")
+    return 0
+
+
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
@@ -610,6 +652,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_verify(args)
     if args.command == "review":
         return _cmd_review(args)
+    if args.command == "land":
+        return _cmd_land(args)
     if args.command == "status":
         return _cmd_status(args)
     if args.command == "export":

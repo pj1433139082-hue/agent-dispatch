@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本 **v0.4.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`。
+当前版本 **v0.5.0**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写；v0.2.1 修复跨项目 `--root` 路径解析、Windows `Verify` 命令执行和失败票据的重试可见性；v0.3 新增看板卡片的 update / archive / delete；v0.4 新增一票一 worktree、判据级证据与 degraded 验收、复核 ledger、以及 `dsh run`；v0.5 新增 `dispatch land`（只建本地 integration branch，人工开 PR），并让 land 复核 verify 记录的 worktree diff 哈希。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -27,7 +27,7 @@
 - `verify` 的结论是 `passed` / `degraded` / `failed`；degraded 必须由评审显式 `--accept-degraded` 才能放行。
 - `review` 要求评审者不是票据 owner，也不是实际领取人；L4 风险必须显式 `--human`；每次有效评审追加到 `.dispatch/ledger/reviews.jsonl`。
 
-v0.4 仍刻意不做：Web UI、多用户权限、云沙箱、自动合并、自动 push / merge、恢复点与 landing 自动化、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递/触发”这条最小闭环。
+v0.5 仍刻意不做：Web UI、多用户权限、云沙箱、自动 push、自动合并目标分支、恢复点、自动替代 DSH / Codex。它只做“票据 → 工单 → 回执 → 验收 → 评审 → 状态/导出/投递/触发”这条最小闭环。
 
 ---
 
@@ -43,6 +43,7 @@ v0.4 仍刻意不做：Web UI、多用户权限、云沙箱、自动合并、自
 | **Receipt 回执** | `receipt.json` | 执行者唯一的写入面：做了什么、证据文件在哪 |
 | **Verify 验收** | `verify.json` | 独立复跑命令 + diff 写域检查 + 证据哈希 |
 | **Review 评审** | `review.json` | 异体评审结论；通过后票据才 `done` |
+| **Landing 落地记录** | `.dispatch/runs/<run-id>/landing.json` + `.dispatch/ledger/landings.jsonl` | 把已验证 Run 合入本地 integration branch；不 push、不改目标分支 |
 
 ### 状态机
 
@@ -55,6 +56,7 @@ ready ──render──> claimed ──start──> running ──verify(pass/d
 - 没有运行记录、但依赖未完成的票据，`status` 显示为 `blocked`。
 - `failed` 的运行可以重新 `render`（旧运行记录保留），并会继续出现在 `status` / `export` 的可重试 frontier 中；重新 `render` 后进入新一轮 `claimed`。
 - 状态存放在 `.dispatch/state.json`；`run.json` / `verify.json` / `review.json` 是每一次运行的证据链；`reviews.jsonl` 是跨运行的复核账本。
+- `done` 之后可以执行 `dispatch land`：把 Run 快照合并到本地 integration branch，写 `landing.json` 与 `landings.jsonl`；目标分支不变，不 push。
 
 ---
 
@@ -194,9 +196,25 @@ verify 会做这些检查：
 - receipt.json 存在、JSON 合法、status=done、字段齐全。
 - 逐条按当前平台 shell 在 **execution root** 复跑票据里的 Verify 命令，退出码必须为 0；stdout/stderr 存到 logs/ 并算哈希。
 - 真实 git diff 的每个文件都落在 Write scope 内；worktree 之外的 **main checkout** 也必须干净。
+- 为 execution root 的完整 diff（含未跟踪文件）计算 `diff_hash`，供 `land` 在落地前复核。
 - 回执 criteria 覆盖全部 acceptance，并核对证据文件的 sha256 / inline hash / absent 路径。
 
 退出码：0 = passed，2 = degraded（可进入 review 但需显式接受），1 = failed。review 会拒绝实现者自审：评审者不能等于票据的 Owner，也不能等于 render --agent 的领取人；L4 票据必须加 --human；degraded 验收必须加 --accept-degraded。有效评审会追加 .dispatch/ledger/reviews.jsonl。
+
+### 落地为 integration branch（v0.5）
+
+票据通过 `review` 后，可以把它合入本地 integration branch，交给人工开 PR：
+
+```bash
+dispatch land 01
+dispatch land 01 --into main --branch integration/demo --json
+```
+
+- 默认目标分支为 `main`（没有则 `master`，再退回当前分支）；默认 integration branch 为 `dispatch/land/<run-id>`。
+- 只创建本地 integration branch，**不 push、不切换、不合并目标分支**；`landing.json` 写到 Run 目录，并追加 `.dispatch/ledger/landings.jsonl`。
+- land 要求票据和 Run 都是 `done`、主检出干净、Run 有 worktree、票据内容未变、integration branch 不存在。
+- land 会把 worktree 里的未提交改动提交为 run commit；因此应先完成 review 再 land。land 前还会复核 `verify.json` 的 `diff_hash`，review 后 worktree 再被修改会被拒绝，必须重新 verify/review。
+- 合并冲突时清理临时 worktree 和 integration branch，目标分支保持原样；成功后从 integration branch 人工开 PR。
 
 当还有 `ready` 票据时（例如刚 `lint` / `plan` 之后），可以选择导出文件，或直接投递到本机 DSH 任务看板。
 
@@ -212,7 +230,7 @@ dispatch export --format dsh-team --output ready.json
 
 > `export` 只读取可执行的 `ready` / `failed` 票据，不调用任何远端 API；票据进入 `claimed` / `running` / `review` / `done` 后不会再出现在导出里。拿到 JSON/Markdown 后可以粘到 DSH、Codex 或别的执行端。
 
-### 直接投递到 DSH 任务看板（v0.2 → v0.4）
+### 直接投递到 DSH 任务看板（v0.2 → v0.5）
 
 前置：DSH Desktop 正在运行，任务看板插件的 Web GUI 可访问。默认地址是 `http://127.0.0.1:50567`；端口不同用 `--url` 或环境变量 `DSH_TASK_BOARD_URL` 覆盖。
 
@@ -248,13 +266,13 @@ dispatch dsh delete 01
 
 - 卡片 id 由 `project` + 票据 id 确定性生成，重复 `push` 不会重复建卡。
 - `push` 只创建卡，**不会运行卡**；`dsh run` 才发运行 action。
-- `dsh run` 发送 `{kind:"run", taskId}`；`--rerun` 发送 `{kind:"rerun", taskId}`（rerun 尚未实测）。命令触发后立即返回 status/execution id，不等待终态；要等结果请用 `dsh status` 或 DSH GUI。
+- `dsh run` 发送 `{kind:"run", taskId}`；`--rerun` 发送 `{kind:"rerun", taskId}`（2026-10-21 已实测：同一卡第二次 execution 成功）。命令触发后立即返回 status/execution id，不等待终态；要等结果请用 `dsh status` 或 DSH GUI。
 - `update` 发送 `{kind:"update", taskId, patch}`，`patch` 必须是非空 object；`archive` / `delete` 只发送 `{kind, taskId}`。
 - `archive` 只写 `archivedAt`，不删除卡；`delete` 会物理删除。删除有子卡的父卡前，先删除或解除子卡，否则看板返回 `task has subtasks; detach or delete them first`。
 - 这三个命令只改看板卡，不改本地票据状态；验收仍走 `dispatch verify` / `dispatch review`。
 - 映射写入 `.dispatch/dsh-map.json`，不提交到 Git。
 - `dsh outcome` 只是把外部执行结果记到看板执行记录，**不代替** `dispatch verify`；验收仍以本地命令、diff 和证据哈希为准。
-- 2026-10-21 实测：显式 POST `{kind:"run", taskId}` 后 Host 实际 spawn teammate，父卡/子卡 status=done、result=succeeded；`dsh run` 封装的就是这个 action，并已用真实看板 probe 卡完成 wrapper e2e（status=done、execution succeeded、summary=DSH_RUN_PROBE_OK，约 32 秒）。rerun 未实测。证据见 `references/dsh-board.md`。
+- 2026-10-21 实测：显式 POST `{kind:"run", taskId}` 后 Host 实际 spawn teammate，父卡/子卡 status=done、result=succeeded；`dsh run` 封装的就是这个 action，并已用真实看板 probe 卡完成 wrapper e2e（status=done、execution succeeded、summary=DSH_RUN_PROBE_OK，约 32 秒）。2026-10-21 另用真实 probe 卡实测 `--rerun`：同一卡产生两次 execution，均 succeeded，summary 均为 DSH_RERUN_PROBE_OK。证据见 `references/dsh-board.md`。
 
 ---
 
@@ -269,6 +287,7 @@ dispatch dsh delete 01
 | `dispatch start <id>` | `claimed` → `running` |
 | `dispatch verify <id>` | 独立验收；passed/degraded → `review`，failed → `failed`；退出码 0/2/1 |
 | `dispatch review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → `done`，并追加 review ledger |
+| `dispatch land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
 | `dispatch status [--json]` | 每张票的 effective state、blocked_by、next frontier |
 | `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic（只读） |
 | `dispatch dsh push [--mode <cards 或 team>] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
@@ -305,6 +324,7 @@ agent-dispatch/
 │   ├── state.py       # state.json、Run 生命周期、git worktree
 │   ├── verify.py      # 验收门禁、判据级证据
 │   ├── review.py      # 异体评审、review ledger
+│   ├── landing.py     # integration branch、landing ledger
 │   ├── export.py      # status / 文件导出适配器
 │   ├── dsh.py         # DSH 看板投递、回读、外部结果回写、卡片变更
 │   └── cli.py         # 命令行入口
@@ -323,7 +343,7 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.4 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；一票一 worktree；DSH 看板只是投递、触发与回读面，不是验收面。**
+设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.5 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；一票一 worktree；land 只建 integration branch，人工开 PR；DSH 看板只是投递、触发与回读面，不是验收面。**
 
 ## 9. 作为技能使用（跨项目）
 

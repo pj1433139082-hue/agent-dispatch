@@ -93,7 +93,7 @@ _Avoid_: verify、验收通过
 _Avoid_: 备份文件、snapshot（泛称）
 
 **Landing（落地记录）**:
-一次把已验证 Run 合入目标分支的记录，声明 pre-land 与 landing commit；回退以新的 revert 记录表达，不重写共享分支历史。
+一次把已验证 Run 合入本地 integration branch 的记录，声明 target / run / landing commit 与 `pushed=false`；不 push、不合并目标分支，回退以新的 revert 记录表达，不重写共享分支历史。
 _Avoid_: merge、发布
 
 ## Rules
