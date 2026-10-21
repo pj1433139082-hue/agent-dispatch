@@ -15,9 +15,10 @@
 - 新增 `dsh status`：读回看板状态并与 `.dispatch/dsh-map.json` 对照。
 - 新增 `dsh outcome`：把外部 agent 的结果写回映射卡；不替代 `dispatch verify`。
 - `dsh-board` 文件导出从裸卡数组改为完整 `create` 信封文档；`dispatch export` 仍只读。
-- 全量测试从 61 增至 70；真实 50567 探针完成 create/status/outcome 与 team 父子卡验证，探针卡已清理。
+- 全量测试从 61 增至 74（技能层新增 4 项）；真实 50567 探针完成 create/status/outcome 与 team 父子卡验证，探针卡已清理。
 - 2026-10-21 进一步实测：显式触发 teamRun 卡后，Host 真实启动 Lead + teammate，父卡摘要回传 `PARENT_PROBE_OK` 与子卡 `CHILD_PROBE_OK`；详细证据见 `docs/verification/2026-10-21-v0.2-boundaries.md`。
 - Codex CLI 0.159.2 实际消费了 `dispatch export --format codex` 生成的工单；issue forms 通过 SchemaStore schema 校验；v0.2.0 GitHub Release 已发布。
+- 增加自包含技能分发形态：根目录 `SKILL.md`、`scripts/dispatch.py`、`scripts/build_skill.py`；构建产物包含完整 `src/agent_dispatch`，复制到任意项目即可运行，不依赖全局安装。
 - 版本升至 0.2.0；wheel 与干净 venv 控制台入口已复核。
 
 ## 已知边界
