@@ -1,6 +1,6 @@
 # ADR-0007 编排主流程：需求对齐 → 拷问+选型 → 规格 → 拆票 → 实现
 
-- 状态：**Proposed**（2026-10-22 用户在会话 f85c01f1 口述；交付标准与卡点待《编排主流程需求问卷》回收后定稿）
+- 状态：**Accepted**（2026-10-22 口述提出；同日问卷回收 Q1/Q3/Q6/Q8/Q11 后定稿）
 - 影响范围：agent-dispatch 技能的主流程（不是新增独立框架）、与 ask-matt / grill-with-docs / to-spec / to-tickets / implement-spec 的衔接
 - 前置：ADR-0006（上下文包 / 两阶段 brief / 失败回灌 / 收口）
 
@@ -42,3 +42,26 @@
 - 正面：甲方只在 S1/S3 两个点上深度参与，其余交给 agent；每段都有文件留痕，会话中断不丢上下文。
 - 负面：S1 问卷本身需要甲方花 10–20 分钟；S2 的子 agent 并行会消耗额度。
 - 未定：问卷是否复用 `ask_user_question` 交互、还是纯 Markdown 文件（见问卷 Q7）。
+
+
+## 6. 问卷回收（2026-10-22，甲方答）
+
+| 问 | 结论 |
+|---|---|
+| Q1 卡点 | **S1 + S2 + S3 三处停**：问卷回答、选型结论、交付标准都要甲方签字；S4/S5 全自动 |
+| Q3 交付标准形式 | **可命令化验收命令 + checkbox 清单**（命令是硬门禁，checkbox 供人工核对） |
+| Q6 子 agent 授权 | **独立 worktree 写代码，不 push**；推送与合并要甲方点头 |
+| Q8 选型证据门槛 | **≥2 个开源参照（指到文件/函数）+ ≥1 轮对抗性审查**，并写明不采用的理由 |
+| Q11 固化方式 | **加薄包装命令** `align` / `spec` / `tickets` |
+
+补充需求（甲方原话）：**问卷要分级，让用户自己选择提问的颗粒度**。已落成三档：`quick` 3 问 / `standard` 6 问 / `thorough` 10 问，问卷第一段就是档位选择，改一行即可换档。
+
+## 7. 落地状态（v0.9.0）
+
+| 阶段 | 命令 | 状态 |
+|---|---|---|
+| S1 | `dispatch align <slug> [--level quick\|standard\|thorough]` | 已实现：出 `docs/questions/<slug>.md`，含档位表与分级问题 |
+| S3 | `dispatch spec <slug>` | 已实现：问卷未答满（仍有空 `>` 行）时拒绝写规格；`--force` 可跳过 |
+| S4 | `dispatch tickets <slug>` | 已实现：从规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`（`Status: draft`，补 Write scope/Verify 后才进 `tickets/`） |
+| S2 | `grill-with-docs` + 子 agent 并行 + `persona` | 技能侧执行，证据门槛见 Q8；本仓只提供 `export --format agent-team` |
+| S5 | `render/context/brief/checkpoint/verify/review/closeout/land` | 已实现（v0.7.1–v0.8.0） |

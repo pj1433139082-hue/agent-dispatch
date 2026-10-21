@@ -26,6 +26,16 @@ from .dsh import (
     update_card,
 )
 from .export import export_text, status_document
+from .align import (
+    delivery_items,
+    normalize_level,
+    questionnaire_is_answered,
+    questionnaire_path,
+    render_questionnaire,
+    render_spec,
+    spec_path,
+    write_drafts,
+)
 from .brief import approve_brief, approval_status, check_brief, ensure_brief
 from .checkpoints import list_generations, publish as publish_checkpoint
 from .closeout import write as write_closeout
@@ -112,6 +122,31 @@ def _parser() -> argparse.ArgumentParser:
     closeout_parser.add_argument("--tickets", type=Path, default=None)
     closeout_parser.add_argument("--root", type=Path, default=Path("."))
     closeout_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    align_parser = subparsers.add_parser(
+        "align", help="Write the requirement questionnaire for a slug (ask-matt stage S1)."
+    )
+    align_parser.add_argument("slug")
+    align_parser.add_argument("--title", default="")
+    align_parser.add_argument("--level", default="standard", help="quick | standard | thorough")
+    align_parser.add_argument("--root", type=Path, default=Path("."))
+    align_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    spec_parser = subparsers.add_parser(
+        "spec", help="Write the spec skeleton once the questionnaire is answered (S3)."
+    )
+    spec_parser.add_argument("slug")
+    spec_parser.add_argument("--title", default="")
+    spec_parser.add_argument("--force", action="store_true", help="Write even if answers look unfilled.")
+    spec_parser.add_argument("--root", type=Path, default=Path("."))
+    spec_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    tickets_parser = subparsers.add_parser(
+        "tickets", help="Draft one ticket per delivery-standard item (S4)."
+    )
+    tickets_parser.add_argument("slug")
+    tickets_parser.add_argument("--root", type=Path, default=Path("."))
+    tickets_parser.add_argument("--json", action="store_true", dest="as_json")
 
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
@@ -718,6 +753,70 @@ def _cmd_brief(args: argparse.Namespace) -> int:
     print(f"Brief: {target}")
     return 0
 
+def _cmd_align(args: argparse.Namespace) -> int:
+    slug = args.slug.strip()
+    if not slug:
+        print("slug is required", file=sys.stderr)
+        return 1
+    level = normalize_level(args.level)
+    title = args.title.strip() or slug
+    target = questionnaire_path(args.root, slug)
+    if target.exists():
+        print(f"questionnaire already exists: {target}", file=sys.stderr)
+        return 1
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_questionnaire(slug, title, level), encoding="utf-8")
+    if args.as_json:
+        print(json.dumps({"slug": slug, "level": level, "path": str(target)}, ensure_ascii=False))
+    else:
+        print(f"Questionnaire: {target} (level={level})")
+    return 0
+
+
+def _cmd_spec(args: argparse.Namespace) -> int:
+    slug = args.slug.strip()
+    answers = questionnaire_path(args.root, slug)
+    ok, problems = questionnaire_is_answered(answers)
+    if not ok and not args.force:
+        print(f"align first: {slug}", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    target = spec_path(args.root, slug)
+    if target.exists():
+        print(f"spec already exists: {target}", file=sys.stderr)
+        return 1
+    target.parent.mkdir(parents=True, exist_ok=True)
+    title = args.title.strip() or slug
+    target.write_text(render_spec(slug, title, answers), encoding="utf-8")
+    if args.as_json:
+        print(json.dumps({"slug": slug, "path": str(target), "answered": ok}, ensure_ascii=False))
+    else:
+        print(f"Spec: {target}")
+    return 0
+
+
+def _cmd_tickets(args: argparse.Namespace) -> int:
+    slug = args.slug.strip()
+    spec = spec_path(args.root, slug)
+    if not spec.is_file():
+        print(f"no spec for {slug} (run dispatch spec {slug} first)", file=sys.stderr)
+        return 1
+    items = delivery_items(spec.read_text(encoding="utf-8"))
+    if not items:
+        print(f"spec {slug}: no delivery-standard items to turn into tickets", file=sys.stderr)
+        return 1
+    written = write_drafts(args.root, slug, items)
+    if args.as_json:
+        print(json.dumps({"slug": slug, "tickets": [str(path) for path in written]}, ensure_ascii=False))
+        return 0
+    print(f"Drafted {len(written)} ticket(s) under {written[0].parent}")
+    for path in written:
+        print(f"  - {path.name}")
+    print("Next: fill Write scope and Verify in each draft, move it to tickets/, then run lint.")
+    return 0
+
+
 def _cmd_checkpoint(args: argparse.Namespace) -> int:
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -1144,6 +1243,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_context(args)
     if args.command == "brief":
         return _cmd_brief(args)
+    if args.command == "align":
+        return _cmd_align(args)
+    if args.command == "spec":
+        return _cmd_spec(args)
+    if args.command == "tickets":
+        return _cmd_tickets(args)
     if args.command == "checkpoint":
         return _cmd_checkpoint(args)
     if args.command == "closeout":
