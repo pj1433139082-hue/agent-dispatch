@@ -6,6 +6,8 @@
 
 当前版本 **v0.2**，Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。v0.2 新增 DSH 任务看板的真实推送、状态回读与外部结果回写。
 
+> 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
+
 ---
 
 ## 1. 它解决什么问题
@@ -222,10 +224,10 @@ dispatch dsh outcome 01 --result succeeded --by worker-a --summary "tests and di
 | `dispatch render <id> --agent <name>` | 创建 Run + Work order，状态 `claimed` |
 | `dispatch start <id>` | `claimed` → `running` |
 | `dispatch verify <id>` | 独立验收；通过 → `review`，失败 → `failed` |
-| `dispatch review <id> --reviewer ... --verdict pass|fail` | 异体评审；通过 → `done` |
+| `dispatch review <id> --reviewer ... --verdict <pass 或 fail>` | 异体评审；通过 → `done` |
 | `dispatch status [--json]` | 每张票的 effective state、blocked_by、next frontier |
 | `dispatch export --format ...` | 导出就绪工作到 DSH team / DSH board / Codex / generic（只读） |
-| `dispatch dsh push [--mode cards|team] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
+| `dispatch dsh push [--mode <cards 或 team>] [--dry-run]` | 把就绪票据投递到本机 DSH 任务看板；只建卡不运行 |
 | `dispatch dsh status` | 读回 DSH 看板状态并与本地映射对照 |
 | `dispatch dsh outcome <id> --result ... --by ...` | 把外部 agent 的结果回写到映射卡 |
 
@@ -274,3 +276,42 @@ python -m pytest -q
 ```
 
 设计边界与后续方向见 `.scratch/agent-dispatch-v0/spec.md`。v0.2 的关键约束仍是：**票据是事实源，运行记录是证据链，状态只能由门禁推进；DSH 看板只是投递与回读面，不是验收面。**
+
+## 9. 作为技能使用（跨项目）
+
+本仓库不是“只给本项目用的 CLI”。它自带一个可复制的技能层：
+
+```text
+SKILL.md                  # 技能入口与触发词
+scripts/dispatch.py       # 直接用仓库内 src 运行，不依赖 pip install
+scripts/build_skill.py    # 生成干净技能目录
+src/agent_dispatch/       # 自带框架
+references/               # 票据、DSH、Codex 细节
+templates/ticket.md       # 最小票据模板
+agents/openai.yaml        # 技能显示信息
+```
+
+生成并安装到其他项目：
+
+```bash
+# 1) 生成干净技能包（默认 dist/agent-dispatch-skill）
+python scripts/build_skill.py
+
+# 2) 复制到全局技能目录（所有项目可用）
+#    Windows PowerShell:
+#    Copy-Item -Recurse -Force dist/agent-dispatch-skill "$HOME\.agents\skills\agent-dispatch"
+#    Linux/macOS:
+#    cp -R dist/agent-dispatch-skill ~/.agents/skills/agent-dispatch
+
+# 3) 从任意项目调用
+python "$HOME/.agents/skills/agent-dispatch/scripts/dispatch.py" --version
+python "$HOME/.agents/skills/agent-dispatch/scripts/dispatch.py" lint
+```
+
+也可以只装到单个项目：把 `dist/agent-dispatch-skill` 复制成 `<项目>/.agents/skills/agent-dispatch`。
+
+要点：
+
+- 技能根目录就是框架根，`src/agent_dispatch` 随技能一起走；目标项目不需要安装 Python 包。
+- 目标项目的 `tickets/`、`.dispatch/` 和证据仍写在目标项目根目录，不写进技能目录。
+- `tests/test_skill.py` 覆盖了 wrapper 从任意 cwd 启动、构建产物自包含、构建后入口可运行。
