@@ -84,6 +84,9 @@ def test_protocol_full_requires_an_accepted_brief(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "brief 未通过" in result.stderr
+    auto = json.loads((only_run(tmp_path) / "auto.json").read_text(encoding="utf-8"))
+    assert auto["status"] == "protocol-failed"
+    assert "brief" in auto["error"]
 
 
 def test_protocol_full_injects_context_checkpoint_and_closeout(tmp_path: Path) -> None:

@@ -102,6 +102,7 @@ def sweep(root: Path) -> list[dict[str, object]]:
         directory = Path(data["_dir"])
         created = _parse(data.get("created_at"))
         age = int((now - created).total_seconds()) if created else None
+        deadline = int(data.get("deadline_seconds") or 900)
         name, ts = _last_artifact(directory)
         idle = int(now.timestamp() - ts) if ts else None
         rows.append(
@@ -114,6 +115,8 @@ def sweep(root: Path) -> list[dict[str, object]]:
                 "idle_seconds": idle,
                 "has_receipt": (directory / "receipt.json").is_file(),
                 "evidence_state": evidence_state(directory),
+                "deadline_seconds": deadline,
+                "over_deadline": bool(isinstance(age, int) and age > deadline),
             }
         )
     return rows

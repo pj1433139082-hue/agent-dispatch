@@ -80,6 +80,10 @@ def _parser() -> argparse.ArgumentParser:
         help="Run in the main checkout instead of an isolated git worktree.",
     )
     render_parser.add_argument(
+        "--deadline-minutes", type=int, default=15, dest="deadline_minutes",
+        help="派单时限（分钟，默认 15）；sweep 用它判断 over_deadline。",
+    )
+    render_parser.add_argument(
         "--with-context",
         action="store_true",
         dest="with_context",
@@ -747,7 +751,11 @@ def _cmd_render(args: argparse.Namespace) -> int:
         return 1
 
     run = Run.create(
-        args.root, ticket, claimed_by=args.agent, use_worktree=not args.no_worktree
+            args.root,
+            ticket,
+            claimed_by=args.agent,
+            use_worktree=not args.no_worktree,
+            deadline_seconds=max(1, args.deadline_minutes) * 60,
     )
     store.set_ticket(ticket.id, run.id, "claimed")
     if getattr(args, "with_context", False):
@@ -1023,7 +1031,8 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
         age = row["age_seconds"]
         age_text = str(age) + "s" if isinstance(age, int) else "?"
         flag = "RECEIPT" if row["has_receipt"] else "working"
-        print(row["ticket_id"].ljust(28) + row["state"].ljust(9) + "age=" + age_text.ljust(8) + "idle=" + idle_text.ljust(16) + flag)
+        over = " OVER-DEADLINE" if row.get("over_deadline") else ""
+        print(row["ticket_id"].ljust(28) + row["state"].ljust(9) + "age=" + age_text.ljust(8) + "idle=" + idle_text.ljust(16) + flag + over)
     return 0
 
 

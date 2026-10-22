@@ -116,6 +116,7 @@ class Run:
         ticket: Ticket,
         claimed_by: str = "",
         use_worktree: bool = True,
+        deadline_seconds: int = 900,
     ) -> "Run":
         root = Path(root).resolve()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -139,6 +140,7 @@ class Run:
             "claimed_by": claimed_by or ticket.owner,
             "created_at": _now(),
             "skill_version": _skill_version,
+            "deadline_seconds": deadline_seconds,
             "use_worktree": False,
             "execution_root": "",
         }

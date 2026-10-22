@@ -294,19 +294,8 @@ def auto_run(
     run.set_state("running")
     store.set_ticket(ticket.id, run.id, "running")
 
-    protocol_info: dict[str, object] = {"enabled": protocol == "full"}
-    if protocol == "full":
-        try:
-            protocol_info.update(
-                protocol_prepare(
-                    root, ticket, run, env_hint=env_hint, require_brief=require_brief
-                )
-            )
-        except ProtocolError as error:
-            run.set_state("failed")
-            store.set_ticket(ticket.id, run.id, "failed")
-            raise AutoError(str(error)) from error
 
+    protocol_info: dict[str, object] = {"enabled": protocol == "full"}
     result: dict[str, object] = {
         "version": 1,
         "ticket_id": ticket.id,
@@ -323,6 +312,20 @@ def auto_run(
         "run_directory": str(run.directory),
         "created_at": _now(),
     }
+    if protocol == "full":
+        try:
+            protocol_info.update(
+                protocol_prepare(
+                    root, ticket, run, env_hint=env_hint, require_brief=require_brief
+                )
+            )
+        except ProtocolError as error:
+            run.set_state("failed")
+            store.set_ticket(ticket.id, run.id, "failed")
+            # 协议门失败也要留一份机读结果，否则只剩一句 stderr，事后无法复盘
+            result.update({"status": "protocol-failed", "error": str(error), "protocol": protocol_info})
+            _write_result(run, result)
+            raise AutoError(str(error)) from error
     _write_result(run, result)
 
     attempts = result["attempts"]

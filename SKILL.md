@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.14.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.15.0。
 
 ## 何时使用
 
@@ -117,7 +117,7 @@ S2 的角色是**必须有**的，不是可选的：
 | `plan` | 拓扑波次、frontier、写域冲突 |
 | `status [--json]` | 每张票的有效状态 |
 | `new <id> ...` | 生成一张可 lint 的票据 |
-| `render <id> --agent <name> [--no-worktree]` | 创建 Run、worktree 和 work-order，状态进入 claimed |
+| `render <id> --agent <name> [--no-worktree] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
 | `start <id>` | claimed → running |
 | `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed]` | 异体评审；通过 → done，并追加 review ledger |
@@ -132,7 +132,7 @@ S2 的角色是**必须有**的，不是可选的：
 | `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
 | `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
 | `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
-| `sweep [--json]` | 只读巡检：每条 active run 的 `age_seconds / last_artifact / idle_seconds / has_receipt`；**不自动 kill** |
+| `sweep [--json]` | 只读巡检：每条 active run 的 `age_seconds / last_artifact / idle_seconds / has_receipt / deadline_seconds / over_deadline`；**不自动 kill** |
 | `repair [--write] [--json]` | 从 `.dispatch/runs/*/run.json` 反向重建 `state.json`；默认 dry-run；冲突票**不写**并 exit 1 |
 | `align <slug> [--level quick 或 standard 或 thorough]` | S1：出需求问卷 `docs/questions/<slug>.md`，第一段就是档位选择（3 / 6 / 10 问） |
 | `closeout <id> [--json]` | 对照 票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |
