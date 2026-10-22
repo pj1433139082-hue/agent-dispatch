@@ -61,6 +61,7 @@ def test_tickets_need_a_spec_with_delivery_items(tmp_path: Path) -> None:
     spec.parent.mkdir(parents=True)
     spec.write_text("# Spec\n\n## Delivery standard\n\n- [ ] 交付项一 <!-- verify: python -c pass -->\n- [ ] 交付项二\n", encoding="utf-8")
 
+    assert run_dispatch(tmp_path, "confirm", "pipeline", "--by", "甲方", "--via", "card").returncode == 0
     drafted = run_dispatch(tmp_path, "tickets", "pipeline")
     assert drafted.returncode == 0, drafted.stderr
     files = sorted((tmp_path / ".dispatch" / "drafts" / "pipeline").iterdir())

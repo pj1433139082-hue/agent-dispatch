@@ -48,7 +48,14 @@ from .graph import build_plan
 from .landing import LandingError, land_run
 from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
-from .pipeline import selection_signed, sign_selection, stage_prompt, stage_report
+from .pipeline import (
+    confirm_spec,
+    selection_signed,
+    sign_selection,
+    spec_confirmation,
+    stage_prompt,
+    stage_report,
+)
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
 from .ticket import Ticket, lint_tickets, load_tickets, parse_ticket
@@ -155,6 +162,7 @@ def _parser() -> argparse.ArgumentParser:
         "tickets", help="Draft one ticket per delivery-standard item (S4)."
     )
     tickets_parser.add_argument("slug")
+    tickets_parser.add_argument("--force", action="store_true", help="Skip the S3 confirmation gate.")
     tickets_parser.add_argument("--root", type=Path, default=Path("."))
     tickets_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -201,6 +209,13 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--apply", action="store_true")
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    confirm_parser = subparsers.add_parser("confirm", help="Record the S3 spec confirmation (client checked the delivery standard).")
+    confirm_parser.add_argument("slug")
+    confirm_parser.add_argument("--by", required=True)
+    confirm_parser.add_argument("--via", required=True, choices=("dialog", "card"))
+    confirm_parser.add_argument("--note", default="")
+    confirm_parser.add_argument("--root", type=Path, default=Path("."))
 
     sign_parser = subparsers.add_parser("sign", help="Record the client signature on the S2 selection summary.")
     sign_parser.add_argument("slug")
@@ -952,6 +967,13 @@ def _cmd_tickets(args: argparse.Namespace) -> int:
     if not spec.is_file():
         print(f"no spec for {slug} (run dispatch spec {slug} first)", file=sys.stderr)
         return 1
+    if spec_confirmation(args.root, slug) is None and not getattr(args, "force", False):
+        print(
+            "confirm the spec first: dispatch confirm " + slug + " --by <人> --via dialog|card "
+            "(or pass --force)",
+            file=sys.stderr,
+        )
+        return 1
     items, reason = delivery_diagnosis(spec.read_text(encoding="utf-8"))
     if not items:
         print(f"spec {slug}: no delivery items to split ({reason})", file=sys.stderr)
@@ -1056,6 +1078,19 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
         for finding in report.get("findings", []):
             print(f"  - {finding}")
     return 0 if report["status"] == "pass" else 1
+
+
+def _cmd_confirm(args: argparse.Namespace) -> int:
+    try:
+        path = confirm_spec(args.root, args.slug, args.by, args.via, args.note)
+    except FileNotFoundError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    print("Confirmed " + args.slug + " (" + args.via + ") -> " + str(path))
+    return 0
 
 
 def _cmd_sign(args: argparse.Namespace) -> int:
@@ -1574,6 +1609,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "confirm":
+        return _cmd_confirm(args)
     if args.command == "sign":
         return _cmd_sign(args)
     if args.command == "stage":

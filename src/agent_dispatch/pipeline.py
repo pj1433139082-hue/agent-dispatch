@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .align import delivery_items, drafts_dir, questionnaire_is_answered, questionnaire_path, spec_path
@@ -56,6 +57,7 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
     spec = spec_path(root, slug)
     items = delivery_items(spec.read_text(encoding="utf-8")) if spec.is_file() else []
     s3_ok = spec.is_file() and bool(items)
+    confirmed = spec_confirmation(root, slug) if s3_ok else None
 
     drafts = drafts_dir(root, slug)
     draft_files = sorted(drafts.glob("*.md")) if drafts.is_dir() else []
@@ -66,7 +68,7 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
     stages = {
         "s1": {"ok": s1_ok, "detail": "questionnaire answered" if s1_ok else "; ".join(problems), "path": str(questionnaire)},
         "s2": {"ok": s2_ok and signed, "detail": (signed_note if s2_ok else "selection pack is missing"), "roles": roles},
-        "s3": {"ok": s3_ok, "detail": (str(len(items)) + " delivery item(s)") if s3_ok else ("spec is missing" if not spec.is_file() else "spec has no delivery standard items"), "path": str(spec)},
+        "s3": {"ok": s3_ok and confirmed is not None, "detail": (str(len(items)) + " delivery item(s)") if s3_ok else ("spec is missing" if not spec.is_file() else "spec has no delivery standard items"), "path": str(spec)},
         "s4": {"ok": s4_ok, "detail": str(len(draft_files)) + " draft(s), " + str(len(ticket_files)) + " ticket(s)"},
         "s5": {"ok": bool(ticket_files), "detail": "dispatch the tickets (render + subagent); not auto-run"},
     }
@@ -79,6 +81,8 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
         next_step = "s2-signature"
     elif not s3_ok:
         next_step = "s3"
+    elif not confirmed:
+        next_step = "s3-confirm"
     elif not s4_ok:
         next_step = "s4"
     else:
@@ -190,3 +194,55 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
     out.append("- 确认方式：" + via)
     summary.write_text("\n".join(out) + "\n", encoding="utf-8")
     return summary
+
+
+CONFIRM_HEADING = "## Confirmation"
+
+
+def spec_confirmation(root: Path, slug: str) -> dict[str, object] | None:
+    """读规格里的确认块：有核对人且确认方式合法才算确认过。"""
+    spec = spec_path(Path(root), slug)
+    if not spec.is_file():
+        return None
+    text = spec.read_text(encoding="utf-8")
+    index = text.find(CONFIRM_HEADING)
+    if index < 0:
+        return None
+    block = text[index:]
+    fields: dict[str, str] = {}
+    for line in block.splitlines():
+        stripped = line.strip()
+        for key in ("核对人", "日期", "确认方式", "备注"):
+            prefix = "- " + key + "："
+            if stripped.startswith(prefix):
+                fields[key] = stripped[len(prefix):].strip()
+    if not fields.get("核对人") or fields.get("确认方式") not in VIA_MARKERS:
+        return None
+    return fields
+
+
+def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Path:
+    """把 S3 的"规格已核对"写进规格文末（幂等：重跑覆盖同一块）。"""
+    if via not in VIA_MARKERS:
+        raise ValueError("--via must be one of: " + ", ".join(VIA_MARKERS))
+    spec = spec_path(Path(root), slug)
+    if not spec.is_file():
+        raise FileNotFoundError("no spec for " + slug + " (run dispatch spec " + slug + " first)")
+    text = spec.read_text(encoding="utf-8")
+    index = text.find(CONFIRM_HEADING)
+    if index >= 0:
+        text = text[:index].rstrip() + "\n"
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    block = "\n".join(
+        [
+            CONFIRM_HEADING,
+            "",
+            "- 核对人：" + by,
+            "- 日期：" + stamp,
+            "- 确认方式：" + via,
+            "- 备注：" + (note.strip() or "（无）"),
+            "",
+        ]
+    )
+    spec.write_text(text.rstrip() + "\n\n" + block, encoding="utf-8")
+    return spec
