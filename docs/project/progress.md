@@ -83,10 +83,17 @@
 - ADR-0007 定稿 Accepted：五段主流程 —— S1 需求对齐（问卷）→ S2 拷问 + 技术选型（子 agent 并行：开源借鉴 / 搜索取证 / 多角色对抗审查）→ S3 规格与交付标准 → S4 拆票与派单（persona）→ S5 实现（implement-spec / auto）。
 - 提交 `6f46845`；提交信息报全量 150 例通过（361s）。
 
+## 2026-10-22 — v0.10.0 S2 选型面板
+
+- `select.py`：`dispatch select <slug>` 生成 `docs/selection/<slug>/` 证据包 —— `00-panel.json`（角色、人设、作品名）+ 每角色一份只读 brief + `99-summary.md`（汇总与甲方签字行）。
+- 三个必选角色带硬门槛：`oss-scout` 至少 2 个开源参照并指到 `文件:函数`；`search-scout` 给 URL + 摘录 + 日期 + 版本；`adversary` 必须写未说出口的假设与可证伪实验。`--with domain-owner,cost-keeper` 选可选角色，`--add id:persona` 加自定义角色，`--list` 看角色表。
+- `agents/personas/` 新增五张角色卡（oss-scout / search-scout / adversary / domain-owner / cost-keeper），随技能分发，`personas list` 可查。
+- 提交 `c37dd2f`。
+
 ### 文档同步说明（2026-10-22 03:3x）
 
-- 本页与 `README.md`、`docs/project/architecture.md` 由接管会话补齐到提交 `6f46845`（v0.9.0）；此后由实施会话继续推进的版本（v0.10 起）不在本文范围内，以 `SKILL.md`、`pyproject.toml` 与 `git log` 为准。
-- 证据见 `docs/verification/2026-10-22-v0.9-trailing-docs.md`。
+- 本页与 `README.md`、`docs/project/architecture.md` 由接管会话补齐到提交 `c37dd2f`（v0.10.0）。此后由实施会话继续推进的版本不在本文范围内，以 `SKILL.md`、`pyproject.toml` 与 `git log` 为准。
+- 证据见 `docs/verification/2026-10-22-v0.9-trailing-docs.md` 与 `docs/verification/2026-10-22-v0.10-clean-run.md`。
 
 ## 已知边界
 

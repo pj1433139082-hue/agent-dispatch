@@ -4,7 +4,7 @@
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
 
-当前版本以 `pyproject.toml` 为准（`dispatch --version` 同值），Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。版本变化：v0.2 DSH 看板适配；v0.2.1 跨项目路径与 Windows verify 修复；v0.3 看板卡片 update / archive / delete；v0.4 一票一 worktree + 判据级证据 + review ledger + `dsh run`；v0.5 `dispatch land`（只建本地 integration branch，人工开 PR）；v0.6 `dispatch auto`（外部执行器 + 重试）；v0.7 Persona 人设字段与 `assign` / `personas`；v0.7.1 上下文包 `context`、两阶段 `brief` 门禁、`auto` 失败回灌；v0.8.0 运行检查点 `checkpoint` 与收口报告 `closeout`；v0.9.0 需求对齐薄包装 `align` / `spec` / `tickets`（问卷分级 + 交付标准切票）。
+当前版本以 `pyproject.toml` 为准（`dispatch --version` 同值），Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。版本变化：v0.2 DSH 看板适配；v0.2.1 跨项目路径与 Windows verify 修复；v0.3 看板卡片 update / archive / delete；v0.4 一票一 worktree + 判据级证据 + review ledger + `dsh run`；v0.5 `dispatch land`（只建本地 integration branch，人工开 PR）；v0.6 `dispatch auto`（外部执行器 + 重试）；v0.7 Persona 人设字段与 `assign` / `personas`；v0.7.1 上下文包 `context`、两阶段 `brief` 门禁、`auto` 失败回灌；v0.8.0 运行检查点 `checkpoint` 与收口报告 `closeout`；v0.9.0 需求对齐薄包装 `align` / `spec` / `tickets`（问卷分级 + 交付标准切票）；v0.10.0 S2 选型面板 `select` 与 5 张随技能分发的角色卡（oss-scout / search-scout / adversary / domain-owner / cost-keeper）。
 
 > 本仓库同时是 `agent-dispatch` 技能包：根目录有 `SKILL.md`，`scripts/dispatch.py` 可直接从仓库运行，`scripts/build_skill.py` 生成可复制到其他项目的干净技能目录。见第 9 节。
 
@@ -289,15 +289,21 @@ dispatch closeout 01
 
 > `auto` 重试不再原样重跑：第 n 次尝试前会把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。
 
-### 需求对齐（v0.9）
+### 需求对齐与选型（v0.9 → v0.10）
 
 ```bash
 dispatch align payment-import --level standard   # 写 docs/questions/to-questionnaire-<slug>.md
 dispatch spec  payment-import                   # 问卷答满才放行，写 docs/specs/<slug>.md 骨架
 dispatch tickets payment-import                  # 按交付标准逐条切草稿票到 .dispatch/drafts/
+
+# S2 选型面板：三个必选角色（开源借鉴 / 搜索取证 / 对抗审查）+ 可选角色
+#   每个角色一份只读 brief 与一份证据；汇总末尾留甲方签字行
+dispatch select payment-import
 ```
 
-> 这三条只产出骨架与门禁，不代替思考：拷问、选型、规格正文仍由会话完成（ADR-0007 的五段主流程 S1/S3/S4）。
+> 这些命令只产出骨架、证据包与门禁，不代替思考：拷问、选型判断、规格正文仍由会话完成（ADR-0007 的五段主流程 S1–S4）。
+>
+> `select` 的必选角色有硬门槛：oss-scout 至少 2 个开源参照并指到 `文件:函数`；search-scout 给出 URL + 摘录 + 日期 + 版本；adversary 写出未说出口的假设与可证伪实验。缺项不会被自动补全。
 
 ### 导出为文件（只读）
 
@@ -379,6 +385,7 @@ dispatch dsh delete 01
 | `dispatch checkpoint <id> [--label <名>] [--list]` | 为 Run 发布不可变检查点（代次目录 + manifest + diff + 恢复说明），原子替换 `current.json` |
 | `dispatch closeout <id>` | 票据 / brief 声明文件 / 实际 diff 三方对照，写机器可读收口报告 + 人读页 |
 | `dispatch align <slug> [--level quick\|standard\|thorough]` / `spec <slug>` / `tickets <slug>` | 需求问卷（3/6/10 问）→ 问卷答满放行写 spec 骨架 → 按交付标准切草稿票 |
+| `dispatch select <slug> [--with <角色,角色>] [--add <id:persona>] [--list]` | 生成 S2 选型证据包 `docs/selection/<slug>/`：面板清单、每角色 brief、汇总与甲方签字行 |
 | `dispatch export --format ...` | 导出就绪工作到 agent-team / codex / generic（dsh-team 兼容；只读） |
 
 通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。

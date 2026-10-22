@@ -1,6 +1,6 @@
 # 项目架构
 
-本页记录当前模块边界与数据流（v0.9；文档同步于提交 `6f46845`）；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
+本页记录当前模块边界与数据流（v0.10；文档同步于提交 `c37dd2f`）；术语见 `CONTEXT.md`，关键决策见 `docs/adr/`。
 
 ## 模块与边界
 
@@ -22,6 +22,7 @@
 | `checkpoints.py` | 为 Run 发布不可变检查点（代次目录、manifest、diff、恢复说明），原子替换 current.json | 只读源工作树；不删除旧代次 |
 | `closeout.py` | 票据 / brief 声明文件 / 实际 diff 三方对照，写收口报告 | 只读证据；不推进票据状态 |
 | `align.py` | 需求问卷（quick/standard/thorough）、spec 骨架、按交付标准切草稿票 | 只写 `docs/questions`、`docs/specs`、`.dispatch/drafts`；不代替思考 |
+| `select.py` | S2 选型面板：三必需角色 + 可选/自定义角色，出证据包与甲方签字行 | 只写 `docs/selection/<slug>/`；不替甲方做选型决定 |
 | `dsh.py` | 生成 DSH 看板信封、投递/触发/读回/变更本机 loopback 卡片、回写外部结果 | 只操作看板；不替代 verify |
 | `cli.py` | argparse 命令路由、退出码和用户可见错误 | 不绕过各模块门禁 |
 
@@ -51,6 +52,8 @@ auto: ticket -> Run/worktree -> 外部执行器 -> verify（可重试）
   -> .dispatch/context/<id>.md（入口文档 / 历史运行 / 阻塞邻居 / 踩坑索引）
 
 检查点：checkpoint 命令 -> .dispatch/runs/<run-id>/checkpoints/<代次>/（不可变）
+
+选型：select 命令 -> docs/selection/<slug>/（面板清单 + 每角色 brief + 汇总签字行）
 
 ready tickets
   -> export.py（dsh-team / dsh-board / codex / generic，只读）
