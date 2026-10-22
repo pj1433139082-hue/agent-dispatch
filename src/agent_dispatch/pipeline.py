@@ -83,3 +83,100 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
     else:
         next_step = ""
     return {"slug": slug, "stages": stages, "next": next_step or "done", "ok": next_step == ""}
+
+
+def _question(qid: str, header: str, question: str, options: list[tuple[str, str]]) -> dict[str, object]:
+    return {
+        "id": qid,
+        "header": header,
+        "question": question,
+        "options": [{"label": label, "description": description} for label, description in options],
+    }
+
+
+def stage_prompt(root: Path, slug: str) -> dict[str, object]:
+    """当前卡点要人回答什么——给会话层喂弹窗或决策卡用。"""
+    report = stage_report(root, slug)
+    step = str(report["next"])
+    questions: list[dict[str, object]] = []
+    hint = ""
+
+    if step == "s1":
+        questions.append(
+            _question(
+                "s1-tier",
+                "S1 需求问卷",
+                "问卷已经生成，先选提问颗粒度还是直接开始答？",
+                [("现在答", "我逐题回答 docs/questions/" + slug + ".md"), ("先看问卷", "先把问题发给我看")],
+            )
+        )
+        hint = "答案写进 docs/questions/" + slug + ".md 的 > 行"
+    elif step == "s2":
+        questions.append(
+            _question(
+                "s2-roles",
+                "S2 选型角色",
+                "选型要带哪些角色？三角色（开源借鉴 / 搜索取证 / 对抗审查）是必选的。",
+                [
+                    ("标准三角色", "只跑必选的三个"),
+                    ("加领域约束", "另加 domain-owner"),
+                    ("加成本守护", "另加 cost-keeper"),
+                    ("两者都加", "domain-owner + cost-keeper"),
+                ],
+            )
+        )
+        hint = "按选择运行 dispatch select " + slug + " --with ..."
+    elif step == "s2-signature":
+        questions.append(
+            _question(
+                "s2-signature",
+                "S2 选型签字",
+                "选型证据包已生成，是否通过？",
+                [
+                    ("通过", "结论采纳，进入 S3"),
+                    ("有保留通过", "采纳但有保留项，写进备注"),
+                    ("打回", "结论不成立，退回重做"),
+                ],
+            )
+        )
+        hint = "把答案写回 docs/selection/" + slug + "/99-summary.md 的签字行（或运行 dispatch sign " + slug + " --by <人>）"
+    elif step == "s3":
+        questions.append(
+            _question(
+                "s3-spec",
+                "S3 规格确认",
+                "规格里的交付标准需要你确认：每条是否都该交付？",
+                [("已核对，继续拆票", "按当前交付标准拆票"), ("要改", "我先改规格")],
+            )
+        )
+        hint = "交付项写在 docs/specs/" + slug + ".md 的 ## Delivery standard，每条一个 '- [ ]'"
+    return {"slug": slug, "stage": step or "done", "questions": questions, "answer_hint": hint}
+
+
+def sign_selection(root: Path, slug: str, by: str, choice: str = "pass") -> Path:
+    """把签字写回 99-summary.md：签字人 + 勾选。"""
+    summary = pack_dir(Path(root), slug) / SUMMARY
+    if not summary.is_file():
+        raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
+    labels = {"pass": "通过", "hold": "有保留通过", "reject": "打回"}
+    label = labels.get(choice, "通过")
+    lines = summary.read_text(encoding="utf-8").splitlines()
+    out: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("- 签字人："):
+            out.append("- 签字人：" + by)
+            continue
+        if stripped.startswith("- 选择："):
+            boxes = []
+            for option in ("通过", "有保留通过", "打回"):
+                mark = "☑" if option == label else "☐"
+                boxes.append(mark + " " + option)
+            out.append("- 选择：" + "　".join(boxes))
+            continue
+        out.append(line)
+    if not any(line.startswith("- 选择：") for line in out):
+        out.append("- 选择：☐ 通过　☐ 有保留通过　☐ 打回")
+        out = [line.replace("☐ " + label, "☑ " + label) if line.startswith("- 选择：") else line for line in out]
+    summary.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return summary

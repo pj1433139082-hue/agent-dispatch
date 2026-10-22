@@ -48,7 +48,7 @@ from .graph import build_plan
 from .landing import LandingError, land_run
 from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
-from .pipeline import selection_signed, stage_report
+from .pipeline import selection_signed, sign_selection, stage_prompt, stage_report
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
 from .ticket import Ticket, lint_tickets, load_tickets, parse_ticket
@@ -202,10 +202,21 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    sign_parser = subparsers.add_parser("sign", help="Record the client signature on the S2 selection summary.")
+    sign_parser.add_argument("slug")
+    sign_parser.add_argument("--by", required=True, help="Who signs it.")
+    sign_parser.add_argument("--hold", action="store_true", help="Approve with reservations.")
+    sign_parser.add_argument("--reject", action="store_true", help="Reject the selection.")
+    sign_parser.add_argument("--root", type=Path, default=Path("."))
+
     stage_parser = subparsers.add_parser("stage", help="Show S1..S5 pipeline status for a slug.")
     stage_parser.add_argument("slug")
     stage_parser.add_argument("--root", type=Path, default=Path("."))
     stage_parser.add_argument("--json", action="store_true", dest="as_json")
+    stage_parser.add_argument(
+        "--prompt", action="store_true",
+        help="Output the questions this stage needs a human to answer (for a dialog or decision card).",
+    )
 
     sweep_parser = subparsers.add_parser("sweep", help="Read-only liveness report for active runs.")
     sweep_parser.add_argument("--root", type=Path, default=Path("."))
@@ -1043,7 +1054,22 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def _cmd_sign(args: argparse.Namespace) -> int:
+    choice = "reject" if args.reject else ("hold" if args.hold else "pass")
+    try:
+        path = sign_selection(args.root, args.slug, args.by, choice)
+    except FileNotFoundError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    print("Signed " + args.slug + " (" + choice + ") -> " + str(path))
+    return 0
+
+
 def _cmd_stage(args: argparse.Namespace) -> int:
+    if getattr(args, "prompt", False):
+        payload = stage_prompt(args.root, args.slug)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload["questions"] else 2
     report = stage_report(args.root, args.slug)
     if args.as_json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -1541,6 +1567,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "sign":
+        return _cmd_sign(args)
     if args.command == "stage":
         return _cmd_stage(args)
     if args.command == "claim":

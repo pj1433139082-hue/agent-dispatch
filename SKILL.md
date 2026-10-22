@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.19.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.20.0。
 
 ## 何时使用
 
@@ -119,7 +119,8 @@ python scripts/acceptance.py --json   # 机读（CI）
 
 | 命令 | 用途 |
 |---|---|
-| `stage <slug> [--json]` | S1–S5 一屏状态：问卷 / 选型 / 签字 / 规格 / 票；`next` 指下一步，未就绪 exit 1 |
+| `sign <slug> --by <人> [--hold 或 --reject]` | 把甲方签字写回 `docs/selection/<slug>/99-summary.md`（签字人 + 勾选），签了 `spec` 才放行 |
+| `stage <slug> [--json] [--prompt]` | S1–S5 一屏状态；`--prompt` 输出该阶段要人回答的问题（喂弹窗/决策卡）：问卷 / 选型 / 签字 / 规格 / 票；`next` 指下一步，未就绪 exit 1 |
 | `claim <id> [--ttl-minutes 15]` | 把票的写域展开成**文件租约**（`.dispatch/locks/`）：被别的活租约占着就 exit 3，不让两个 run 同时写同一文件 |
 | `gc [--apply]` | 回收 ended run 的 worktree：干净且已 land → REMOVE；有未提交改动或未 land → HOLD |
 | `seat [--cap 8] [--occupied N] [--inactive a,b]` | 派单前查名额：占用/上限/可回收 inactive，给出可/需回收/阻塞 |
