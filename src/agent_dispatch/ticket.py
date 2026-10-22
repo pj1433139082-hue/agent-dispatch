@@ -294,6 +294,16 @@ def _find_cycle(edges: dict[str, list[str]]) -> list[str]:
     return []
 
 
+PLACEHOLDER_MARKERS = ("待填", "TODO", "TBD", "FIXME")
+
+
+def _placeholder(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return True
+    return any(marker in text for marker in PLACEHOLDER_MARKERS)
+
+
 def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
     tickets = list(tickets)
     issues: list[Issue] = []
@@ -321,6 +331,12 @@ def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
             issues.append(Issue("missing_acceptance", ticket.id, "at least one '- [ ]' acceptance item is required"))
         if ticket.persona and ticket.persona_error:
             issues.append(Issue("invalid_persona", ticket.id, ticket.persona_error))
+        for scope in ticket.write_scope:
+            if _placeholder(scope):
+                issues.append(Issue("placeholder_value", ticket.id, f"write scope {scope!r} is still a placeholder"))
+        for command in ticket.verify:
+            if _placeholder(command):
+                issues.append(Issue("placeholder_value", ticket.id, f"verify {command!r} is still a placeholder"))
         for scope in (*ticket.write_scope, *ticket.read_scope):
             error = _scope_error(scope)
             if error:

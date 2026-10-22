@@ -75,6 +75,19 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
 
 
+PIPELINE_DOC_PREFIXES = (
+    ".dispatch/",
+    "docs/questions/",
+    "docs/selection/",
+    "docs/specs/",
+    "tickets/",
+)
+
+
+def _pipeline_doc(path: str) -> bool:
+    return path.startswith(PIPELINE_DOC_PREFIXES)
+
+
 def changed_files(root: Path, base_commit: str) -> list[str]:
     if not base_commit:
         raise ValueError("run has no base commit; render inside a git repository")
@@ -409,6 +422,18 @@ def verify_run(
                 # 与**当前 HEAD**比较，而不是 run 的 base commit：主仓在 run 期间
                 # 的正常提交不算作弊，只有当前仍脏的改动才说明有人在主仓上动手。
                 main_files = changed_files(root, "HEAD")
+                # 流水线自产文档（S1 问卷 / S2 选型 / S3 规格 / S4 票）不改执行根，
+                # 它们留在主仓里属于正常，不该把 verify 判死；其它脏文件仍照拦。
+                skipped_main = [path for path in main_files if _pipeline_doc(path)]
+                main_files = [path for path in main_files if not _pipeline_doc(path)]
+                if skipped_main:
+                    checks.append(
+                        {
+                            "name": "main checkout (ignored)",
+                            "ok": True,
+                            "detail": "outside the write scope: " + ", ".join(skipped_main),
+                        }
+                    )
             except ValueError as error:
                 check("main checkout", False, str(error))
             else:

@@ -27,6 +27,7 @@ from .dsh import (
 )
 from .export import export_text, status_document
 from .align import (
+    delivery_diagnosis,
     delivery_items,
     normalize_level,
     questionnaire_is_answered,
@@ -936,13 +937,9 @@ def _cmd_tickets(args: argparse.Namespace) -> int:
     if not spec.is_file():
         print(f"no spec for {slug} (run dispatch spec {slug} first)", file=sys.stderr)
         return 1
-    items = delivery_items(spec.read_text(encoding="utf-8"))
+    items, reason = delivery_diagnosis(spec.read_text(encoding="utf-8"))
     if not items:
-        print(
-            f"spec {slug}: the '## Delivery standard' section is empty or missing; "
-            "fill it with one bullet per shippable item, then rerun dispatch tickets",
-            file=sys.stderr,
-        )
+        print(f"spec {slug}: no delivery items to split ({reason})", file=sys.stderr)
         return 1
     written = write_drafts(args.root, slug, items)
     if args.as_json:
