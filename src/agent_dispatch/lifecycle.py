@@ -9,6 +9,10 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+class ScopeError(RuntimeError):
+    """写域无法展开（git 不可用等）：调用方必须 fail-closed，不许静默少领。"""
+
+
 ACTIVE = {"claimed", "running"}
 
 
@@ -238,12 +242,13 @@ def expand_scope(root: Path, patterns: list[str]) -> list[str]:
         if item not in globby:
             paths.add(item.strip())
     if globby:
-        try:
-            tracked = subprocess.run(
-                ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=False
-            ).stdout.splitlines()
-        except OSError:
-            tracked = []
+        completed = subprocess.run(
+            ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=False
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "git ls-files failed").strip()
+            raise ScopeError("cannot resolve the ticket write scope: " + detail)
+        tracked = completed.stdout.splitlines()
         for pattern in globby:
             for candidate in tracked:
                 if path_matches_scope(pattern, candidate):

@@ -45,7 +45,7 @@ from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as wri
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
-from .lifecycle import claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
+from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
@@ -1043,7 +1043,11 @@ def _cmd_claim(args: argparse.Namespace) -> int:
     if run is None:
         print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
         return 1
-    paths = expand_scope(args.root, list(ticket.write_scope))
+    try:
+        paths = expand_scope(args.root, list(ticket.write_scope))
+    except ScopeError as error:
+        print("SCOPE-UNRESOLVED " + str(error), file=sys.stderr)
+        return 4
     report = claim_paths(
         args.root, ticket.id, run.id, paths, ttl_seconds=max(1, args.ttl_minutes) * 60
     )

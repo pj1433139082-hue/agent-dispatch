@@ -128,6 +128,16 @@ class Run:
         except ValueError:
             ticket_path = str(ticket.path.resolve())
         base_commit = current_commit(root)
+        if base_commit:
+            toplevel = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"], cwd=root, capture_output=True, text=True, check=False
+            ).stdout.strip()
+            if toplevel and Path(toplevel).resolve() != root.resolve():
+                shutil.rmtree(directory, ignore_errors=True)
+                raise ValueError(
+                    "root is inside another git repository (toplevel=" + toplevel + "); "
+                    "run dispatch from that repository or git init this directory first"
+                )
         data: dict[str, object] = {
             "run_id": run_id,
             "ticket_id": ticket.id,
@@ -144,6 +154,14 @@ class Run:
             "use_worktree": False,
             "execution_root": "",
         }
+        if use_worktree and not base_commit:
+            shutil.rmtree(directory, ignore_errors=True)
+            raise ValueError(
+                "cannot determine the base commit: git is not usable in "
+                + str(root)
+                + " (try: git rev-parse HEAD); render inside a healthy git repository"
+                + " or pass --no-worktree deliberately"
+            )
         if use_worktree and base_commit:
             worktree_path = root / ".dispatch" / "worktrees" / run_id
             branch = f"dispatch/{run_id}"
