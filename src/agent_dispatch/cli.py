@@ -1327,10 +1327,14 @@ def _cmd_land(args: argparse.Namespace) -> int:
     except LandingError as exc:
         print(f"LAND {exc}", file=sys.stderr)
         return 1
+    # land 之后释放这个 run 的文件租约：票已经合入，写域不再被占用
+    released = release_claims(args.root, str(record.get("run_id", "")))
     if args.as_json:
-        print(json.dumps(record, ensure_ascii=False, indent=2))
+        print(json.dumps({**record, "released_claims": released}, ensure_ascii=False, indent=2))
         return 0
     print(f"Landed {args.ticket_id} -> {record['integration_branch']}")
+    if released:
+        print(f"Released {len(released)} file lease(s)")
     print(f"Target: {record['target_branch']} ({record['target_commit']})")
     print(f"Run commit: {record['run_commit']}")
     print(f"Landing commit: {record['landing_commit']}")
