@@ -8,6 +8,7 @@
 
 - Owner: implementer
 - Risk: L1
+- Persona: (unassigned)
 - Write scope: path/to/file
 - Write scope: tests/
 - Read scope: README.md

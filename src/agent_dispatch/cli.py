@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import re
+import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__
@@ -22,13 +26,28 @@ from .dsh import (
     update_card,
 )
 from .export import export_text, status_document
+from .align import (
+    delivery_items,
+    normalize_level,
+    questionnaire_is_answered,
+    questionnaire_path,
+    render_questionnaire,
+    render_spec,
+    spec_path,
+    write_drafts,
+)
+from .brief import approve_brief, approval_status, check_brief, ensure_brief
+from .checkpoints import list_generations, publish as publish_checkpoint
+from .closeout import write as write_closeout
+from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as write_selection_pack
+from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
+from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
 from .ticket import Ticket, lint_tickets, load_tickets, parse_ticket
 from .verify import verify_run
-
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dispatch", description="Ticketed work dispatch.")
@@ -57,6 +76,92 @@ def _parser() -> argparse.ArgumentParser:
         dest="no_worktree",
         help="Run in the main checkout instead of an isolated git worktree.",
     )
+    render_parser.add_argument(
+        "--with-context",
+        action="store_true",
+        dest="with_context",
+        help="Embed a repository-derived context pack into the run and its work order.",
+    )
+    render_parser.add_argument(
+        "--require-brief",
+        action="store_true",
+        dest="require_brief",
+        help="Refuse to render until a brief for this ticket has been accepted.",
+    )
+
+    context_parser = subparsers.add_parser(
+        "context", help="Write the ticket's repository-derived context pack."
+    )
+    context_parser.add_argument("ticket_id")
+    context_parser.add_argument("--tickets", type=Path, default=None)
+    context_parser.add_argument("--root", type=Path, default=Path("."))
+    context_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    brief_parser = subparsers.add_parser(
+        "brief", help="Create, check, or accept a read-only brief before implementation."
+    )
+    brief_parser.add_argument("ticket_id")
+    brief_parser.add_argument("--tickets", type=Path, default=None)
+    brief_parser.add_argument("--root", type=Path, default=Path("."))
+    brief_parser.add_argument("--check", action="store_true", dest="check")
+    brief_parser.add_argument("--approve", default="", metavar="NAME")
+    brief_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    checkpoint_parser = subparsers.add_parser(
+        "checkpoint", help="Publish or list immutable run checkpoints."
+    )
+    checkpoint_parser.add_argument("ticket_id")
+    checkpoint_parser.add_argument("--label", default="manual")
+    checkpoint_parser.add_argument("--list", action="store_true", dest="list_only")
+    checkpoint_parser.add_argument("--root", type=Path, default=Path("."))
+    checkpoint_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    closeout_parser = subparsers.add_parser(
+        "closeout", help="Compare ticket, brief and diff; write the closeout report."
+    )
+    closeout_parser.add_argument("ticket_id")
+    closeout_parser.add_argument("--tickets", type=Path, default=None)
+    closeout_parser.add_argument("--root", type=Path, default=Path("."))
+    closeout_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    align_parser = subparsers.add_parser(
+        "align", help="Write the requirement questionnaire for a slug (ask-matt stage S1)."
+    )
+    align_parser.add_argument("slug")
+    align_parser.add_argument("--title", default="")
+    align_parser.add_argument("--level", default="standard", help="quick | standard | thorough")
+    align_parser.add_argument("--root", type=Path, default=Path("."))
+    align_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    spec_parser = subparsers.add_parser(
+        "spec", help="Write the spec skeleton once the questionnaire is answered (S3)."
+    )
+    spec_parser.add_argument("slug")
+    spec_parser.add_argument("--title", default="")
+    spec_parser.add_argument("--force", action="store_true", help="Write even if answers look unfilled.")
+    spec_parser.add_argument("--root", type=Path, default=Path("."))
+    spec_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    tickets_parser = subparsers.add_parser(
+        "tickets", help="Draft one ticket per delivery-standard item (S4)."
+    )
+    tickets_parser.add_argument("slug")
+    tickets_parser.add_argument("--root", type=Path, default=Path("."))
+    tickets_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    select_parser = subparsers.add_parser(
+        "select", help="Build the S2 selection panel (roles, personas, evidence briefs)."
+    )
+    select_parser.add_argument("slug", nargs="?", default="")
+    select_parser.add_argument("--title", default="")
+    select_parser.add_argument("--with", dest="with_roles", default="", help="逗号分隔的可选角色，如 domain-owner,cost-keeper")
+    select_parser.add_argument(
+        "--add", dest="extra_roles", action="append", default=[],
+        metavar="ID[:PERSONA]", help="追加自定义角色，可重复",
+    )
+    select_parser.add_argument("--list", action="store_true", dest="list_only")
+    select_parser.add_argument("--root", type=Path, default=Path("."))
+    select_parser.add_argument("--json", action="store_true", dest="as_json")
 
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
@@ -96,6 +201,12 @@ def _parser() -> argparse.ArgumentParser:
         help="Integration branch name (default: dispatch/land/<run-id>).",
     )
     land_parser.add_argument("--root", type=Path, default=Path("."))
+    land_parser.add_argument(
+        "--require-closeout",
+        action="store_true",
+        dest="require_closeout",
+        help="Refuse to land unless closeout.json reports pass.",
+    )
     land_parser.add_argument("--json", action="store_true", dest="as_json")
 
     auto_parser = subparsers.add_parser(
@@ -151,7 +262,7 @@ def _parser() -> argparse.ArgumentParser:
     export_parser.add_argument(
         "--format",
         required=True,
-        choices=("dsh-team", "dsh-board", "codex", "generic"),
+        choices=("agent-team", "dsh-team", "dsh-board", "codex", "generic"),
         dest="export_format",
     )
     export_parser.add_argument("--tickets", type=Path, default=None)
@@ -223,6 +334,30 @@ def _parser() -> argparse.ArgumentParser:
     dsh_delete.add_argument("--task-id", default=None, help="Override the mapped DSH task id.")
     dsh_delete.add_argument("--json", action="store_true", dest="as_json")
 
+    assign_parser = subparsers.add_parser(
+        "assign", help="Assign a persona to a ticket before dispatch."
+    )
+    assign_parser.add_argument("ticket_id")
+    assign_parser.add_argument("--persona", required=True, help="Persona file or short name.")
+    assign_parser.add_argument("--tickets", type=Path, default=None)
+    assign_parser.add_argument("--root", type=Path, default=Path("."))
+    assign_parser.add_argument("--by", default="dispatcher", help="Who assigned the persona.")
+    assign_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    personas_parser = subparsers.add_parser(
+        "personas", help="Discover and inspect agent persona sources."
+    )
+    personas_sub = personas_parser.add_subparsers(dest="personas_command", required=True)
+    personas_list = personas_sub.add_parser("list", help="List discoverable personas.")
+    personas_list.add_argument("--search-root", action="append", default=[])
+    personas_list.add_argument("--tickets", type=Path, default=None)
+    personas_list.add_argument("--root", type=Path, default=Path("."))
+    personas_list.add_argument("--json", action="store_true", dest="as_json")
+    personas_show = personas_sub.add_parser("show", help="Show one persona source.")
+    personas_show.add_argument("spec")
+    personas_show.add_argument("--search-root", action="append", default=[])
+    personas_show.add_argument("--json", action="store_true", dest="as_json")
+
     new_parser = subparsers.add_parser("new", help="Create a new ticket file.")
     new_parser.add_argument("ticket_id")
     new_parser.add_argument("--title", required=True)
@@ -235,13 +370,11 @@ def _parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
     return parser
 
-
 def _tickets_dir(args: argparse.Namespace) -> Path:
     if args.tickets is not None:
         return args.tickets
     root = getattr(args, "root", Path("."))
     return root / "tickets"
-
 
 def _load_and_lint(directory: Path):
     tickets = load_tickets(directory)
@@ -251,7 +384,6 @@ def _load_and_lint(directory: Path):
             print(issue.format(), file=sys.stderr)
         return None, 1
     return tickets, 0
-
 
 def _cmd_lint(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(args.tickets)
@@ -263,14 +395,12 @@ def _cmd_lint(args: argparse.Namespace) -> int:
         print(f"{len(tickets)} ticket(s) valid")
     return 0
 
-
 def _state_map(root: Path) -> dict[str, str]:
     data = DispatchState(root).load()
     return {
         ticket_id: str(value.get("state", ""))
         for ticket_id, value in data.get("tickets", {}).items()
     }
-
 
 def _cmd_status(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
@@ -286,7 +416,6 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print(f"Frontier: {', '.join(document['frontier']) or '-'}")
     return 0
 
-
 def _cmd_export(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
@@ -300,7 +429,6 @@ def _cmd_export(args: argparse.Namespace) -> int:
     else:
         print(text, end="")
     return 0
-
 
 def _cmd_new(args: argparse.Namespace) -> int:
     directory = args.tickets
@@ -329,6 +457,7 @@ def _cmd_new(args: argparse.Namespace) -> int:
         "",
         f"- Owner: {args.owner}",
         f"- Risk: {args.risk}",
+        "- Persona: (unassigned)",
         *[f"- Write scope: {scope}" for scope in scopes],
         *[f"- Verify: {command}" for command in verify],
         "",
@@ -341,6 +470,170 @@ def _cmd_new(args: argparse.Namespace) -> int:
     print(f"Created {path}")
     return 0
 
+def _persona_roots(args: argparse.Namespace) -> list[Path]:
+    roots = [Path(value) for value in getattr(args, "search_root", [])]
+    directory = _tickets_dir(args)
+    roots.append(directory / "personas")
+    for raw_root in os.environ.get("AGENT_DISPATCH_PERSONA_ROOTS", "").split(os.pathsep):
+        if raw_root.strip():
+            roots.append(Path(raw_root.strip()))
+    roots.append(BUILTIN_PERSONA_DIR)
+    return roots
+
+def _persona_dict(persona: Persona) -> dict[str, object]:
+    return {
+        "name": persona.name,
+        "role": persona.role,
+        "domain": persona.domain,
+        "description": persona.description,
+        "path": str(persona.path),
+        "capabilities": list(persona.capabilities),
+        "must_call_when": list(persona.must_call_when),
+    }
+
+def _set_persona_line(text: str, relative: str) -> str:
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    dispatch = next(
+        (index for index, line in enumerate(lines) if line.strip().lower() == "## dispatch"),
+        None,
+    )
+    if dispatch is None:
+        lines.extend(["", "## Dispatch", "", f"- Persona: {relative}"])
+        return newline.join(lines) + newline
+    end = next(
+        (index for index in range(dispatch + 1, len(lines)) if lines[index].startswith("## ")),
+        len(lines),
+    )
+    for index in range(dispatch + 1, end):
+        if re.match(r"^\s*[-*]\s+persona\s*:", lines[index], re.IGNORECASE):
+            lines[index] = f"- Persona: {relative}"
+            return newline.join(lines) + (newline if text.endswith("\n") else "")
+    insert_at = dispatch + 1
+    while insert_at < end and not lines[insert_at].strip():
+        insert_at += 1
+    owner_at = next(
+        (
+            index
+            for index in range(dispatch + 1, end)
+            if re.match(r"^\s*[-*]\s+owner\s*:", lines[index], re.IGNORECASE)
+        ),
+        None,
+    )
+    if owner_at is not None:
+        insert_at = owner_at + 1
+    lines.insert(insert_at, f"- Persona: {relative}")
+    return newline.join(lines) + (newline if text.endswith("\n") else "")
+
+def _cmd_assign(args: argparse.Namespace) -> int:
+    directory = _tickets_dir(args)
+    tickets = load_tickets(directory)
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    existing = DispatchState(args.root).ticket(ticket.id)
+    if existing:
+        state = str(existing.get("state", ""))
+        if state == "done" or state in ACTIVE_STATES:
+            print(
+                f"ticket {ticket.id} already has a run ({state}); assign before dispatch",
+                file=sys.stderr,
+            )
+            return 1
+    try:
+        persona = load_persona(args.persona)
+    except PersonaError as exc:
+        print(f"PERSONA: {exc}", file=sys.stderr)
+        return 1
+
+    personas_dir = directory / "personas"
+    personas_dir.mkdir(parents=True, exist_ok=True)
+    source = persona.path.resolve()
+    destination = personas_dir / source.name
+    if destination.exists() and destination.resolve() != source:
+        if destination.read_bytes() != source.read_bytes():
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()[:8]
+            destination = personas_dir / f"{source.stem}-{digest}{source.suffix or '.md'}"
+    if destination.resolve() != source:
+        shutil.copy2(source, destination)
+    relative = destination.relative_to(directory).as_posix()
+
+    before = hashlib.sha256(ticket.path.read_bytes()).hexdigest()
+    updated = _set_persona_line(ticket.path.read_text(encoding="utf-8"), relative)
+    ticket.path.write_text(updated, encoding="utf-8")
+    after = hashlib.sha256(ticket.path.read_bytes()).hexdigest()
+    record = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "ticket_id": ticket.id,
+        "persona": relative,
+        "persona_name": persona.name,
+        "role": persona.role,
+        "source": str(source),
+        "by": args.by,
+        "ticket_hash_before": before,
+        "ticket_hash_after": after,
+    }
+    log = Path(args.root) / ".dispatch" / "assignments.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if args.as_json:
+        print(json.dumps({"ok": True, **record}, ensure_ascii=False, indent=2))
+    else:
+        print(f"Assigned {ticket.id} -> {relative} ({persona.name})")
+        print(f"By: {args.by}")
+    return 0
+
+def _cmd_personas_list(args: argparse.Namespace) -> int:
+    personas = discover_personas(_persona_roots(args))
+    if args.as_json:
+        print(json.dumps([_persona_dict(persona) for persona in personas], ensure_ascii=False, indent=2))
+        return 0
+    for persona in personas:
+        detail = " / ".join(part for part in (persona.role, persona.domain) if part)
+        print(f"{persona.name}\t{detail}\t{persona.path}")
+    return 0
+
+def _cmd_personas_show(args: argparse.Namespace) -> int:
+    try:
+        persona = load_persona(args.spec)
+    except PersonaError:
+        persona = None
+        for root in _persona_roots(args):
+            candidate = Path(root) / args.spec
+            if candidate.is_file():
+                try:
+                    persona = load_persona(str(candidate))
+                    break
+                except PersonaError:
+                    continue
+        if persona is None:
+            print(f"PERSONA: persona source not found: {args.spec}", file=sys.stderr)
+            return 1
+    if args.as_json:
+        print(json.dumps(_persona_dict(persona), ensure_ascii=False, indent=2))
+        return 0
+    print(f"Name: {persona.name}")
+    print(f"Source: {persona.path}")
+    if persona.role:
+        print(f"Role: {persona.role}")
+    if persona.domain:
+        print(f"Domain: {persona.domain}")
+    if persona.description:
+        print(f"Description: {persona.description}")
+    if persona.capabilities:
+        print("Capabilities:")
+        for item in persona.capabilities:
+            print(f"- {item}")
+    if persona.must_call_when:
+        print("Must call when:")
+        for item in persona.must_call_when:
+            print(f"- {item}")
+    if persona.prompt:
+        print()
+        print(persona.prompt)
+    return 0
 
 def _cmd_plan(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(args.tickets)
@@ -364,10 +657,8 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             print(f"Error: {error}", file=sys.stderr)
     return 1 if plan.errors else 0
 
-
 def _find_ticket(tickets: list[Ticket], ticket_id: str) -> Ticket | None:
     return next((ticket for ticket in tickets if ticket.id == ticket_id), None)
-
 
 def _cmd_render(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
@@ -377,6 +668,12 @@ def _cmd_render(args: argparse.Namespace) -> int:
     if ticket is None:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
+
+    if getattr(args, "require_brief", False):
+        ok, why = approval_status(args.root, ticket)
+        if not ok:
+            print(f"ticket {ticket.id}: {why}", file=sys.stderr)
+            return 1
 
     store = DispatchState(args.root)
     existing = store.ticket(ticket.id)
@@ -406,12 +703,223 @@ def _cmd_render(args: argparse.Namespace) -> int:
         args.root, ticket, claimed_by=args.agent, use_worktree=not args.no_worktree
     )
     store.set_ticket(ticket.id, run.id, "claimed")
+    if getattr(args, "with_context", False):
+        pack_text = build_context_pack(args.root, ticket)
+        context_file = run.directory / "context.md"
+        context_file.write_text(pack_text, encoding="utf-8")
+        work_order = run.directory / "work-order.md"
+        if work_order.is_file():
+            work_order.write_text(
+                work_order.read_text(encoding="utf-8") + "\n## Context pack\n\n" + pack_text,
+                encoding="utf-8",
+            )
+        print(f"Context pack: {context_file}")
     print(f"Rendered {ticket.id} -> {run.directory}")
     print(f"Run ID: {run.id}")
     if run.data.get("use_worktree"):
         print(f"Execution root: {run.execution_root}")
         print(f"Worktree branch: {run.data.get('worktree_branch', '')}")
     return 0
+
+def _cmd_context(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    target = write_context_pack(args.root, ticket)
+    text = target.read_text(encoding="utf-8")
+    if args.as_json:
+        print(json.dumps({"ticket": ticket.id, "path": str(target), "chars": len(text)}, ensure_ascii=False))
+    else:
+        print(f"Context pack: {target}")
+        print(f"Chars: {len(text)}")
+    return 0
+
+def _cmd_brief(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    if args.approve:
+        try:
+            target = approve_brief(args.root, ticket, args.approve)
+        except ValueError as error:
+            print(f"brief 未通过：{error}", file=sys.stderr)
+            return 1
+        print(f"Approved: {target}")
+        return 0
+    if args.check:
+        ok, problems = check_brief(args.root, ticket.id)
+        if args.as_json:
+            print(json.dumps({"ticket": ticket.id, "ok": ok, "problems": problems}, ensure_ascii=False))
+        elif ok:
+            print(f"Brief OK: {ticket.id}")
+        else:
+            for problem in problems:
+                print(f"FAIL: {problem}", file=sys.stderr)
+        return 0 if ok else 1
+    target = ensure_brief(args.root, ticket)
+    print(f"Brief: {target}")
+    return 0
+
+def _cmd_select(args: argparse.Namespace) -> int:
+    if args.list_only:
+        rows = [
+            {"id": role.id, "name": role.name, "required": role.required, "persona": role.persona, "deliverable": role.deliverable}
+            for role in all_roles().values()
+        ]
+        if args.as_json:
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+            return 0
+        for row in rows:
+            mark = "必须" if row["required"] else "可选"
+            print(f"{row['id']:<14} {mark}  {row['name']}  -> {row['deliverable']}")
+        return 0
+    slug = (args.slug or "").strip()
+    if not slug:
+        print("slug is required (or use --list)", file=sys.stderr)
+        return 1
+    optional = [part.strip() for part in args.with_roles.split(",") if part.strip()]
+    extra: list[tuple[str, str]] = []
+    for raw in args.extra_roles:
+        role_id, _, persona = raw.partition(":")
+        extra.append((role_id, persona))
+    try:
+        roles = panel(optional, extra)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    title = args.title.strip() or slug
+    written = write_selection_pack(args.root, slug, title, roles)
+    if args.as_json:
+        print(json.dumps({"slug": slug, "roles": [role.id for role in roles], "files": [str(path) for path in written]}, ensure_ascii=False))
+        return 0
+    print(f"Selection pack: {pack_dir(args.root, slug)}")
+    for path in written:
+        print(f"  - {path.name}")
+    print("Next: hand each brief to its agent; collect evidence; fill 99-summary.md; wait for the client signature.")
+    return 0
+
+
+def _cmd_align(args: argparse.Namespace) -> int:
+    slug = args.slug.strip()
+    if not slug:
+        print("slug is required", file=sys.stderr)
+        return 1
+    level = normalize_level(args.level)
+    title = args.title.strip() or slug
+    target = questionnaire_path(args.root, slug)
+    if target.exists():
+        print(f"questionnaire already exists: {target}", file=sys.stderr)
+        return 1
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_questionnaire(slug, title, level), encoding="utf-8")
+    if args.as_json:
+        print(json.dumps({"slug": slug, "level": level, "path": str(target)}, ensure_ascii=False))
+    else:
+        print(f"Questionnaire: {target} (level={level})")
+    return 0
+
+
+def _cmd_spec(args: argparse.Namespace) -> int:
+    slug = args.slug.strip()
+    answers = questionnaire_path(args.root, slug)
+    ok, problems = questionnaire_is_answered(answers)
+    if not ok and not args.force:
+        print(f"align first: {slug}", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    target = spec_path(args.root, slug)
+    if target.exists():
+        print(f"spec already exists: {target}", file=sys.stderr)
+        return 1
+    target.parent.mkdir(parents=True, exist_ok=True)
+    title = args.title.strip() or slug
+    target.write_text(render_spec(slug, title, answers), encoding="utf-8")
+    if args.as_json:
+        print(json.dumps({"slug": slug, "path": str(target), "answered": ok}, ensure_ascii=False))
+    else:
+        print(f"Spec: {target}")
+    return 0
+
+
+def _cmd_tickets(args: argparse.Namespace) -> int:
+    slug = args.slug.strip()
+    spec = spec_path(args.root, slug)
+    if not spec.is_file():
+        print(f"no spec for {slug} (run dispatch spec {slug} first)", file=sys.stderr)
+        return 1
+    items = delivery_items(spec.read_text(encoding="utf-8"))
+    if not items:
+        print(f"spec {slug}: no delivery-standard items to turn into tickets", file=sys.stderr)
+        return 1
+    written = write_drafts(args.root, slug, items)
+    if args.as_json:
+        print(json.dumps({"slug": slug, "tickets": [str(path) for path in written]}, ensure_ascii=False))
+        return 0
+    print(f"Drafted {len(written)} ticket(s) under {written[0].parent}")
+    for path in written:
+        print(f"  - {path.name}")
+    print("Next: fill Write scope and Verify in each draft, move it to tickets/, then run lint.")
+    return 0
+
+
+def _cmd_checkpoint(args: argparse.Namespace) -> int:
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
+        return 1
+    if args.list_only:
+        generations = list_generations(run)
+        if args.as_json:
+            print(json.dumps(generations, ensure_ascii=False, indent=2))
+            return 0
+        if not generations:
+            print("(no checkpoints)")
+            return 0
+        for item in generations:
+            mark = "*" if item.get("current") else " "
+            print(f"{mark} {item.get('generation')}  {item.get('label')}  files={len(item.get('files') or [])}")
+        return 0
+    try:
+        target = publish_checkpoint(run, args.label)
+    except (OSError, FileExistsError) as error:
+        print(f"checkpoint failed: {error}", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps({"generation": target.name, "path": str(target)}, ensure_ascii=False))
+    else:
+        print(f"Checkpoint: {target}")
+    return 0
+
+
+def _cmd_closeout(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
+        return 1
+    report_file, report = write_closeout(args.root, ticket, run)
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(f"Closeout {report['status'].upper()}: {report_file}")
+        for finding in report.get("findings", []):
+            print(f"  - {finding}")
+    return 0 if report["status"] == "pass" else 1
 
 
 def _cmd_start(args: argparse.Namespace) -> int:
@@ -431,7 +939,6 @@ def _cmd_start(args: argparse.Namespace) -> int:
     store.set_ticket(args.ticket_id, run.id, "running")
     print(f"Started {args.ticket_id} ({run.id})")
     return 0
-
 
 def _cmd_verify(args: argparse.Namespace) -> int:
     store = DispatchState(args.root)
@@ -459,7 +966,6 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print(f"VERIFY {error}", file=sys.stderr)
     print(f"Verification failed for {args.ticket_id} ({run.id})", file=sys.stderr)
     return 1
-
 
 def _cmd_review(args: argparse.Namespace) -> int:
     store = DispatchState(args.root)
@@ -492,8 +998,34 @@ def _cmd_review(args: argparse.Namespace) -> int:
     print(f"Review {record['verdict']} recorded for {args.ticket_id} ({run.id})")
     return 0
 
+def _current_run(root: Path, ticket_id: str):
+    store = DispatchState(root)
+    existing = store.ticket(ticket_id)
+    if not existing:
+        return None, None
+    return store, Run.load(root, str(existing["run_id"]))
+
 
 def _cmd_land(args: argparse.Namespace) -> int:
+    if getattr(args, "require_closeout", False):
+        _, run = _current_run(args.root, args.ticket_id)
+        if run is None:
+            print(f"ticket {args.ticket_id}: no run to close out", file=sys.stderr)
+            return 1
+        report_file = run.directory / "closeout.json"
+        if not report_file.is_file():
+            print(f"ticket {args.ticket_id}: no closeout.json (run dispatch closeout first)", file=sys.stderr)
+            return 1
+        try:
+            report = json.loads(report_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"ticket {args.ticket_id}: closeout.json unreadable: {error}", file=sys.stderr)
+            return 1
+        if str(report.get("status", "")) != "pass":
+            print(f"ticket {args.ticket_id}: closeout is {report.get('status')}; refusing to land", file=sys.stderr)
+            for finding in report.get("findings", []):
+                print(f"  - {finding}", file=sys.stderr)
+            return 1
     try:
         record = land_run(
             args.root,
@@ -515,7 +1047,6 @@ def _cmd_land(args: argparse.Namespace) -> int:
     print("Next: push the integration branch and open a PR yourself.")
     return 0
 
-
 def _auto_exit_code(result: dict[str, object]) -> int:
     status = str(result.get("status", ""))
     if status == "landed":
@@ -523,7 +1054,6 @@ def _auto_exit_code(result: dict[str, object]) -> int:
     if status == "review":
         return 2 if result.get("verify_status") == "degraded" else 0
     return 1
-
 
 def _cmd_auto(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
@@ -595,7 +1125,6 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             print(f"VERIFY {error}", file=sys.stderr)
     return _auto_exit_code(result)
 
-
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args))
     if tickets is None:
@@ -633,7 +1162,6 @@ def _cmd_dsh_push(args: argparse.Namespace) -> int:
     print(f"Map: {report['map_path']}")
     return 0
 
-
 def _cmd_dsh_status(args: argparse.Namespace) -> int:
     try:
         document = board_status(root=args.root, base_url=args.url)
@@ -645,7 +1173,6 @@ def _cmd_dsh_status(args: argparse.Namespace) -> int:
     else:
         print(format_status(document))
     return 0
-
 
 def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
     try:
@@ -666,7 +1193,6 @@ def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
     else:
         print(f"Recorded {result['status']} for {result['ticket_id']} ({result['task_id']})")
     return 0
-
 
 def _cmd_dsh_update(args: argparse.Namespace) -> int:
     patch: dict[str, object] = {}
@@ -706,7 +1232,6 @@ def _cmd_dsh_update(args: argparse.Namespace) -> int:
         print(f"Updated {result['ticket_id']} ({result['task_id']}): {result.get('title', '')}")
     return 0
 
-
 def _cmd_dsh_run(args: argparse.Namespace) -> int:
     try:
         result = run_card(
@@ -726,7 +1251,6 @@ def _cmd_dsh_run(args: argparse.Namespace) -> int:
         print(f"Status: {result.get('status', '')}")
     return 0
 
-
 def _cmd_dsh_archive(args: argparse.Namespace) -> int:
     try:
         result = archive_card(
@@ -743,7 +1267,6 @@ def _cmd_dsh_archive(args: argparse.Namespace) -> int:
     else:
         print(f"Archived {result['ticket_id']} ({result['task_id']})")
     return 0
-
 
 def _cmd_dsh_delete(args: argparse.Namespace) -> int:
     try:
@@ -762,7 +1285,6 @@ def _cmd_dsh_delete(args: argparse.Namespace) -> int:
         print(f"Deleted {result['ticket_id']} ({result['task_id']})")
     return 0
 
-
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "lint":
@@ -771,6 +1293,22 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_plan(args)
     if args.command == "render":
         return _cmd_render(args)
+    if args.command == "context":
+        return _cmd_context(args)
+    if args.command == "brief":
+        return _cmd_brief(args)
+    if args.command == "select":
+        return _cmd_select(args)
+    if args.command == "align":
+        return _cmd_align(args)
+    if args.command == "spec":
+        return _cmd_spec(args)
+    if args.command == "tickets":
+        return _cmd_tickets(args)
+    if args.command == "checkpoint":
+        return _cmd_checkpoint(args)
+    if args.command == "closeout":
+        return _cmd_closeout(args)
     if args.command == "start":
         return _cmd_start(args)
     if args.command == "verify":
@@ -785,6 +1323,14 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status(args)
     if args.command == "export":
         return _cmd_export(args)
+    if args.command == "assign":
+        return _cmd_assign(args)
+    if args.command == "personas":
+        if args.personas_command == "list":
+            return _cmd_personas_list(args)
+        if args.personas_command == "show":
+            return _cmd_personas_show(args)
+        return 2
     if args.command == "dsh":
         if args.dsh_command == "push":
             return _cmd_dsh_push(args)

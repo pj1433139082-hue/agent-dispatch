@@ -1,11 +1,11 @@
 ---
 name: agent-dispatch
-description: 用票据契约、依赖分波、一票一 worktree、判据级证据、独立验收和异体评审，把任务派给 DSH 看板、Agent Team、Codex 或人工执行端。适用于多智能体任务编排、跨项目派单，以及把 ask-matt 产出的票据变成可执行工单。触发词：派单、任务编排、agent dispatch、票据、工单、依赖分波、写域、验收门禁、DSH 看板、Agent Team、Codex 工单。
+description: 用票据契约、依赖分波、一票一 worktree、判据级证据、独立验收和异体评审，把任务派给 DSH 子智能体、Agent Team、Codex 或人工执行端。适用于多智能体任务编排、跨项目派单，以及把 ask-matt 产出的票据变成可执行工单。触发词：派单、任务编排、agent dispatch、票据、工单、依赖分波、写域、验收门禁、子智能体、Agent Team、Codex 工单。
 ---
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.6.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.10.0。
 
 ## 何时使用
 
@@ -13,7 +13,8 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 - 需要限制每个执行者的写作用域，防止越界改动。
 - 需要一票一 worktree、独立复跑验证命令、检查真实 git diff、按 acceptance 逐条收证据。
 - 需要异体评审，避免实现者自己宣布完成。
-- 需要把 ready 票据投递到 DSH 任务看板，或导出成 Codex 工单。
+- 需要给每张票指定 agent 人设，并由派单员写入后再分发。
+- 需要把 ready 票据交给 DSH 子智能体或 Agent Team，或导出成 Codex 工单。
 - 需要半自动推进：用 `auto` 调用外部执行器并自动跑 verify，可配置失败重试与独立评审。
 
 ## 何时不用
@@ -66,18 +67,44 @@ python <技能目录>/scripts/dispatch.py new 01 \
 
 ## 主流程
 
-1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Owner`、`Risk`、`Write scope`、`Verify`、`Acceptance`。
+1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Owner`、`Risk`、`Persona`、`Write scope`、`Verify`、`Acceptance`。需要人设时先用 `personas list --search-root <目录>` 搜索，再用 `assign <id> --persona <文件或短名>` 写入；派单员只改 Persona，不改票据契约。
 2. **校验与分波**：`lint` 拒绝缺字段、自依赖、环、未知依赖；`plan` 输出拓扑波次、frontier 和同波写域冲突。
 3. **派发**：
    - 本地执行：`render <id> --agent <name>` 创建 Run、独立 git worktree（分支 `dispatch/<run-id>`）和 `work-order.md`，票据进入 `claimed`。`--no-worktree` 仅作逃生口。
-   - DSH 看板：`dsh push` 创建卡；`--mode team` 创建一张 `teamRun` 父卡和每票一张子卡；`dsh run` 触发运行（触发即返回）；`dsh update` / `dsh archive` / `dsh delete` 管理已映射卡。
+   - DSH 子智能体 / Agent Team：单票用 `render <id> --agent <name>` 生成 `work-order.md`，交给一个子智能体；多票用 `export --format agent-team` 生成 Team Lead 简报和每票工单。Team Lead 必须先收 brief，再放行实现。
    - Codex：`export --format codex` 生成工单，交给 Codex 会话。
    - 半自动：`auto <id> --executor <shell>` 自动完成 render → 执行器 → verify；失败可 `--max-attempts` 重试。`--until land` 还必须提供独立 `--reviewer` 与 `--reviewer-command`。
+   - **先 brief 再动手（v0.7.1）**：`brief <id>` 生成只读 brief（理解 / 计划 / 要改的文件 / 风险 / 疑问）→ 人审 → `brief <id> --approve <人>`；之后 `render <id> --require-brief` 才放行实现。票据或 brief 在审批后被改动，审批自动失效。
 4. **执行者只写两处**：在 **execution root**（worktree）写业务文件；在运行目录写 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 在 execution root 复跑票据命令，按 acceptance 逐条核对 `criteria` 证据，检查 worktree 与主仓都没有越界改动。结论分 `passed` / `degraded` / `failed`，退出码 0 / 2 / 1。
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
 7. **落地**：`land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
-8. **回写外部执行**：DSH 卡执行完后可用 `dsh outcome` 写外部结果；它**不替代** `verify`。
+
+## 选型角色（v0.10.0）
+
+S2 的角色是**必须有**的，不是可选的：
+
+| 角色 id | 必须 | 产出 | 证据门槛 |
+|---|---|---|---|
+| `oss-scout` | 是 | `01-oss.md` | ≥2 个开源参照，指到具体文件:函数或提交哈希，并写明不采用的理由 |
+| `search-scout` | 是 | `02-sources.md` | 每条事实附 URL + 原文摘录 + 抓取日期 + 版本号；查不到写「未证实」 |
+| `adversary` | 是 | `03-adversary.md` | 列出方案没写出来的假设，每条给一个可证伪的最小实验或反例（≤7 条） |
+| `domain-owner` | 否（`--with`） | `04-domain.md` | 硬约束逐条，标「绝对不行 / 代价高但可行」，给最小可行落点 |
+| `cost-keeper` | 否（`--with`） | `05-cost.md` | 依赖与体积（gzip）、运行开销、维护活跃度，全部给数字 |
+| 自定义 | `--add id:persona` | `9N-<id>.md` | 按自带 persona 的判据 |
+
+人设文件随技能分发（`agents/personas/`），用 `personas list` 可查；`--add` 可以挂你自己的角色卡。汇总表 `99-summary.md` 留了**甲方签字行**——按 ADR-0007 Q1，选型结论必须你签。
+
+## 上下文包、两阶段与收口（v0.8.0）
+
+新会话只拿到票面就会跑偏。两个补丁：
+
+- `context <id>` → `.dispatch/context/<id>.md`：票面框架、目标、写/读域、完成定义、**项目入口文档摘录**（AGENTS.md / CLAUDE.md / CONTEXT.md）、**同票历史运行**（state / verify / error）、**阻塞邻居**、**踩坑笔记索引**。只读、确定性、不调模型。`render --with-context` 会把它写进 run 目录并附到 `work-order.md`。
+- `brief <id>` → `.dispatch/briefs/<id>.md`：只读阶段的五段式 brief；`--check` 校验非空非占位，`--approve <人>` 记录审批（brief 与票据的 sha256 一起记），`render --require-brief` 无有效审批直接拒绝开局。
+- `auto` 重试不再原样重跑：第 n 次尝试前把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。
+
+- `checkpoint <id>` → `<run>/checkpoints/<NNN>-<label>/`：`checkpoint.json`（逐文件 sha256 + diff_hash + parent）、`diff.patch`、`status.txt`、`restore.md`；发布后 `current.json` 原子切换，代际只追加不覆盖。
+- `closeout <id>` → `<run>/closeout.json` + `closeout.md`：verify 状态、receipt criteria 与票面 acceptance 的条数对应、越出写域的改动、brief 声明却没改 / 没声明却改了；不过就列出 findings。`land --require-closeout` 会在 closeout 不是 pass 时拒绝落地。
 
 ## 命令速查
 
@@ -93,16 +120,19 @@ python <技能目录>/scripts/dispatch.py new 01 \
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → done，并追加 review ledger |
 | `land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
-| `export --format <dsh-team / dsh-board / codex / generic>` | 只读导出 |
-| `dsh push [--mode <cards 或 team>] [--dry-run]` | 投递到本机 DSH 看板；只建卡，不运行 |
-| `dsh run <id> [--task-id ...] [--rerun]` | 触发已映射卡片运行；触发即返回，不等待终态 |
-| `dsh status` | 读回看板状态并与本地映射对照 |
-| `dsh update <id> [--title/--description/--prompt/--patch JSON]` | 修改已映射卡片；不运行 |
-| `dsh archive <id>` | 归档已映射卡片；不删除 |
-| `dsh delete <id>` | 删除已映射卡片；有子卡先处理子卡 |
-| `dsh outcome <id> --result <succeeded 或 failed> --by <name>` | 把外部执行结果写回映射卡 |
+| `assign <id> --persona <文件或短名> [--by <名字>]` | 把可解析的人设写入票据 Persona；源文件复制到 `tickets/personas/`，并记 `.dispatch/assignments.jsonl` |
+| `personas list [--search-root <目录>] [--json]` | 搜索可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
+| `personas show <文件或短名> [--json]` | 读取单个 persona 的身份、能力与提示词 |
+| `export --format <agent-team / dsh-team / codex / generic>` | 只读导出；`agent-team` 生成 Team Lead 简报 + 每票工单 |
+| `context <id> [--json]` | 生成 `.dispatch/context/<id>.md`：入口文档摘录 / 同票历史运行 / 阻塞邻居 / 踩坑索引 |
+| `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
+| `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
+| `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
+| `align <slug> [--level quick 或 standard 或 thorough]` | S1：出需求问卷 `docs/questions/<slug>.md`，第一段就是档位选择（3 / 6 / 10 问） |
+| `spec <slug> [--force]` | S3：问卷答满才允许写规格骨架 `docs/specs/<slug>.md`（Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope） |
+| `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` || `closeout <id> [--json]` | 对照票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |
 
-通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` / `dsh push` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
+通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
 
 ## 票据最小模板
 
@@ -177,38 +207,14 @@ python <技能目录>/scripts/dispatch.py land 01 --into main --branch integrati
 - land 前复核 `verify.json` 的 `diff_hash`；review 后 worktree 再被修改会拒绝，必须重新 verify/review。
 - 冲突时清理临时 worktree 与 integration branch，目标分支保持原样；成功后从 integration branch 人工开 PR。
 
-## DSH 看板适配
+## 子智能体与 Agent Team
 
-默认地址 `http://127.0.0.1:50567`，端口可用 `--url` 或 `DSH_TASK_BOARD_URL` 覆盖。
+**默认执行端就是子智能体与 Agent Team，不是看板。** 看板（`dsh push`）只作为可选的跨会话落库手段保留：它适合票面自足、写域独立、验收可命令化的票；需要边做边对齐的耦合任务走 team + handoff 或两阶段 brief 卡。
 
-```bash
-# 先看会创建哪些卡，不联网
-python <技能目录>/scripts/dispatch.py dsh push --dry-run --json
-
-# 创建卡片（只建卡，不运行）
-python <技能目录>/scripts/dispatch.py dsh push --project <项目名>
-
-# 团队模式：父卡 teamRun + 每票子卡
-python <技能目录>/scripts/dispatch.py dsh push --mode team --project <项目名>
-
-# 触发已映射卡片运行（触发即返回；--rerun 发 rerun）
-python <技能目录>/scripts/dispatch.py dsh run 01
-
-# 修改、归档、删除已映射卡（都不运行卡）
-python <技能目录>/scripts/dispatch.py dsh update 01 --title "新标题" --description "补充说明"
-python <技能目录>/scripts/dispatch.py dsh archive 01
-python <技能目录>/scripts/dispatch.py dsh delete 01
-```
-
-边界：
-
-- `dsh push` 只建卡；`dsh run` 发送 `{kind:"run", taskId}` 触发运行，触发后立即返回 status/execution id，不等待终态。`--rerun` 发送 `{kind:"rerun", taskId}`（2026-10-21 已用真实 probe 卡实测：同一卡两次 execution 均 succeeded）。
-- `dsh update` 发送 `{kind:"update", taskId, patch}`，`patch` 必须是非空 object；`dsh archive` 发送 `{kind:"archive", taskId}`；`dsh delete` 发送 `{kind:"delete", taskId}`。
-- `dsh archive` 只设置 `archivedAt`，不删除卡；`dsh delete` 会物理删除。删除有子卡的父卡前，先删除或解除子卡，否则看板返回 `task has subtasks; detach or delete them first`。
-- `dsh update/archive/delete` 只改看板卡，不改本地票据状态；验收仍走 `verify` / `review`。
-- `dsh outcome` 写的是外部执行记录，不是本地验收结论。
-- DSH 端点把 `record-external-outcome` 的 `summary` 写进 `execution.error` 字段，成功结果也如此；回读时以 `result=succeeded` 为准，不要用 `error` 是否存在判断失败。
-- DSH HTTP 入口是本机插件接口，不是稳定公共 API；升级 DSH 后重跑一次真实投递探针。
+- 单票：`render <id> --agent <name>` 生成 `work-order.md`，交给一个子智能体。子智能体只写 execution root 和运行目录。
+- 多票：`export --format agent-team` 生成 Team Lead 简报和每票工单。Team Lead 为每票起一个 teammate，先收 brief（目标、改动文件、计划、风险、问题），审核后再放行实现。
+- 本技能只产出工单和团队简报，不创建任何外部卡片，也不依赖外部 HTTP 接口。
+- 票面契约优先于人设和团队简报；写域、Acceptance、Verify 冲突时以票据为准。
 
 ## Codex 交接
 
@@ -242,6 +248,6 @@ codex exec --skip-git-repo-check --ephemeral -s read-only --color never -C <目�
 - `scripts/dispatch.py`：从技能目录直接调用框架的包装器。
 - `scripts/build_skill.py`：生成可复制的干净技能包（`dist/agent-dispatch-skill`）。
 - `references/ticket-contract.md`：票据与回执契约细节。
-- `references/dsh-board.md`：DSH 看板接口与实测边界。
 - `references/codex-handoff.md`：Codex 工单交接方式。
 - `templates/ticket.md`：最小票据模板。
+- `agents/personas/dispatcher.md`：派单员人设；用于搜索、选择和写入 Persona。
