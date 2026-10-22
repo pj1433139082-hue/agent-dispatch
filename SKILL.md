@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.15.2。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.16.0。
 
 ## 何时使用
 
@@ -119,6 +119,8 @@ python scripts/acceptance.py --json   # 机读（CI）
 
 | 命令 | 用途 |
 |---|---|
+| `claim <id> [--ttl-minutes 15]` | 把票的写域展开成**文件租约**（`.dispatch/locks/`）：被别的活租约占着就 exit 3，不让两个 run 同时写同一文件 |
+| `gc [--apply]` | 回收 ended run 的 worktree：干净且已 land → REMOVE；有未提交改动或未 land → HOLD |
 | `seat [--cap 8] [--occupied N] [--inactive a,b]` | 派单前查名额：占用/上限/可回收 inactive，给出可/需回收/阻塞 |
 | `review-packet <id>` | 冻结票据、diff、回执与验收证据（带哈希）成评审包，供独立 reviewer |
 | `dsh <push/status/outcome/update/archive/run/delete>` | 投递与看板联动（可选路径，不是默认执行端） |

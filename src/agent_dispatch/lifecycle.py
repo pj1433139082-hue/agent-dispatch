@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ACTIVE = {"claimed", "running"}
@@ -201,3 +201,158 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
         "evidence_mismatch": evidence_mismatch,
         "written": bool(write),
     }
+
+
+LOCKS_DIRNAME = "locks"
+
+
+def _lock_path(root: Path, path: str) -> Path:
+    safe = path.replace("/", "__").replace("\\", "__").replace(":", "_")
+    return Path(root) / ".dispatch" / LOCKS_DIRNAME / (safe + ".json")
+
+
+def _read_lock(file: Path) -> dict[str, object] | None:
+    if not file.is_file():
+        return None
+    try:
+        data = json.loads(file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _expired(data: dict[str, object], now: datetime) -> bool:
+    stamp = _parse(data.get("expires_at"))
+    return stamp is not None and stamp <= now
+
+
+def expand_scope(root: Path, patterns: list[str]) -> list[str]:
+    """把写域展开成文件清单：glob 复用 verify 的匹配语义，字面量原样保留（新文件也算）。"""
+    import subprocess
+
+    from .verify import path_matches_scope
+
+    paths: set[str] = set()
+    globby = [p for p in patterns if any(ch in p for ch in "*?[")]
+    for item in patterns:
+        if item not in globby:
+            paths.add(item.strip())
+    if globby:
+        try:
+            tracked = subprocess.run(
+                ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=False
+            ).stdout.splitlines()
+        except OSError:
+            tracked = []
+        for pattern in globby:
+            for candidate in tracked:
+                if path_matches_scope(pattern, candidate):
+                    paths.add(candidate)
+    return sorted(item for item in paths if item)
+
+
+def claim(
+    root: Path,
+    ticket_id: str,
+    run_id: str,
+    paths: list[str],
+    *,
+    ttl_seconds: int = 900,
+) -> dict[str, object]:
+    """为一次 run 主张若干文件；被别的活租约占着就冲突（不覆盖）。"""
+    now = _now()
+    granted: list[str] = []
+    conflicts: list[dict[str, object]] = []
+    for path in sorted(set(paths)):
+        file = _lock_path(root, path)
+        existing = _read_lock(file)
+        if existing is not None and str(existing.get("run_id", "")) != run_id and not _expired(existing, now):
+            conflicts.append(
+                {
+                    "path": path,
+                    "run_id": str(existing.get("run_id", "")),
+                    "ticket_id": str(existing.get("ticket_id", "")),
+                    "expires_at": str(existing.get("expires_at", "")),
+                }
+            )
+            continue
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(
+            json.dumps(
+                {
+                    "path": path,
+                    "ticket_id": ticket_id,
+                    "run_id": run_id,
+                    "created_at": now.isoformat(),
+                    "expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        granted.append(path)
+    return {"granted": granted, "conflicts": conflicts, "ttl_seconds": ttl_seconds}
+
+
+def release(root: Path, run_id: str) -> list[str]:
+    """释放某个 run 的全部租约（run 结束/收口时调用）。"""
+    directory = Path(root) / ".dispatch" / LOCKS_DIRNAME
+    if not directory.is_dir():
+        return []
+    released: list[str] = []
+    for file in sorted(directory.glob("*.json")):
+        data = _read_lock(file)
+        if data is None or str(data.get("run_id", "")) != run_id:
+            continue
+        released.append(str(data.get("path", "")))
+        file.unlink(missing_ok=True)
+    return released
+
+
+def gc(root: Path, *, apply: bool = False) -> list[dict[str, object]]:
+    """回收 ended run 的 worktree：干净就删，有改动就 HOLD。"""
+    import subprocess
+
+    rows: list[dict[str, object]] = []
+    state = _load_state(root)
+    for data in runs_on_disk(root):
+        run_id = str(data.get("run_id", ""))
+        ticket_id = str(data.get("ticket_id", ""))
+        run_state = str(data.get("state", ""))
+        if run_id not in {str(v.get("run_id", "")) for v in state.values()}:
+            continue
+        if run_state not in {"done", "failed"}:
+            continue
+        worktree = data.get("execution_root")
+        if not worktree:
+            continue
+        directory = Path(str(worktree))
+        if not directory.is_absolute():
+            directory = Path(root) / directory
+        if not directory.is_dir():
+            continue
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=directory, capture_output=True, text=True, check=False
+        ).stdout.strip()
+        branch = str(data.get("worktree_branch", ""))
+        landed = (Path(root) / ".dispatch" / "runs" / run_id / "landing.json").is_file()
+        verdict = "HOLD" if dirty or not landed else "REMOVE"
+        rows.append(
+            {
+                "ticket_id": ticket_id,
+                "run_id": run_id,
+                "state": run_state,
+                "worktree": str(directory),
+                "branch": branch,
+                "dirty": bool(dirty),
+                "landed": landed,
+                "verdict": verdict,
+            }
+        )
+        if apply and verdict == "REMOVE":
+            subprocess.run(["git", "worktree", "remove", "--force", str(directory)], cwd=root, check=False, capture_output=True)
+            if branch:
+                subprocess.run(["git", "branch", "-D", branch], cwd=root, check=False, capture_output=True)
+            release(root, run_id)
+    return rows

@@ -45,7 +45,7 @@ from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as wri
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
-from .lifecycle import evidence_state, repair as repair_state, sweep as sweep_runs
+from .lifecycle import claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
@@ -185,6 +185,20 @@ def _parser() -> argparse.ArgumentParser:
     packet_parser.add_argument("--tickets", type=Path, default=None)
     packet_parser.add_argument("--root", type=Path, default=Path("."))
     packet_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    claim_parser = subparsers.add_parser(
+        "claim", help="Lease the ticket's write scope for its current run (conflict -> exit 3)."
+    )
+    claim_parser.add_argument("ticket_id")
+    claim_parser.add_argument("--ttl-minutes", type=int, default=15, dest="ttl_minutes")
+    claim_parser.add_argument("--tickets", type=Path, default=None)
+    claim_parser.add_argument("--root", type=Path, default=Path("."))
+    claim_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    gc_parser = subparsers.add_parser("gc", help="Reclaim worktrees of ended runs (clean = remove, dirty = HOLD).")
+    gc_parser.add_argument("--apply", action="store_true")
+    gc_parser.add_argument("--root", type=Path, default=Path("."))
+    gc_parser.add_argument("--json", action="store_true", dest="as_json")
 
     sweep_parser = subparsers.add_parser("sweep", help="Read-only liveness report for active runs.")
     sweep_parser.add_argument("--root", type=Path, default=Path("."))
@@ -1017,6 +1031,49 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def _cmd_claim(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
+        return 1
+    paths = expand_scope(args.root, list(ticket.write_scope))
+    report = claim_paths(
+        args.root, ticket.id, run.id, paths, ttl_seconds=max(1, args.ttl_minutes) * 60
+    )
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print("Claimed " + str(len(report["granted"])) + " file(s) for " + run.id)
+        for item in report["conflicts"]:
+            print(
+                "CONFLICT " + item["path"] + " held by " + item["ticket_id"] + " (" + item["run_id"] + ")",
+                file=sys.stderr,
+            )
+    return 3 if report["conflicts"] else 0
+
+
+def _cmd_gc(args: argparse.Namespace) -> int:
+    rows = gc_worktrees(args.root, apply=args.apply)
+    if args.as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("(no ended runs with worktrees)")
+        return 0
+    for row in rows:
+        print(row["verdict"].ljust(7) + row["ticket_id"].ljust(28) + row["state"].ljust(8) + ("dirty " if row["dirty"] else "clean ") + ("landed" if row["landed"] else "unlanded"))
+    if not args.apply:
+        print("Dry run; add --apply to remove the REMOVE rows.")
+    return 0
+
+
 def _cmd_sweep(args: argparse.Namespace) -> int:
     rows = sweep_runs(args.root)
     if args.as_json:
@@ -1455,6 +1512,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "claim":
+        return _cmd_claim(args)
+    if args.command == "gc":
+        return _cmd_gc(args)
     if args.command == "sweep":
         return _cmd_sweep(args)
     if args.command == "start":

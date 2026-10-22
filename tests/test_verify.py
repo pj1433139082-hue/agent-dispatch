@@ -45,3 +45,9 @@ def test_run_command_preserves_windows_backslash_paths(tmp_path: Path) -> None:
     record = _run_command(command, tmp_path, tmp_path / "log.txt", timeout=30)
 
     assert record["exit_code"] == 0
+
+
+def test_double_star_slash_matches_zero_directories() -> None:
+    assert path_matches_scope("src/**/*.py", "src/a.py")
+    assert path_matches_scope("src/**/*.py", "src/x/y/b.py")
+    assert not path_matches_scope("src/**/*.py", "tests/a.py")

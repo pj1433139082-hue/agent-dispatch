@@ -37,6 +37,11 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
         char = pattern[index]
         if char == "*":
             if index + 1 < len(pattern) and pattern[index + 1] == "*":
+                # **/ 要能匹配"零层目录"（gitignore 语义）：src/**/*.py 也得命中 src/a.py
+                if index + 2 < len(pattern) and pattern[index + 2] == "/":
+                    out.append("(?:.*/)?")
+                    index += 3
+                    continue
                 out.append(".*")
                 index += 2
                 continue
