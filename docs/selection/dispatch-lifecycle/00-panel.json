@@ -1,0 +1,40 @@
+{
+  "slug": "dispatch-lifecycle",
+  "title": "派单生命周期技术选型（seat / sweep / repair / deadline）",
+  "stage": "S2 selection",
+  "roles": [
+    {
+      "id": "oss-scout",
+      "name": "开源借鉴侦察",
+      "persona": "builtin:oss-scout",
+      "deliverable": "01-oss.md",
+      "required": true,
+      "evidence": ">=2 个开源参照，指到具体文件:函数（或提交哈希），并写明不采用的理由"
+    },
+    {
+      "id": "search-scout",
+      "name": "搜索取证",
+      "persona": "builtin:search-scout",
+      "deliverable": "02-sources.md",
+      "required": true,
+      "evidence": "每条事实附 URL + 原文摘录 + 抓取日期 + 版本号；查不到写未证实"
+    },
+    {
+      "id": "adversary",
+      "name": "对抗性审查",
+      "persona": "builtin:adversary",
+      "deliverable": "03-adversary.md",
+      "required": true,
+      "evidence": "列出方案没写出来的假设，每条给一个能证伪它的最小实验或反例，最多 7 条"
+    },
+    {
+      "id": "cost-keeper",
+      "name": "成本守护",
+      "persona": "builtin:cost-keeper",
+      "deliverable": "05-cost.md",
+      "required": false,
+      "evidence": "新增依赖与体积（gzip）、运行开销、维护活跃度，全部给数字"
+    }
+  ],
+  "gate": "结论需甲方签字；未签字不得进入 S3"
+}
