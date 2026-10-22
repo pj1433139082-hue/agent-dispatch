@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .state import Run
 from .ticket import Ticket
-from .verify import changed_files, worktree_diff_hash
+from .verify import changed_files, diff_digest
 
 
 def _sha256_text(text: str) -> str:
@@ -34,34 +34,9 @@ def build(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
     base = str(run.data.get("base_commit", ""))
     files = changed_files(execution_root, base) if base else []
     diff = ""
-    if base and files:
-        import subprocess
-
-        diff = subprocess.run(
-            ["git", "diff", base, "--", *files],
-            cwd=execution_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout
-        # 新增文件在 git diff 里是空的；不补的话评审包会对着"没变化"签字。
-        for relative in files:
-            target = execution_root / relative
-            if not target.is_file():
-                continue
-            tracked = subprocess.run(
-                ["git", "ls-files", "--error-unmatch", relative],
-                cwd=execution_root,
-                capture_output=True,
-                text=True,
-                check=False,
-            ).returncode == 0
-            if tracked:
-                continue
-            body = target.read_text(encoding="utf-8", errors="replace").splitlines()
-            hunk = ["diff --git a/" + relative + " b/" + relative, "new file mode 100644", "--- /dev/null", "+++ b/" + relative]
-            hunk.extend("+" + line for line in body)
-            diff += "\n".join(hunk) + "\n"
+    digest = ""
+    if base:
+        digest, diff = diff_digest(execution_root, base)
     ticket_text = _read(ticket.path)
     receipt_text = _read(run.directory / "receipt.json")
     verify_text = _read(run.directory / "verify.json")
@@ -71,14 +46,15 @@ def build(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
         "run_id": run.id,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "base_commit": base,
-        "diff_hash": worktree_diff_hash(execution_root, base) if base else "",
+        "diff_hash": digest,
+        "legacy_diff": '"diff_scope"' not in verify_text,
         "changed_files": files,
         "hashes": {
             "ticket": _sha256_text(ticket_text),
             "receipt": _sha256_text(receipt_text),
             "verify": _sha256_text(verify_text),
             "closeout": _sha256_text(closeout_text),
-            "diff": _sha256_text(diff),
+            "diff": digest,
         },
         "ticket_text": ticket_text,
         "receipt": json.loads(receipt_text) if receipt_text.strip().startswith("{") else receipt_text,

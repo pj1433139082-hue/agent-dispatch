@@ -106,6 +106,42 @@ def changed_files(root: Path, base_commit: str) -> list[str]:
     return sorted(path for path in paths if not _ignored(path))
 
 
+def diff_digest(root: Path, base_commit: str) -> tuple[str, str]:
+    """一次算出 (哈希, 可读文本)。哈希是唯一口径：tracked 二进制 diff + 未跟踪文件内容。"""
+    if not base_commit:
+        raise ValueError("run has no base commit; render inside a git repository")
+    binary = _git(root, "diff", "--binary", "--no-color", base_commit)
+    if binary.returncode != 0:
+        raise ValueError(binary.stderr.decode("utf-8", errors="replace").strip())
+    untracked = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if untracked.returncode != 0:
+        raise ValueError(untracked.stderr.decode("utf-8", errors="replace").strip())
+    paths = [
+        _normalize(raw)
+        for raw in untracked.stdout.decode("utf-8", errors="replace").split("\0")
+        if raw
+    ]
+    digest = hashlib.sha256()
+    digest.update(binary.stdout)
+    for path in sorted(path for path in paths if not _ignored(path)):
+        candidate = root / path
+        if candidate.is_file():
+            digest.update(path.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(candidate.read_bytes())
+            digest.update(b"\0")
+    text = _git(root, "diff", "--no-color", base_commit).stdout.decode("utf-8", errors="replace")
+    for path in sorted(path for path in paths if not _ignored(path)):
+        candidate = root / path
+        if not candidate.is_file():
+            continue
+        body = candidate.read_text(encoding="utf-8", errors="replace").splitlines()
+        hunk = ["diff --git a/" + path + " b/" + path, "new file mode 100644", "--- /dev/null", "+++ b/" + path]
+        hunk.extend("+" + line for line in body)
+        text += "\n".join(hunk) + "\n"
+    return digest.hexdigest(), text
+
+
 def worktree_diff_hash(root: Path, base_commit: str) -> str:
     """Hash the reviewable worktree diff, including untracked file contents."""
     if not base_commit:
@@ -483,6 +519,7 @@ def verify_run(
         "checks": checks,
         "changed_files": files,
         "diff_hash": diff_hash,
+        "diff_scope": "tracked+untracked",
         "commands": commands,
         "criteria": criteria,
         "evidence": evidence,

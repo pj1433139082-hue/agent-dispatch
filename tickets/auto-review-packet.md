@@ -9,7 +9,9 @@ ADR-0010 D3 写了"评审输入强制用 review packet"，但实现没跟上：`
 3. reviewer 命令模板（SKILL.md 里那段）改成读 `DISPATCH_REVIEW_PACKET`，不再读活动 worktree。
 
 **Blocked by:** None
-**Status:** ready-for-agent
+**Status:** done
+
+> 2026-10-23 已实现并验证（v0.27.0，ADR-0011）。
 
 ## Dispatch
 

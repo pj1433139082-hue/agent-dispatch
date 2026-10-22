@@ -14,7 +14,9 @@
 3. 旧 run（无 `diff_scope`）在 `review-packet` 里标 `legacy_diff`，不判错、只提示。
 
 **Blocked by:** None
-**Status:** ready-for-agent
+**Status:** done
+
+> 2026-10-23 已实现并验证（v0.27.0，ADR-0011）。
 
 ## Dispatch
 

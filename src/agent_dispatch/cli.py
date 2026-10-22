@@ -1317,6 +1317,18 @@ def _cmd_land(args: argparse.Namespace) -> int:
             for finding in report.get("findings", []):
                 print(f"  - {finding}", file=sys.stderr)
             return 1
+    if getattr(args, "require_packet", True):
+        _, run = _current_run(args.root, args.ticket_id)
+        if run is None:
+            print(f"ticket {args.ticket_id}: no run to land", file=sys.stderr)
+            return 1
+        if not (run.directory / "review-packet.md").is_file():
+            print(
+                f"ticket {args.ticket_id}: no review-packet.md; run dispatch review-packet {args.ticket_id} first "
+                "(or pass --no-require-packet)",
+                file=sys.stderr,
+            )
+            return 1
     try:
         record = land_run(
             args.root,

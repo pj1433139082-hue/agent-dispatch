@@ -12,6 +12,7 @@ from pathlib import Path
 from .auto_protocol import ProtocolError, checkpoint as protocol_checkpoint, closeout as protocol_closeout, prepare as protocol_prepare
 from .feedback import write_feedback
 from .landing import LandingError, land_run
+from .packet import write as write_review_packet
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run, current_commit
 from .ticket import Ticket
@@ -138,7 +139,8 @@ def _read_review_result(path: Path) -> dict[str, object]:
     if verdict not in {"pass", "fail"}:
         raise AutoError(f"{path.name} verdict must be 'pass' or 'fail'")
     notes = value.get("notes", "")
-    return {"verdict": verdict, "notes": str(notes) if notes is not None else ""}
+    packet_hash = str(value.get("packet_hash", "") or "")
+    return {"verdict": verdict, "packet_hash": packet_hash, "notes": str(notes) if notes is not None else ""}
 
 
 def _review_and_land(
@@ -156,6 +158,21 @@ def _review_and_land(
     review_result_path = run.directory / "review-result.json"
     if review_result_path.exists():
         review_result_path.unlink()
+    packet_path = run.directory / "review-packet.md"
+    try:
+        write_review_packet(root, ticket, run)
+    except Exception as error:  # noqa: BLE001 - 生成失败必须 fail-closed
+        result["status"] = "review-invalid"
+        result["error"] = "cannot build the review packet: " + str(error)
+        _write_result(run, result)
+        return
+    try:
+        packet_digest = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+    except OSError as error:
+        result["status"] = "review-invalid"
+        result["error"] = "cannot hash the review packet: " + str(error)
+        _write_result(run, result)
+        return
     try:
         execution = _execute(
             command=reviewer_command,
@@ -166,6 +183,7 @@ def _review_and_land(
                 "DISPATCH_REVIEWER": reviewer,
                 "DISPATCH_VERIFY_JSON": str(run.directory / "verify.json"),
                 "DISPATCH_REVIEW_RESULT": str(review_result_path),
+                "DISPATCH_REVIEW_PACKET": str(packet_path),
             },
             log_name="reviewer.log",
         )
@@ -177,6 +195,16 @@ def _review_and_land(
         result["error"] = str(error)
         _write_result(run, result)
         return
+
+    attested = str(review.get("packet_hash", ""))
+    if attested and attested != packet_digest:
+        result["status"] = "review-invalid"
+        result["error"] = (
+            "reviewer attested a different review packet (packet_hash mismatch); no review recorded"
+        )
+        _write_result(run, result)
+        return
+    result["packet_attested"] = bool(attested)
 
     if review["verdict"] == "pass" and execution["exit_code"] != 0:
         result["status"] = "review-invalid"

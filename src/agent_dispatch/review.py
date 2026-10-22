@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .packet import write as write_packet
 from .state import DispatchState, Run
 from .ticket import Ticket
 
@@ -99,6 +100,10 @@ def submit_review(
     review_path.write_text(
         json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+    try:
+        write_packet(root, ticket, run)
+    except Exception:  # noqa: BLE001 - packet 生成失败不阻断评审，但要留痕
+        record["packet_error"] = True
     review_hash = hashlib.sha256(review_path.read_bytes()).hexdigest()
     _append_ledger(root, record, review_hash)
     next_state = "done" if verdict == "pass" else "failed"

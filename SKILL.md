@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.26.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.27.0。
 
 ## 何时使用
 
@@ -135,7 +135,7 @@ S1 / S2 / S3 三个门**不许由 agent 代拍板**。固定动作：
 | `claim <id> [--ttl-minutes 15]` | 把票的写域展开成**文件租约**（`.dispatch/locks/`）：被别的活租约占着就 exit 3，不让两个 run 同时写同一文件 |
 | `gc [--apply]` | 回收 ended run 的 worktree：干净且已 land → REMOVE；有未提交改动或未 land → HOLD |
 | `seat [--cap 8] [--occupied N] [--inactive a,b]` | 派单前查名额：占用/上限/可回收 inactive，给出可/需回收/阻塞 |
-| `review-packet <id>` | 冻结票据、diff、回执与验收证据（带哈希）成评审包，供独立 reviewer |
+| `review-packet <id>` | 冻结票据、diff、回执与验收证据成评审包；`hashes.diff` 与 `verify.diff_hash` **同源同值** |
 | `dsh <push/status/outcome/update/archive/run/delete>` | 投递与看板联动（可选路径，不是默认执行端） |
 | `lint` | 校验票据；有错非零退出 |
 | `plan` | 拓扑波次、frontier、写域冲突 |
@@ -145,7 +145,7 @@ S1 / S2 / S3 三个门**不许由 agent 代拍板**。固定动作：
 | `start <id>` | claimed → running |
 | `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed]` | 异体评审；通过 → done，并追加 review ledger |
-| `land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
+| `land <id> [--into <目标分支>] [--branch <integration 分支>] [--require-closeout] [--no-require-packet]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
 | `assign <id> --persona <文件或短名> [--by <名字>]` | 把可解析的人设写入票据 Persona；源文件复制到 `tickets/personas/`，并记 `.dispatch/assignments.jsonl` |
@@ -211,6 +211,8 @@ S1 / S2 / S3 三个门**不许由 agent 代拍板**。固定动作：
 | full | 否/是 | land | 同上，且 **closeout 必须 pass 才 land**，否则 `closeout-failed` |
 
 失败语义：closeout 不过 → `status=closeout-failed`，findings 写进 `auto/feedback-<n>.md` **不自动重跑**（由人或下一张票决定）。
+
+`--until land` 还会先生成 `review-packet.md` 并把 `DISPATCH_REVIEW_PACKET` 交给 reviewer；reviewer 回执里的 `packet_hash` 与实际包**不一致** → `review-invalid`，不 land。
 
 ## 半自动推进（v0.6）
 

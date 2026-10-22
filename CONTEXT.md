@@ -78,6 +78,14 @@ _Avoid_: 修复、恢复（易与回滚混淆）
 L1 票据允许 lead 自评通过时留下的痕迹，land 记录里必须可见；L2 及以上不得使用。
 _Avoid_: 免评审、跳过评审
 
+**Diff digest（diff 口径）**:
+一次 Run 的改动摘要的唯一哈希：`git diff --binary <base>` 的全部 tracked 改动 + 未跟踪文件内容，对字节流取 sha256；`verify.json.diff_hash` 与 `review-packet` 的 `hashes.diff` 必须是同一个值。
+_Avoid_: 哈希值、checksum（那指文件哈希）
+
+**Legacy diff（旧口径）**:
+没有 `diff_scope` 字段的历史 `verify.json`；packet 只在展示时标 `legacy_diff`，不重算、不改写。
+_Avoid_: 老版本、兼容模式
+
 ## 框架边界
 
 **Framework project（框架项目）**:
