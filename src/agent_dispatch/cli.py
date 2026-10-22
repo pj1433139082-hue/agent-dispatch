@@ -171,6 +171,12 @@ def _parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("ticket_id")
     verify_parser.add_argument("--root", type=Path, default=Path("."))
     verify_parser.add_argument("--timeout", type=int, default=300)
+    verify_parser.add_argument(
+        "--allow-main-drift",
+        action="store_true",
+        dest="allow_main_drift",
+        help="Allow uncommitted changes in the main checkout (reported, not fatal).",
+    )
 
     review_parser = subparsers.add_parser("review", help="Record a reviewer decision.")
     review_parser.add_argument("ticket_id")
@@ -954,7 +960,13 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         return 1
     run = Run.load(args.root, str(existing["run_id"]))
     ticket = parse_ticket(run.ticket_path)
-    record, passed = verify_run(args.root, ticket, run, timeout=args.timeout)
+    record, passed = verify_run(
+        args.root,
+        ticket,
+        run,
+        timeout=args.timeout,
+        allow_main_drift=args.allow_main_drift,
+    )
     status = str(record.get("status", "failed"))
     if passed and status == "degraded":
         print(f"Verification degraded for {args.ticket_id} ({run.id})", file=sys.stderr)

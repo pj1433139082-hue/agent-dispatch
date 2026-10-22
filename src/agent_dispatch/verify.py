@@ -210,12 +210,18 @@ def _evaluate_evidence(
     if kind == "command":
         command = item.get("command")
         exit_code = item.get("exit_code")
+        expect_exit = item.get("expect_exit", 0)
         if not isinstance(command, str) or not command:
             return None, f"{prefix}.command must be a non-empty string", False
         if not isinstance(exit_code, int) or isinstance(exit_code, bool):
             return None, f"{prefix}.exit_code must be an integer", False
-        if exit_code != 0:
-            return None, f"{prefix}: command evidence reports exit code {exit_code}", False
+        if not isinstance(expect_exit, int) or isinstance(expect_exit, bool):
+            return None, f"{prefix}.expect_exit must be an integer", False
+        if exit_code != expect_exit:
+            return None, (
+                f"{prefix}: command evidence reports exit code {exit_code}, "
+                f"expected {expect_exit}"
+            ), False
         return (
             {"kind": "command", "command": command, "exit_code": exit_code, "attested": False},
             None,
@@ -293,7 +299,13 @@ def _evaluate_criteria(
     return records, evidence, errors, degraded
 
 
-def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tuple[dict[str, object], bool]:
+def verify_run(
+    root: Path,
+    ticket: Ticket,
+    run: Run,
+    timeout: int = 300,
+    allow_main_drift: bool = False,
+) -> tuple[dict[str, object], bool]:
     root = Path(root)
     run_dir = run.directory
     checks: list[dict[str, object]] = []
@@ -389,17 +401,20 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
         )
         if execution_root.resolve() != root.resolve():
             try:
-                main_files = changed_files(root, str(run.data.get("base_commit", "")))
+                # 与**当前 HEAD**比较，而不是 run 的 base commit：主仓在 run 期间
+                # 的正常提交不算作弊，只有当前仍脏的改动才说明有人在主仓上动手。
+                main_files = changed_files(root, "HEAD")
             except ValueError as error:
                 check("main checkout", False, str(error))
             else:
-                check(
-                    "main checkout",
-                    not main_files,
-                    "main checkout has changes: " + ", ".join(main_files)
-                    if main_files
-                    else "clean",
-                )
+                allowed = bool(main_files) and allow_main_drift
+                if not main_files:
+                    detail = "clean"
+                elif allowed:
+                    detail = "main checkout has uncommitted changes (allowed): " + ", ".join(main_files)
+                else:
+                    detail = "main checkout has uncommitted changes: " + ", ".join(main_files)
+                check("main checkout", not main_files or allow_main_drift, detail)
                 files = sorted(set(files) | set(main_files))
 
     evidence: list[dict[str, object]] = []
