@@ -9,6 +9,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .auto_protocol import ProtocolError, checkpoint as protocol_checkpoint, closeout as protocol_closeout, prepare as protocol_prepare
 from .feedback import write_feedback
 from .landing import LandingError, land_run
 from .review import submit_review
@@ -232,6 +233,9 @@ def auto_run(
     reviewer_command: str = "",
     accept_degraded: bool = False,
     human: bool = False,
+    protocol: str = "none",
+    env_hint: str = "",
+    require_brief: bool = False,
 ) -> dict[str, object]:
     """Run a ticket through an external executor and the dispatch gates.
 
@@ -254,6 +258,8 @@ def auto_run(
         raise AutoError("until must be 'review' or 'land'")
     if max_attempts < 1:
         raise AutoError("max-attempts must be at least 1")
+    if protocol not in {"none", "full"}:
+        raise AutoError("protocol must be 'none' or 'full'")
     if timeout <= 0 or verify_timeout <= 0:
         raise AutoError("timeouts must be positive")
     if until == "land":
@@ -288,6 +294,19 @@ def auto_run(
     run.set_state("running")
     store.set_ticket(ticket.id, run.id, "running")
 
+    protocol_info: dict[str, object] = {"enabled": protocol == "full"}
+    if protocol == "full":
+        try:
+            protocol_info.update(
+                protocol_prepare(
+                    root, ticket, run, env_hint=env_hint, require_brief=require_brief
+                )
+            )
+        except ProtocolError as error:
+            run.set_state("failed")
+            store.set_ticket(ticket.id, run.id, "failed")
+            raise AutoError(str(error)) from error
+
     result: dict[str, object] = {
         "version": 1,
         "ticket_id": ticket.id,
@@ -300,6 +319,7 @@ def auto_run(
         "attempts": [],
         "review": None,
         "landing": None,
+        "protocol": protocol_info,
         "run_directory": str(run.directory),
         "created_at": _now(),
     }
@@ -331,6 +351,11 @@ def auto_run(
             extra_env={"DISPATCH_FEEDBACK": feedback_path} if feedback_path else None,
         )
         record, passed = verify_run(root, ticket, run, timeout=verify_timeout)
+        if protocol == "full":
+            try:
+                protocol_info["last_checkpoint"] = str(protocol_checkpoint(run, attempt_number))
+            except (OSError, FileExistsError) as error:
+                protocol_info["checkpoint_error"] = str(error)
         verify_status = str(record.get("status", "failed"))
         errors = [str(error) for error in record.get("errors", [])]
         attempts.append(
@@ -359,6 +384,20 @@ def auto_run(
         result["last_errors"] = last_errors
         _write_result(run, result)
         return result
+
+    if protocol == "full":
+        report = protocol_closeout(root, ticket, run)
+        protocol_info["closeout"] = str(report.get("status", "failed"))
+        if str(report.get("status", "")) != "pass":
+            findings = [str(item) for item in report.get("findings", [])]
+            result["status"] = "closeout-failed"
+            result["closeout_findings"] = findings
+            try:
+                write_feedback(run.directory, len(attempts), findings, log_name="closeout")
+            except OSError:
+                pass
+            _write_result(run, result)
+            return result
 
     if until == "review":
         result["status"] = "review"

@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.10.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.11.0。
 
 ## 何时使用
 
@@ -120,6 +120,7 @@ S2 的角色是**必须有**的，不是可选的：
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded]` | 异体评审；通过 → done，并追加 review ledger |
 | `land <id> [--into <目标分支>] [--branch <integration 分支>]` | 把已验证 Run 合入本地 integration branch；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
+| `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
 | `assign <id> --persona <文件或短名> [--by <名字>]` | 把可解析的人设写入票据 Persona；源文件复制到 `tickets/personas/`，并记 `.dispatch/assignments.jsonl` |
 | `personas list [--search-root <目录>] [--json]` | 搜索可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
 | `personas show <文件或短名> [--json]` | 读取单个 persona 的身份、能力与提示词 |
@@ -166,6 +167,20 @@ S2 的角色是**必须有**的，不是可选的：
 - 风险：`L0` 只读、`L1` worktree、`L2` 沙箱进程、`L3` 宿主/GPU、`L4` 人工确认。
 - `Owner`、`Risk`、`Write scope`、`Verify` 必填；`Acceptance` 至少一条 checkbox。
 - `Verify` 必须能从 execution root 复跑；命令按当前平台 shell 执行（Windows `cmd.exe`，其他 `/bin/sh`），支持 `&&`、管道和带引号的参数。
+
+## auto 的协议开关（v0.11.0）
+
+`--protocol full` 把 ADR-0010 的四件挂到 auto 上；默认 `none` 保持旧行为。组合真值表：
+
+| `--protocol` | `--require-brief` | `--until` | 行为 |
+|---|---|---|---|
+| none | 任意 | review | 旧行为：执行 → verify → 停 review |
+| none | 任意 | land | 旧行为：执行 → verify → 评审 → land（**不跑 closeout**） |
+| full | 否 | review | 注入 context/env → 执行 → verify → checkpoint → closeout → 停 review |
+| full | 是 | review | 同上，但**没审批过的 brief 就不开跑** |
+| full | 否/是 | land | 同上，且 **closeout 必须 pass 才 land**，否则 `closeout-failed` |
+
+失败语义：closeout 不过 → `status=closeout-failed`，findings 写进 `auto/feedback-<n>.md` **不自动重跑**（由人或下一张票决定）。
 
 ## 半自动推进（v0.6）
 

@@ -17,7 +17,7 @@ from .state import Run
 from .ticket import Ticket
 from .verify import changed_files, path_matches_scope
 
-PATHLIKE = ("/", "\\", ".py", ".js", ".ts", ".md", ".json", ".css", ".html", ".yml", ".yaml", ".toml", ".mjs")
+PATHLIKE = ("/", "\\", ".txt", ".py", ".js", ".ts", ".md", ".json", ".css", ".html", ".yml", ".yaml", ".toml", ".mjs")
 
 
 def _now() -> str:

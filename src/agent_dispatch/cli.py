@@ -39,6 +39,8 @@ from .align import (
 from .brief import approve_brief, approval_status, check_brief, ensure_brief
 from .checkpoints import list_generations, publish as publish_checkpoint
 from .closeout import write as write_closeout
+from .packet import write as write_review_packet
+from .seats import DEFAULT_CAP, check as check_seats
 from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as write_selection_pack
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
@@ -163,6 +165,21 @@ def _parser() -> argparse.ArgumentParser:
     select_parser.add_argument("--root", type=Path, default=Path("."))
     select_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    seat_parser = subparsers.add_parser(
+        "seat", help="Check team seats before spawning an executor."
+    )
+    seat_parser.add_argument("--cap", type=int, default=DEFAULT_CAP)
+    seat_parser.add_argument("--occupied", type=int, default=0)
+    seat_parser.add_argument("--inactive", default="", help="逗号分隔的可回收成员")
+    seat_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    packet_parser = subparsers.add_parser(
+        "review-packet", help="Freeze ticket, diff, receipt and verify into a review packet."
+    )
+    packet_parser.add_argument("ticket_id")
+    packet_parser.add_argument("--root", type=Path, default=Path("."))
+    packet_parser.add_argument("--json", action="store_true", dest="as_json")
+
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
     start_parser.add_argument("--root", type=Path, default=Path("."))
@@ -256,6 +273,15 @@ def _parser() -> argparse.ArgumentParser:
         "--human", action="store_true", help="Mark the reviewer as human."
     )
     auto_parser.add_argument("--tickets", type=Path, default=None)
+    auto_parser.add_argument(
+        "--protocol", choices=("none", "full"), default="none",
+        help="full = inject context + env hint, gate on brief, publish checkpoints, run closeout.",
+    )
+    auto_parser.add_argument("--env-hint", default="", help="Build prerequisites for the executor.")
+    auto_parser.add_argument(
+        "--require-brief", action="store_true", dest="require_brief",
+        help="With --protocol full: refuse to start unless a brief was accepted.",
+    )
     auto_parser.add_argument("--root", type=Path, default=Path("."))
     auto_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -877,6 +903,46 @@ def _cmd_tickets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_seat(args: argparse.Namespace) -> int:
+    inactive = [part.strip() for part in args.inactive.split(",") if part.strip()]
+    try:
+        report = check_seats(
+            cap=args.cap,
+            occupied=args.occupied,
+            inactive=inactive,
+        )
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(f"seats: {report['occupied']}/{report['cap']} 占用，剩 {report['free']}")
+        print(f"verdict: {report['verdict']} — {report['advice']}")
+    return 0 if report["free"] > 0 else 1
+
+
+def _cmd_review_packet(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run", file=sys.stderr)
+        return 1
+    path, report = write_review_packet(args.root, ticket, run)
+    if args.as_json:
+        print(json.dumps({"path": str(path), "hashes": report.get("hashes")}, ensure_ascii=False))
+    else:
+        print(f"Review packet: {path}")
+        print(f"Diff hash: {report.get('diff_hash')}")
+    return 0
+
+
 def _cmd_checkpoint(args: argparse.Namespace) -> int:
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -1089,6 +1155,9 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             reviewer_command=args.reviewer_command,
             accept_degraded=args.accept_degraded,
             human=args.human,
+            protocol=args.protocol,
+            env_hint=args.env_hint,
+            require_brief=args.require_brief,
         )
     except AutoError as exc:
         print(f"AUTO {exc}", file=sys.stderr)
@@ -1311,6 +1380,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_brief(args)
     if args.command == "select":
         return _cmd_select(args)
+    if args.command == "seat":
+        return _cmd_seat(args)
+    if args.command == "review-packet":
+        return _cmd_review_packet(args)
     if args.command == "align":
         return _cmd_align(args)
     if args.command == "spec":
