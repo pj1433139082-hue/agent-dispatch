@@ -36,6 +36,10 @@ def status_document(
 ) -> dict[str, object]:
     states = dict(states or {})
     done = done if done is not None else _done(states)
+    # 票据文件自己声明的 done 也算数：不然「文件里写了 done、但没有 run」会一直显示 ready
+    done = set(done) | {
+        ticket.id for ticket in tickets if str(getattr(ticket, "status", "")).strip().lower() == "done"
+    }
     plan = build_plan(tickets, done=done)
     ready_frontier = [
         ticket_id
@@ -46,7 +50,11 @@ def status_document(
     for ticket in sorted(tickets, key=lambda item: item.id):
         stored = states.get(ticket.id)
         if stored is None:
-            state = "blocked" if _blocked_by(ticket, done) else "ready"
+            declared = str(getattr(ticket, "status", "")).strip().lower()
+            if declared in {"done", "failed", "blocked", "review"}:
+                state = declared
+            else:
+                state = "blocked" if _blocked_by(ticket, done) else "ready"
         else:
             state = stored
         rows.append(
