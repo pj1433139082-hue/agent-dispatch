@@ -47,6 +47,7 @@ from .graph import build_plan
 from .landing import LandingError, land_run
 from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
+from .pipeline import selection_signed, stage_report
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
 from .ticket import Ticket, lint_tickets, load_tickets, parse_ticket
@@ -199,6 +200,11 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--apply", action="store_true")
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    stage_parser = subparsers.add_parser("stage", help="Show S1..S5 pipeline status for a slug.")
+    stage_parser.add_argument("slug")
+    stage_parser.add_argument("--root", type=Path, default=Path("."))
+    stage_parser.add_argument("--json", action="store_true", dest="as_json")
 
     sweep_parser = subparsers.add_parser("sweep", help="Read-only liveness report for active runs.")
     sweep_parser.add_argument("--root", type=Path, default=Path("."))
@@ -905,6 +911,11 @@ def _cmd_spec(args: argparse.Namespace) -> int:
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         return 1
+    signed, signed_note = selection_signed(args.root, slug)
+    if not signed and not args.force:
+        print("selection is not signed: " + signed_note, file=sys.stderr)
+        print("run dispatch select " + slug + " first, get the client signature, or pass --force", file=sys.stderr)
+        return 1
     target = spec_path(args.root, slug)
     if target.exists():
         print(f"spec already exists: {target}", file=sys.stderr)
@@ -927,7 +938,11 @@ def _cmd_tickets(args: argparse.Namespace) -> int:
         return 1
     items = delivery_items(spec.read_text(encoding="utf-8"))
     if not items:
-        print(f"spec {slug}: no delivery-standard items to turn into tickets", file=sys.stderr)
+        print(
+            f"spec {slug}: the '## Delivery standard' section is empty or missing; "
+            "fill it with one bullet per shippable item, then rerun dispatch tickets",
+            file=sys.stderr,
+        )
         return 1
     written = write_drafts(args.root, slug, items)
     if args.as_json:
@@ -1029,6 +1044,19 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
         for finding in report.get("findings", []):
             print(f"  - {finding}")
     return 0 if report["status"] == "pass" else 1
+
+
+def _cmd_stage(args: argparse.Namespace) -> int:
+    report = stage_report(args.root, args.slug)
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        for name in ("s1", "s2", "s3", "s4", "s5"):
+            item = report["stages"][name]
+            mark = "OK  " if item["ok"] else "MISS"
+            print(mark + " " + name + "  " + str(item["detail"]))
+        print("next: " + str(report["next"]))
+    return 0 if report["ok"] else 1
 
 
 def _cmd_claim(args: argparse.Namespace) -> int:
@@ -1516,6 +1544,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "stage":
+        return _cmd_stage(args)
     if args.command == "claim":
         return _cmd_claim(args)
     if args.command == "gc":
