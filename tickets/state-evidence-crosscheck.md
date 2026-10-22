@@ -13,7 +13,9 @@
 3. `repair --write` 遇到 mismatch 的票**不写**（与冲突票同等待遇），并在报告里列出，交给人裁决。
 
 **Blocked by:** None
-**Status:** ready-for-agent
+**Status:** done
+
+> 2026-10-22 已实现并验证：`lifecycle.evidence_state()`、`sweep --json` 的 `evidence_state` 字段、`repair`/`status` 的 EVIDENCE-MISMATCH、`repair --write` 跳过 mismatch（v0.13.0，测试见 tests/test_cli_repair.py 与 test_cli_sweep.py）。
 
 ## Dispatch
 
