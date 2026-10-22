@@ -53,7 +53,7 @@ def test_stage_prompt_is_empty_when_nothing_to_ask(tmp_path: Path) -> None:
 def test_sign_records_an_approval_and_unblocks_spec(tmp_path: Path) -> None:
     prepare_to_signature(tmp_path)
 
-    result = run_dispatch(tmp_path, "sign", "demo", "--by", "甲方")
+    result = run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--via", "card")
 
     assert result.returncode == 0, result.stderr
     summary = (tmp_path / "docs" / "selection" / "demo" / "99-summary.md").read_text(encoding="utf-8")
@@ -65,15 +65,41 @@ def test_sign_records_an_approval_and_unblocks_spec(tmp_path: Path) -> None:
 def test_sign_supports_a_hold(tmp_path: Path) -> None:
     prepare_to_signature(tmp_path)
 
-    assert run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--hold").returncode == 0
+    assert run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--via", "card", "--hold").returncode == 0
 
     summary = (tmp_path / "docs" / "selection" / "demo" / "99-summary.md").read_text(encoding="utf-8")
     assert "☑ 有保留通过" in summary
     assert run_dispatch(tmp_path, "spec", "demo").returncode == 0
 
 
-def test_sign_without_a_pack_fails(tmp_path: Path) -> None:
+def test_sign_requires_a_via_marker(tmp_path: Path) -> None:
+    prepare_to_signature(tmp_path)
+
     result = run_dispatch(tmp_path, "sign", "demo", "--by", "甲方")
+
+    assert result.returncode != 0
+    assert "via" in (result.stdout + result.stderr).lower()
+
+
+def test_sign_rejects_an_unknown_via_marker(tmp_path: Path) -> None:
+    prepare_to_signature(tmp_path)
+
+    result = run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--via", "telepathy")
+
+    assert result.returncode != 0
+
+
+def test_sign_records_how_the_client_confirmed(tmp_path: Path) -> None:
+    prepare_to_signature(tmp_path)
+
+    assert run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--via", "dialog").returncode == 0
+
+    summary = (tmp_path / "docs" / "selection" / "demo" / "99-summary.md").read_text(encoding="utf-8")
+    assert "- 确认方式：dialog" in summary
+
+
+def test_sign_without_a_pack_fails(tmp_path: Path) -> None:
+    result = run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--via", "card")
 
     assert result.returncode == 1
     assert "selection" in (result.stdout + result.stderr).lower()

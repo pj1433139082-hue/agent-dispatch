@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.20.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.21.0。
 
 ## 何时使用
 
@@ -115,11 +115,21 @@ python scripts/acceptance.py --json   # 机读（CI）
 
 两条真机路径：**A** auto `--protocol full --until land` 全链路；**B** 老项目升级回归（无 `skill_version`/`deadline_seconds` 的旧 run 不许崩、不许迁移数据）。退出码 0 = 都过。
 
+## 门必须先问再签（v0.21.0）
+
+S1 / S2 / S3 三个门**不许由 agent 代拍板**。固定动作：
+
+1. `dispatch stage <slug> --prompt` 拿到结构化问题（`{id, header, question, options[{label, description}]}`）；
+2. 把这份 JSON **原样**喂给 `ask_user_question`（弹窗）或文字决策卡（弹窗不可用时）；
+3. 拿到答案后再落盘：问卷写进 `docs/questions/<slug>.md`、签字用 `dispatch sign <slug> --by <人> --via dialog|card`、规格改动写进 `docs/specs/<slug>.md`。
+
+没有 `--via` 的签字直接报错——审计时能分清"问过的"和"自己写的"。
+
 ## 命令速查
 
 | 命令 | 用途 |
 |---|---|
-| `sign <slug> --by <人> [--hold 或 --reject]` | 把甲方签字写回 `docs/selection/<slug>/99-summary.md`（签字人 + 勾选），签了 `spec` 才放行 |
+| `sign <slug> --by <人> --via <dialog 或 card> [--hold 或 --reject]` | 把甲方签字写回 `99-summary.md`（签字人 + 勾选 + 确认方式）；**`--via` 必填**，不写来源不许签 |
 | `stage <slug> [--json] [--prompt]` | S1–S5 一屏状态；`--prompt` 输出该阶段要人回答的问题（喂弹窗/决策卡）：问卷 / 选型 / 签字 / 规格 / 票；`next` 指下一步，未就绪 exit 1 |
 | `claim <id> [--ttl-minutes 15]` | 把票的写域展开成**文件租约**（`.dispatch/locks/`）：被别的活租约占着就 exit 3，不让两个 run 同时写同一文件 |
 | `gc [--apply]` | 回收 ended run 的 worktree：干净且已 land → REMOVE；有未提交改动或未 land → HOLD |

@@ -25,6 +25,7 @@ def selection_signed(root: Path, slug: str) -> tuple[bool, str]:
         stripped = line.strip()
         if stripped.startswith("- 签字人："):
             signer = stripped.split("：", 1)[1].strip()
+            continue
         if stripped.startswith("- 选择："):
             approved = "☑" in stripped
     has_choice_line = "- 选择：" in text
@@ -153,8 +154,13 @@ def stage_prompt(root: Path, slug: str) -> dict[str, object]:
     return {"slug": slug, "stage": step or "done", "questions": questions, "answer_hint": hint}
 
 
-def sign_selection(root: Path, slug: str, by: str, choice: str = "pass") -> Path:
-    """把签字写回 99-summary.md：签字人 + 勾选。"""
+VIA_MARKERS = ("dialog", "card")
+
+
+def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "") -> Path:
+    """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
+    if via not in VIA_MARKERS:
+        raise ValueError("--via must be one of: " + ", ".join(VIA_MARKERS))
     summary = pack_dir(Path(root), slug) / SUMMARY
     if not summary.is_file():
         raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
@@ -167,6 +173,9 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass") -> Path
         if stripped.startswith("- 签字人："):
             out.append("- 签字人：" + by)
             continue
+        if stripped.startswith("- 确认方式："):
+            out.append("- 确认方式：" + via)
+            continue
         if stripped.startswith("- 选择："):
             boxes = []
             for option in ("通过", "有保留通过", "打回"):
@@ -176,7 +185,8 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass") -> Path
             continue
         out.append(line)
     if not any(line.startswith("- 选择：") for line in out):
-        out.append("- 选择：☐ 通过　☐ 有保留通过　☐ 打回")
-        out = [line.replace("☐ " + label, "☑ " + label) if line.startswith("- 选择：") else line for line in out]
+        boxes = "　".join(("☑ " if option == label else "☐ ") + option for option in ("通过", "有保留通过", "打回"))
+        out.append("- 选择：" + boxes)
+    out.append("- 确认方式：" + via)
     summary.write_text("\n".join(out) + "\n", encoding="utf-8")
     return summary

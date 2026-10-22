@@ -205,6 +205,10 @@ def _parser() -> argparse.ArgumentParser:
     sign_parser = subparsers.add_parser("sign", help="Record the client signature on the S2 selection summary.")
     sign_parser.add_argument("slug")
     sign_parser.add_argument("--by", required=True, help="Who signs it.")
+    sign_parser.add_argument(
+        "--via", required=True, choices=("dialog", "card"),
+        help="How the client confirmed: dialog (interactive question) or card (text decision card).",
+    )
     sign_parser.add_argument("--hold", action="store_true", help="Approve with reservations.")
     sign_parser.add_argument("--reject", action="store_true", help="Reject the selection.")
     sign_parser.add_argument("--root", type=Path, default=Path("."))
@@ -1057,8 +1061,11 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
 def _cmd_sign(args: argparse.Namespace) -> int:
     choice = "reject" if args.reject else ("hold" if args.hold else "pass")
     try:
-        path = sign_selection(args.root, args.slug, args.by, choice)
+        path = sign_selection(args.root, args.slug, args.by, choice, args.via)
     except FileNotFoundError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except ValueError as error:
         print(str(error), file=sys.stderr)
         return 1
     print("Signed " + args.slug + " (" + choice + ") -> " + str(path))
