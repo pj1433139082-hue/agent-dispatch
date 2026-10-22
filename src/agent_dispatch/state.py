@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import __version__ as _skill_version
 from .ticket import Ticket
 from .workorder import render_work_order
 
@@ -137,6 +138,7 @@ class Run:
             "risk": ticket.risk,
             "claimed_by": claimed_by or ticket.owner,
             "created_at": _now(),
+            "skill_version": _skill_version,
             "use_worktree": False,
             "execution_root": "",
         }

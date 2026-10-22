@@ -178,6 +178,7 @@ def _parser() -> argparse.ArgumentParser:
         "review-packet", help="Freeze ticket, diff, receipt and verify into a review packet."
     )
     packet_parser.add_argument("ticket_id")
+    packet_parser.add_argument("--tickets", type=Path, default=None)
     packet_parser.add_argument("--root", type=Path, default=Path("."))
     packet_parser.add_argument("--json", action="store_true", dest="as_json")
 
