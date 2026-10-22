@@ -44,6 +44,24 @@ def build(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
             text=True,
             check=False,
         ).stdout
+        # 新增文件在 git diff 里是空的；不补的话评审包会对着"没变化"签字。
+        for relative in files:
+            target = execution_root / relative
+            if not target.is_file():
+                continue
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", relative],
+                cwd=execution_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            ).returncode == 0
+            if tracked:
+                continue
+            body = target.read_text(encoding="utf-8", errors="replace").splitlines()
+            hunk = ["diff --git a/" + relative + " b/" + relative, "new file mode 100644", "--- /dev/null", "+++ b/" + relative]
+            hunk.extend("+" + line for line in body)
+            diff += "\n".join(hunk) + "\n"
     ticket_text = _read(ticket.path)
     receipt_text = _read(run.directory / "receipt.json")
     verify_text = _read(run.directory / "verify.json")
