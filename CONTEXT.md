@@ -45,12 +45,34 @@ _Avoid_: 测试、检查、CI
 _Avoid_: 审批、code review（可指具体活动）
 
 **Review packet（评审包）**:
-一次 Review 的不可变输入集合：票据快照、diff、改动文件、回执、验收证据、基线 review guide 与哈希清单。
+一次 Review 的不可变输入集合：票据快照、diff、改动文件、回执、验收证据、基线 review guide 与哈希清单；评审者只读包，不读活动 worktree。
 _Avoid_: 评审报告、review 结果
 
 **Review guide（评审指南）**:
 固定在 base commit 的评审标准文本；评审者以它为准，不读取被审 change 中可能被改写的规则文件。
 _Avoid_: AGENTS.md、规范（泛称）
+
+## 派单生命周期
+
+**Seat（名额占位）**:
+一条 active Run 占用一个执行端名额；inactive 成员在宿主侧仍占位，所以"派不出去"是名额问题，不是票据问题。
+_Avoid_: 槽位、并发数、worker 数
+
+**Deadline（派单时限）**:
+派单方给一次执行约定的最长时限（默认 15 分钟）；到点先 `sweep` 看活动，再决定是否收回。
+_Avoid_: 超时、timeout（那是命令级参数）
+
+**Sweep（只读巡检）**:
+对 active Run 报"存活时长 / 最后产物距现在多久 / 是否已有回执"的只读报告；不自动 kill。
+_Avoid_: 监控、watchdog（本项不做自动处置）
+
+**Repair（索引重建）**:
+从 `.dispatch/runs/*/run.json` 反向重建 `state.json` 的幂等操作；默认 dry-run，冲突要人裁决。
+_Avoid_: 修复、恢复（易与回滚混淆）
+
+**Self-reviewed（自评标记）**:
+L1 票据允许 lead 自评通过时留下的痕迹，land 记录里必须可见；L2 及以上不得使用。
+_Avoid_: 免评审、跳过评审
 
 ## 框架边界
 
