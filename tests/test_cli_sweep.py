@@ -57,3 +57,12 @@ def test_sweep_skips_finished_runs(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     rows = json.loads(result.stdout)
     assert [row["ticket_id"] for row in rows] == ["03-live"]
+
+def test_sweep_reports_evidence_state(tmp_path: Path) -> None:
+    run_dir = make_run(tmp_path, "01-probe-20261022T030000Z-jjjjjj")
+    (run_dir / "verify.json").write_text(json.dumps({"status": "passed"}), encoding="utf-8")
+
+    result = run_dispatch(tmp_path, "sweep", "--json")
+
+    rows = json.loads(result.stdout)
+    assert rows[0]["evidence_state"] == "review"

@@ -23,6 +23,7 @@ def _append_ledger(root: Path, record: dict[str, object], review_hash: str) -> N
         "notes": record["notes"],
         "verify_status": record["verify_status"],
         "accepted_degraded": record["accepted_degraded"],
+        "self_reviewed": record["self_reviewed"],
         "review_hash": review_hash,
     }
     with ledger.open("a", encoding="utf-8") as handle:
@@ -38,6 +39,7 @@ def submit_review(
     notes: str = "",
     human: bool = False,
     accept_degraded: bool = False,
+    self_reviewed: bool = False,
 ) -> tuple[dict[str, object] | None, list[str]]:
     reviewer = reviewer.strip()
     verdict = verdict.strip().lower()
@@ -68,7 +70,13 @@ def submit_review(
             )
 
     if reviewer and (reviewer == ticket.owner or reviewer == str(run.data.get("claimed_by", ""))):
-        errors.append("self-review is not allowed: reviewer equals the ticket owner or claiming agent")
+        # ADR-0008 D5：L0/L1 允许自评，但必须显式 --self-reviewed 留痕；L2+ 一律不许。
+        if self_reviewed and ticket.risk in {"L0", "L1"}:
+            pass
+        elif self_reviewed:
+            errors.append("self-review is only allowed for L0/L1 tickets")
+        else:
+            errors.append("self-review is not allowed: reviewer equals the ticket owner or claiming agent (L0/L1 may pass --self-reviewed)")
     if ticket.risk == "L4" and not human:
         errors.append("L4 work requires an explicit human reviewer (--human)")
 
@@ -85,6 +93,7 @@ def submit_review(
         "status": "passed" if verdict == "pass" else "failed",
         "verify_status": verify_status,
         "accepted_degraded": bool(accept_degraded and verify_status == "degraded"),
+        "self_reviewed": bool(self_reviewed),
     }
     review_path = run.directory / "review.json"
     review_path.write_text(

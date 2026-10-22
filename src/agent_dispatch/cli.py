@@ -45,7 +45,7 @@ from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as wri
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
-from .lifecycle import repair as repair_state, sweep as sweep_runs
+from .lifecycle import evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
@@ -211,6 +211,10 @@ def _parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--verdict", required=True, choices=("pass", "fail"))
     review_parser.add_argument("--notes", default="")
     review_parser.add_argument("--human", action="store_true")
+    review_parser.add_argument(
+        "--self-reviewed", action="store_true", dest="self_reviewed",
+        help="L0/L1 only: record an explicit self-review trace (ADR-0008 D5).",
+    )
     review_parser.add_argument(
         "--accept-degraded",
         action="store_true",
@@ -1032,6 +1036,8 @@ def _cmd_repair(args: argparse.Namespace) -> int:
         print("State differs: " + (", ".join(report["state_changed"]) or "-"))
         for conflict in report["conflicts"]:
             print("CONFLICT " + conflict["ticket_id"] + ": index=" + str(conflict["state_run"]) + " disk=" + str(conflict["disk_run"]), file=sys.stderr)
+        for item in report.get("evidence_mismatch", []):
+            print("EVIDENCE-MISMATCH " + item["ticket_id"] + ": state=" + str(item["state_run"]) + " evidence=" + str(item["evidence"]))
         print("Written: yes" if report["written"] else "Written: no (dry run; add --write)")
     return 1 if report["conflicts"] else 0
 
@@ -1110,6 +1116,7 @@ def _cmd_review(args: argparse.Namespace) -> int:
         notes=args.notes,
         human=args.human,
         accept_degraded=args.accept_degraded,
+        self_reviewed=args.self_reviewed,
     )
     if errors:
         for error in errors:

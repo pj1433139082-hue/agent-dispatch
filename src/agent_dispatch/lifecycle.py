@@ -44,6 +44,37 @@ def runs_on_disk(root: Path) -> list[dict[str, object]]:
     return found
 
 
+def _read_json(path: Path) -> dict[str, object]:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def evidence_state(run_dir: Path) -> str | None:
+    """证据优先的应然状态：review > closeout > verify；三样都缺就不下结论。"""
+    review = _read_json(Path(run_dir) / "review.json")
+    if review:
+        verdict = str(review.get("verdict", "")).strip().lower()
+        if verdict == "pass":
+            return "done"
+        if verdict == "fail":
+            return "failed"
+    closeout = _read_json(Path(run_dir) / "closeout.json")
+    if str(closeout.get("status", "")) == "pass":
+        return "review"
+    verify = _read_json(Path(run_dir) / "verify.json")
+    status = str(verify.get("status", ""))
+    if status in {"passed", "degraded"}:
+        return "review"
+    if status == "failed":
+        return "failed"
+    return None
+
+
 def _last_artifact(run_dir: Path) -> tuple[str, float | None]:
     newest_name = ""
     newest_ts: float | None = None
@@ -82,6 +113,7 @@ def sweep(root: Path) -> list[dict[str, object]]:
                 "last_artifact": name,
                 "idle_seconds": idle,
                 "has_receipt": (directory / "receipt.json").is_file(),
+                "evidence_state": evidence_state(directory),
             }
         )
     return rows
@@ -119,6 +151,16 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
         for ticket_id, entry in latest.items()
         if ticket_id in known and str(known[ticket_id].get("state", "")) != str(entry["state"])
     )
+    evidence_mismatch = [
+        {
+            "ticket_id": ticket_id,
+            "state_run": str(entry["state"]),
+            "evidence": expected,
+        }
+        for ticket_id, entry in sorted(latest.items())
+        if (expected := evidence_state(Path(root) / ".dispatch" / "runs" / str(entry["run_id"]))) is not None
+        and expected != str(entry["state"])
+    ]
     conflicts = [
         {
             "ticket_id": ticket_id,
@@ -131,6 +173,7 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
     if write:
         merged = {ticket_id: dict(entry) for ticket_id, entry in known.items()}
         conflicted = {str(item["ticket_id"]) for item in conflicts}
+        conflicted |= {str(item["ticket_id"]) for item in evidence_mismatch}
         for ticket_id, entry in latest.items():
             if ticket_id in conflicted:
                 # 冲突票不写：index 与 disk 各执一词时，交给人裁决（ADR-0008 D3）
@@ -152,5 +195,6 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
         "added": added,
         "state_changed": state_changed,
         "conflicts": conflicts,
+        "evidence_mismatch": evidence_mismatch,
         "written": bool(write),
     }
