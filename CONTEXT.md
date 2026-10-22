@@ -17,8 +17,12 @@ _Avoid_: 执行、job、session
 _Avoid_: 运行、job、session
 
 **Auto run（自动推进）**:
-一次 `dispatch auto` 在同一个 Run 内调用外部执行器、跑 verify，并可按配置继续独立评审与 land；执行器退出码不是验收结论。
-_Avoid_: 全自动交付、自动验收
+一次 `dispatch auto` 在同一个 Run 内调用外部执行器、跑 verify，并可按配置继续独立评审与 land；可带协议门禁（`--protocol full`：context / brief / checkpoint / closeout），但**不做多票编排**。执行器退出码不是验收结论。
+_Avoid_: 全自动交付、自动验收、流水线
+
+**Pipeline（多票编排）**:
+按 `blocked-by` 拓扑把多张票排成波次并连续执行的能力。当前**不存在**，只是先占词；不要拿 Auto run 冒充 Pipeline。
+_Avoid_: auto、批量派单
 
 **Executor（执行器）**:
 用户提供给 `dispatch auto` 的 shell 命令，在 Run 的 worktree 中写业务文件与回执；不是 dispatch 内置的模型运行时。
