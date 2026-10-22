@@ -36,6 +36,7 @@ def build(output: Path) -> Path:
         copy_file(ROOT / name, output / name)
 
     copy_file(ROOT / "scripts" / "dispatch.py", output / "scripts" / "dispatch.py")
+    copy_file(ROOT / "scripts" / "acceptance.py", output / "scripts" / "acceptance.py")
     copy_tree(ROOT / "src" / "agent_dispatch", output / "src" / "agent_dispatch")
     copy_tree(ROOT / "references", output / "references")
     copy_tree(ROOT / "templates", output / "templates")
