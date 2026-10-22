@@ -264,39 +264,63 @@ def claim(
     *,
     ttl_seconds: int = 900,
 ) -> dict[str, object]:
-    """为一次 run 主张若干文件；被别的活租约占着就冲突（不覆盖）。"""
+    """为一次 run 主张若干文件；被别的活租约占着就冲突（不覆盖）。
+
+    并发安全：用 O_CREAT|O_EXCL 原子占位，内容写临时文件再 os.replace，
+    避免两个进程同时"先读后写"都以为自己拿到了锁。
+    """
+    import os
+
     now = _now()
     granted: list[str] = []
     conflicts: list[dict[str, object]] = []
     for path in sorted(set(paths)):
         file = _lock_path(root, path)
-        existing = _read_lock(file)
-        if existing is not None and str(existing.get("run_id", "")) != run_id and not _expired(existing, now):
-            conflicts.append(
-                {
-                    "path": path,
-                    "run_id": str(existing.get("run_id", "")),
-                    "ticket_id": str(existing.get("ticket_id", "")),
-                    "expires_at": str(existing.get("expires_at", "")),
-                }
-            )
-            continue
         file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_text(
-            json.dumps(
-                {
-                    "path": path,
-                    "ticket_id": ticket_id,
-                    "run_id": run_id,
-                    "created_at": now.isoformat(),
-                    "expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        payload = json.dumps(
+            {
+                "path": path,
+                "ticket_id": ticket_id,
+                "run_id": run_id,
+                "created_at": now.isoformat(),
+                "expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+            },
+            ensure_ascii=False,
+            indent=2,
         )
-        granted.append(path)
+        won = False
+        for _attempt in range(5):
+            try:
+                handle = os.open(str(file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                existing = _read_lock(file)
+                if existing is None:
+                    continue
+                if str(existing.get("run_id", "")) == run_id:
+                    won = True  # 自己已持有：续租
+                    break
+                if _expired(existing, now):
+                    try:
+                        file.unlink()
+                    except OSError:
+                        pass
+                    continue
+                conflicts.append(
+                    {
+                        "path": path,
+                        "run_id": str(existing.get("run_id", "")),
+                        "ticket_id": str(existing.get("ticket_id", "")),
+                        "expires_at": str(existing.get("expires_at", "")),
+                    }
+                )
+                break
+            else:
+                with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                    stream.write(payload)
+                won = True
+                break
+        if won:
+            granted.append(path)
     return {"granted": granted, "conflicts": conflicts, "ttl_seconds": ttl_seconds}
 
 
