@@ -89,3 +89,19 @@ def test_stage_points_at_the_confirmation_step(tmp_path: Path) -> None:
     payload = json.loads(run_dispatch(tmp_path, "stage", "demo", "--json").stdout)
 
     assert payload["next"] == "s3-confirm"
+
+
+def test_stage_moves_to_s5_after_drafting(tmp_path: Path) -> None:
+    assert run_dispatch(tmp_path, "align", "demo", "--level", "quick").returncode == 0
+    questions = tmp_path / "docs" / "questions" / "demo.md"
+    text = questions.read_text(encoding="utf-8")
+    questions.write_text("\n".join("> 答案" if line.strip() == ">" else line for line in text.split("\n")), encoding="utf-8")
+    assert run_dispatch(tmp_path, "select", "demo").returncode == 0
+    assert run_dispatch(tmp_path, "sign", "demo", "--by", "甲方", "--via", "card").returncode == 0
+    write_spec(tmp_path)
+    assert run_dispatch(tmp_path, "confirm", "demo", "--by", "甲方", "--via", "card").returncode == 0
+    assert run_dispatch(tmp_path, "tickets", "demo").returncode == 0
+
+    payload = json.loads(run_dispatch(tmp_path, "stage", "demo", "--json").stdout)
+
+    assert payload["next"] == "s5"

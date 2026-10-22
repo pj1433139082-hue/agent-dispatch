@@ -65,6 +65,7 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
     ticket_files = sorted(tickets_dir.glob("*.md")) if tickets_dir.is_dir() else []
     s4_ok = bool(draft_files) or bool(ticket_files)
 
+    s5_ok = bool(ticket_files)
     stages = {
         "s1": {"ok": s1_ok, "detail": "questionnaire answered" if s1_ok else "; ".join(problems), "path": str(questionnaire)},
         "s2": {"ok": s2_ok and signed, "detail": (signed_note if s2_ok else "selection pack is missing"), "roles": roles},
@@ -85,6 +86,8 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
         next_step = "s3-confirm"
     elif not s4_ok:
         next_step = "s4"
+    elif not s5_ok:
+        next_step = "s5"
     else:
         next_step = ""
     return {"slug": slug, "stages": stages, "next": next_step or "done", "ok": next_step == ""}
