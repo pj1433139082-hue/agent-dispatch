@@ -45,6 +45,7 @@ from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as wri
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run
+from .lifecycle import repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run
@@ -179,6 +180,15 @@ def _parser() -> argparse.ArgumentParser:
     packet_parser.add_argument("ticket_id")
     packet_parser.add_argument("--root", type=Path, default=Path("."))
     packet_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    sweep_parser = subparsers.add_parser("sweep", help="Read-only liveness report for active runs.")
+    sweep_parser.add_argument("--root", type=Path, default=Path("."))
+    sweep_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    repair_parser = subparsers.add_parser("repair", help="Rebuild the state index from run directories.")
+    repair_parser.add_argument("--root", type=Path, default=Path("."))
+    repair_parser.add_argument("--write", action="store_true", help="Write the rebuilt index back.")
+    repair_parser.add_argument("--json", action="store_true", dest="as_json")
 
     start_parser = subparsers.add_parser("start", help="Mark a claimed run as running.")
     start_parser.add_argument("ticket_id")
@@ -994,6 +1004,38 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def _cmd_sweep(args: argparse.Namespace) -> int:
+    rows = sweep_runs(args.root)
+    if args.as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("(no active runs)")
+        return 0
+    for row in rows:
+        idle = row["idle_seconds"]
+        idle_text = str(idle) + "s" if isinstance(idle, int) else "no artifacts yet"
+        age = row["age_seconds"]
+        age_text = str(age) + "s" if isinstance(age, int) else "?"
+        flag = "RECEIPT" if row["has_receipt"] else "working"
+        print(row["ticket_id"].ljust(28) + row["state"].ljust(9) + "age=" + age_text.ljust(8) + "idle=" + idle_text.ljust(16) + flag)
+    return 0
+
+
+def _cmd_repair(args: argparse.Namespace) -> int:
+    report = repair_state(args.root, write=args.write)
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print("Runs on disk: " + str(report["runs"]))
+        print("Missing from index: " + (", ".join(report["added"]) or "-"))
+        print("State differs: " + (", ".join(report["state_changed"]) or "-"))
+        for conflict in report["conflicts"]:
+            print("CONFLICT " + conflict["ticket_id"] + ": index=" + str(conflict["state_run"]) + " disk=" + str(conflict["disk_run"]), file=sys.stderr)
+        print("Written: yes" if report["written"] else "Written: no (dry run; add --write)")
+    return 1 if report["conflicts"] else 0
+
+
 def _cmd_start(args: argparse.Namespace) -> int:
     store = DispatchState(args.root)
     existing = store.ticket(args.ticket_id)
@@ -1394,6 +1436,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_checkpoint(args)
     if args.command == "closeout":
         return _cmd_closeout(args)
+    if args.command == "repair":
+        return _cmd_repair(args)
+    if args.command == "sweep":
+        return _cmd_sweep(args)
     if args.command == "start":
         return _cmd_start(args)
     if args.command == "verify":
