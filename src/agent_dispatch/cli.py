@@ -67,11 +67,11 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     lint_parser = subparsers.add_parser("lint", help="Validate ticket files.")
-    lint_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
+    lint_parser.add_argument("--tickets", type=Path, default=None)
     lint_parser.add_argument("--json", action="store_true", dest="as_json")
 
     plan_parser = subparsers.add_parser("plan", help="Compute dependency waves.")
-    plan_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
+    plan_parser.add_argument("--tickets", type=Path, default=None)
     plan_parser.add_argument(
         "--done", action="append", default=[], metavar="ID", help="Treat a ticket as done."
     )
@@ -209,6 +209,13 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--apply", action="store_true")
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    setup_parser = subparsers.add_parser("setup", help="Write .dispatch/config.json (tickets dir, executor mode, default reviewer).")
+    setup_parser.add_argument("--root", type=Path, default=Path("."))
+    setup_parser.add_argument("--tickets", default=None, help="Ticket directory, relative to the project root (default: tickets).")
+    setup_parser.add_argument("--executor-mode", choices=("teammate", "dsh", "command"), default=None)
+    setup_parser.add_argument("--default-reviewer", default=None)
+    setup_parser.add_argument("--json", action="store_true", dest="as_json")
 
     handoff_parser = subparsers.add_parser("handoff", help="Print the message to send a teammate so it can execute this run.")
     handoff_parser.add_argument("ticket_id")
@@ -508,13 +515,34 @@ def _parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--write-scope", action="append", default=[])
     new_parser.add_argument("--verify", action="append", default=[])
     new_parser.add_argument("--depends-on", action="append", default=[])
-    new_parser.add_argument("--tickets", type=Path, default=Path("tickets"))
+    new_parser.add_argument("--tickets", type=Path, default=None)
     return parser
 
+CONFIG_NAME = "config.json"
+
+
+def config_path(root: Path) -> Path:
+    return Path(root) / ".dispatch" / CONFIG_NAME
+
+
+def load_config(root: Path) -> dict[str, object]:
+    path = config_path(root)
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _tickets_dir(args: argparse.Namespace) -> Path:
-    if args.tickets is not None:
+    if getattr(args, "tickets", None) is not None:
         return args.tickets
-    root = getattr(args, "root", Path("."))
+    root = Path(getattr(args, "root", Path(".")))
+    configured = str(load_config(root).get("tickets_dir", "") or "")
+    if configured:
+        return root / configured
     return root / "tickets"
 
 def _load_and_lint(directory: Path, root: Path | None = None):
@@ -535,7 +563,7 @@ def _state_hint(ticket_id: str, current: object) -> str:
 
 
 def _cmd_lint(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(args.tickets)
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     if args.as_json:
@@ -581,7 +609,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 def _cmd_new(args: argparse.Namespace) -> int:
-    directory = args.tickets
+    directory = _tickets_dir(args)
     directory.mkdir(parents=True, exist_ok=True)
     existing = load_tickets(directory)
     if any(ticket.id == args.ticket_id for ticket in existing):
@@ -786,7 +814,7 @@ def _cmd_personas_show(args: argparse.Namespace) -> int:
     return 0
 
 def _cmd_plan(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(args.tickets)
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     plan = build_plan(tickets, done=set(args.done))
@@ -1126,6 +1154,33 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
         for finding in report.get("findings", []):
             print(f"  - {finding}")
     return 0 if report["status"] == "pass" else 1
+
+
+def _cmd_setup(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    current = load_config(root)
+    tickets = args.tickets or str(current.get("tickets_dir", "tickets"))
+    target = root / tickets
+    if not target.is_dir():
+        print(f"tickets directory is missing: {target} (create it or point --tickets elsewhere)", file=sys.stderr)
+        return 1
+    updated = {
+        "version": 1,
+        "tickets_dir": tickets.replace("\\", "/"),
+        "executor_mode": args.executor_mode or str(current.get("executor_mode", "command")),
+        "default_reviewer": args.default_reviewer or str(current.get("default_reviewer", "")),
+        "skill_version": __version__,
+    }
+    path = config_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.as_json:
+        print(json.dumps({"config": str(path), **updated}, ensure_ascii=False, indent=2))
+    else:
+        print(f"Wrote {path}")
+        for key in ("tickets_dir", "executor_mode", "default_reviewer"):
+            print(f"  {key}: {updated[key]}")
+    return 0
 
 
 def _cmd_handoff(args: argparse.Namespace) -> int:
@@ -2064,6 +2119,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "setup":
+        return _cmd_setup(args)
     if args.command == "handoff":
         return _cmd_handoff(args)
     if args.command == "doctor":

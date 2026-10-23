@@ -1,3 +1,3 @@
 """Agent Dispatch: ticket contracts, work orders, and evidence gates."""
 
-__version__ = "0.41.0"
+__version__ = "0.42.0"
