@@ -78,6 +78,13 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
 
 
+HOUSEKEEPING_PATHS = (".gitignore", ".gitattributes")
+
+
+def housekeeping(path: str) -> bool:
+    return path in HOUSEKEEPING_PATHS
+
+
 HOST_OWNED_PREFIXES = (".agents/", ".claude/", ".codex/", ".cursor/", ".gemini/")
 
 
@@ -484,6 +491,16 @@ def verify_run(
             for path in files
             if not any(path_matches_scope(scope, path) for scope in ticket.write_scope)
         ]
+        house_only = [path for path in out_of_scope if housekeeping(path)]
+        if house_only:
+            out_of_scope = [path for path in out_of_scope if path not in house_only]
+            checks.append(
+                {
+                    "name": "housekeeping (ignored)",
+                    "ok": True,
+                    "detail": "not ticket output: " + ", ".join(house_only),
+                }
+            )
         scope_detail = "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope"
         host_paths = [path for path in out_of_scope if host_owned(path)]
         if host_paths:

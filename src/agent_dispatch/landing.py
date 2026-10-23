@@ -156,7 +156,25 @@ def land_run(
     if (run.directory / "landing.json").exists():
         raise LandingError(f"run {run.id} already has a landing record")
     if not _checkout_is_clean(root):
-        raise LandingError("main checkout is dirty; land will not modify a dirty checkout")
+        dirty = sorted(
+            {
+                line[3:].strip()
+                for line in subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                ).stdout.splitlines()
+                if line.strip()
+            }
+        )
+        raise LandingError(
+            "main checkout is dirty; land will not modify a dirty checkout"
+            + (": " + ", ".join(dirty[:8]) if dirty else "")
+            + ("" if len(dirty) <= 8 else f" (+{len(dirty) - 8} more)")
+            + " — commit or ignore these first (tickets/ and .dispatch/ usually belong in .gitignore)"
+        )
 
     run_branch = str(run.data["worktree_branch"])
     if not _branch_exists(root, run_branch):

@@ -297,7 +297,7 @@ def _parser() -> argparse.ArgumentParser:
 
     review_parser = subparsers.add_parser("review", help="Record a reviewer decision.")
     review_parser.add_argument("ticket_id")
-    review_parser.add_argument("--reviewer", required=True)
+    review_parser.add_argument("--reviewer", default=None)
     review_parser.add_argument("--verdict", required=True, choices=("pass", "fail"))
     review_parser.add_argument("--notes", default="")
     review_parser.add_argument("--human", action="store_true")
@@ -649,7 +649,7 @@ def _cmd_new(args: argparse.Namespace) -> int:
         "",
         "## Acceptance",
         "",
-        f"- [ ] {args.title} is complete.",
+        f"- [ ] {args.what}",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -1179,6 +1179,12 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         "default_reviewer": args.default_reviewer or str(current.get("default_reviewer", "")),
         "skill_version": __version__,
     }
+    ignore = root / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text(".dispatch/\n", encoding="utf-8")
+    elif ".dispatch/" not in ignore.read_text(encoding="utf-8", errors="replace"):
+        with ignore.open("a", encoding="utf-8") as stream:
+            stream.write("\n.dispatch/\n")
     path = config_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1652,6 +1658,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         return 2
     if passed:
         print(f"Verification passed for {args.ticket_id} ({run.id})")
+        print(f"Record: {run.directory / 'verify.json'}")
         return 0
     for error in record["errors"]:
         print(f"VERIFY {error}", file=sys.stderr)
@@ -1659,6 +1666,12 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     return 1
 
 def _cmd_review(args: argparse.Namespace) -> int:
+    if not getattr(args, "reviewer", None):
+        configured = str(load_config(Path(args.root)).get("default_reviewer", "") or "")
+        if not configured:
+            print("review needs --reviewer <名字> (or set one with dispatch setup --default-reviewer)", file=sys.stderr)
+            return 1
+        args.reviewer = configured
     store = DispatchState(args.root)
     existing = store.ticket(args.ticket_id)
     if not existing:

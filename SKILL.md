@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.44.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.45.0。
 
 ## 何时使用
 
@@ -78,6 +78,8 @@ python <技能目录>/scripts/dispatch.py new 01 \
 
 ## 主流程
 
+0. **brief 是模板，不是一次生成就能批**：`dispatch brief <id>` 产出五段（理解/计划/要改的文件/风险/疑问），**必须把五段 `<填写：…>` 改成正文**再 `brief <id> --approve <人>`；占位内容会被拒。
+
 1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Owner`、`Risk`、`Persona`、`Write scope`、`Verify`、`Acceptance`。需要人设时先用 `personas list --search-root <目录>` 搜索，再用 `assign <id> --persona <文件或短名>` 写入；派单员只改 Persona，不改票据契约。
 2. **校验与分波**：`lint` 拒绝缺字段、自依赖、环、未知依赖；`plan` 输出拓扑波次、frontier 和同波写域冲突。
 3. **派发**：
@@ -89,7 +91,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 4. **执行者只写两处**：在 **execution root**（worktree）写业务文件；在运行目录写 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 在 execution root 复跑票据命令，按 acceptance 逐条核对 `criteria` 证据，检查 worktree 与主仓都没有越界改动。结论分 `passed` / `degraded` / `failed`，退出码 0 / 2 / 1。
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
-7. **落地**：`land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
+7. **落地**：`land` 要求**主检出干净**（脏文件会逐个列出；`setup` 会写 `.gitignore` 排除 `.dispatch/`，但 `tickets/` 里新生成的票仍需先提交），然后 `land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
 
 ## 选型角色（v0.10.0）
 
@@ -163,7 +165,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 | 命令 | 用途 |
 |---|---|
-| `setup [--tickets 目录] [--executor-mode teammate\|dsh\|command] [--default-reviewer 名字]` | 写 `.dispatch/config.json`（票目录/执行端/默认评审人），其它命令按它走；幂等 |
+| `setup [--tickets 目录] [--executor-mode teammate\|dsh\|command] [--default-reviewer 名字]` | 写 `.dispatch/config.json` + `.gitignore(.dispatch/)`；`default_reviewer` 只在 `review` 没传 `--reviewer` 时生效；幂等 |
 | `handoff <id> [--to <agent>] [--json]` | 打印"该发给谁、发什么"的交接内容（工作单路径、执行根、分支、回执位置） |
 | `doctor [--json] [--fix]` | 只读体检：票能否 lint、索引与磁盘是否一致、失败票、超期 run、活跃租约；`--fix` 只做安全修复（重建索引 + 删过期租约）；有问题 exit 1 |
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
