@@ -108,14 +108,18 @@
 - 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
 - 文档曾长期停在 v0.6：v0.7–v0.9 的实现提交只改 `SKILL.md` 与代码，`README.md` / `docs/project/` / `docs/verification/` 由接管会话于 2026-10-22 补齐。
 
-## 2026-10-23 — v0.11 → v0.28（本段进展，细节见 git log）
+## 2026-10-23 — v0.11 → v0.30（本段进展，细节见 git log）
 
 - **协议化 auto**：`--protocol full` 串起 context / 环境前置 / brief 门 / checkpoint / closeout；失败语义写进 `auto.json`。
 - **生命周期**：`sweep`（只读判活）与 `repair`（索引重建）；`claim` 文件租约（O_EXCL 原子化）与 `gc` worktree 回收。
 - **流水线门**：`stage` 一屏 S1–S5；`spec` 要 S2 签字、`tickets` 要 S3 确认；`stage --prompt` 供弹窗；`sign` / `confirm` 留痕（含 `--via`）。
 - **评审对象**：ADR-0011 统一 diff 口径（`verify.diff_hash == packet.hashes.diff`）；`auto --until land` 先生成 review-packet 并校验 `packet_hash`；`land` 默认要求 packet，新增 `--require-attestation`。
-- **测试**：从 61 例涨到 246 例；覆盖 31 个命令、四个门（正/反）、状态机全链、环境异常（git 坏 / 嵌套仓 / 主仓脏 / 占位符）、真并发、dsh 假板。
+- **测试**：从 61 例涨到 250 例；覆盖 31 个命令、四个门（正/反）、状态机全链、环境异常（git 坏 / 嵌套仓 / 主仓脏 / 占位符）、真并发、dsh 假板。
+- **批量合入（v0.29.0）**：`land --wave` 按**拓扑序**（不是完成先后、不是 id 顺序）一次合完，跳过未完成/已落地并说明原因，`--continue-on-error` 可越过失败。
+- **越界加固（v0.30.0）**：写路径穿过 symlink/junction 时 `verify` 直接判死（实测能借 junction 把文件写到仓库外，v0.30.0 修复）。
+- **真板验证**：DSH 看板（`127.0.0.1:62407`）实测 `dsh push / status / archive / delete` 全通；探针卡已删。注意直接 urllib 会 403，`dispatch` 自带 `sec-fetch-site: same-origin` 才过。
 - **发布前验收**：`python scripts/acceptance.py`（A 全链路 / B 老项目升级回归），CI 也会跑。
+- **CI**：push/PR 跑全量测试 + 验收；每日 03:00 UTC 另跑 `concurrency` job（claim 竞态 × 3 轮、wave/packet 门 × 2 轮）。
 
 ## 下一步候选
 
