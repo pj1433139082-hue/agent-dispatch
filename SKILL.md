@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.40.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.41.0。
 
 ## 何时使用
 
@@ -64,6 +64,17 @@ python <技能目录>/scripts/dispatch.py new 01 \
   --write-scope tests/ \
   --verify "python -m pytest -q"
 ```
+
+## 流程地图（四条）
+
+| 流程 | 什么时候用 | 命令链 |
+|---|---|---|
+| **A 需求→票** | 模糊需求要变成可执行票 | `align → select → sign → spec → confirm → tickets → lint → stage` |
+| **B 单票执行** | 已有票，要真的做完一件事 | `brief → render → handoff → start → verify → review → land`（可选 `closeout`） |
+| **C 批量/自动** | 想半自动推进或整波落地 | `auto <id> --executor …` / `land --wave` |
+| **D 运维恢复** | 状态不对、卡住、要体检 | `doctor [--fix] / sweep / repair / claim / release / gc / retry` |
+
+完整版（谁产出谁消费、与其它技能的交界）：`docs/flows.md`。
 
 ## 主流程
 
