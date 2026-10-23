@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.45.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.46.0。
 
 ## 何时使用
 
@@ -160,6 +160,11 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
    `dsh push --project <p>` 建卡 → 人在板上点 run（或 `dsh run <id>`）→ 结果用 `dsh outcome` 回写。看板在 `127.0.0.1:62407`（不是 50567），且请求要带 `sec-fetch-site: same-origin`。
 3. **外部执行器命令**
    `auto <id> --executor "<cmd>"`。没有 teammate、没接看板时，这条路等同**主代理自己执行**——要如实说明，不要包装成"已派给子智能体"。
+
+## 看板派单必须绑 workspace
+
+`dsh push` **必须**给 `--workspace <id>`：卡片在**那个 workspace** 里跑，不在你当前仓库。省略会在板上默认 workspace 执行——实测把 `hello.txt` 写进了另一个项目。
+确需默认 workspace 时显式加 `--allow-default-workspace`。
 
 ## 命令速查
 

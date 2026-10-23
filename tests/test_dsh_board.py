@@ -97,7 +97,7 @@ def test_dsh_push_creates_cards_and_records_the_map(tmp_path: Path) -> None:
     (tmp_path / "tickets" / "01.md").write_text(TICKET, encoding="utf-8")
     server, url = start_board()
     try:
-        result = run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo")
+        result = run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo", "--workspace", "ws-1")
     finally:
         server.shutdown()
 
@@ -127,7 +127,7 @@ def test_dsh_run_uses_the_recorded_mapping(tmp_path: Path) -> None:
     (tmp_path / "tickets" / "01.md").write_text(TICKET, encoding="utf-8")
     server, url = start_board()
     try:
-        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo").returncode == 0
+        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo", "--workspace", "ws-1").returncode == 0
         FakeBoard.requests = []
         result = run_dispatch(tmp_path, url, "dsh", "run", "01")
     finally:
@@ -143,7 +143,7 @@ def test_dsh_outcome_reports_an_external_result(tmp_path: Path) -> None:
     (tmp_path / "tickets" / "01.md").write_text(TICKET, encoding="utf-8")
     server, url = start_board()
     try:
-        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo").returncode == 0
+        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo", "--workspace", "ws-1").returncode == 0
         FakeBoard.requests = []
         result = run_dispatch(tmp_path, url, "dsh", "outcome", "01", "--result", "succeeded", "--by", "reviewer-b")
     finally:

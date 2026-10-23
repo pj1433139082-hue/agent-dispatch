@@ -67,7 +67,7 @@ def test_mark_done_records_an_external_result(tmp_path: Path) -> None:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:" + str(server.server_address[1])
     try:
-        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo").returncode == 0
+        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo", "--workspace", "ws-1").returncode == 0
         (tmp_path / "out.txt").write_text("done", encoding="utf-8")
         result = run_dispatch(
             tmp_path, url, "dsh", "outcome", "09",
@@ -91,7 +91,7 @@ def test_externally_completed_tickets_are_not_ghost_entries(tmp_path: Path) -> N
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:" + str(server.server_address[1])
     try:
-        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo").returncode == 0
+        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo", "--workspace", "ws-1").returncode == 0
         (tmp_path / "out.txt").write_text("done", encoding="utf-8")
         assert run_dispatch(
             tmp_path, url, "dsh", "outcome", "09",
@@ -113,7 +113,7 @@ def test_mark_done_requires_evidence(tmp_path: Path) -> None:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:" + str(server.server_address[1])
     try:
-        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo").returncode == 0
+        assert run_dispatch(tmp_path, url, "dsh", "push", "--project", "demo", "--workspace", "ws-1").returncode == 0
         refused = run_dispatch(
             tmp_path, url, "dsh", "outcome", "09",
             "--result", "succeeded", "--by", "dsh-board", "--mark-done",

@@ -427,7 +427,11 @@ def _parser() -> argparse.ArgumentParser:
     dsh_push.add_argument("--root", type=Path, default=Path("."))
     dsh_push.add_argument("--url", default=None, help="DSH base URL (default: DSH_TASK_BOARD_URL or http://127.0.0.1:50567).")
     dsh_push.add_argument("--project", default=None, help="Project namespace for deterministic card ids.")
-    dsh_push.add_argument("--workspace", default=None, help="DSH workspace id; omit to let the board decide.")
+    dsh_push.add_argument("--workspace", default=None, help="DSH workspace id the card will run in (required).")
+    dsh_push.add_argument(
+        "--allow-default-workspace", action="store_true", dest="allow_default_workspace",
+        help="Explicitly let the board pick its default workspace (work will run there, not in this repo).",
+    )
     dsh_push.add_argument("--mode", choices=("cards", "team"), default="cards", dest="push_mode")
     dsh_push.add_argument("--dry-run", action="store_true", help="Print the action envelopes without calling DSH.")
     dsh_push.add_argument("--json", action="store_true", dest="as_json")
@@ -1955,6 +1959,13 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     return _auto_exit_code(result)
 
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
+    if not args.workspace and not getattr(args, "allow_default_workspace", False):
+        print(
+            "DSH: push needs --workspace <id>: the card runs inside that workspace, "
+            "not in this repo. Pass --allow-default-workspace to accept the board default.",
+            file=sys.stderr,
+        )
+        return 1
     tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
