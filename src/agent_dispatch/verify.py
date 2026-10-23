@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import re
 import subprocess
 from datetime import datetime, timezone
@@ -86,6 +88,32 @@ PIPELINE_DOC_PREFIXES = (
 
 def _pipeline_doc(path: str) -> bool:
     return path.startswith(PIPELINE_DOC_PREFIXES)
+
+
+def _reparse_point(path: Path) -> bool:
+    """符号链接 / Windows junction / 其它 reparse point。"""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode):
+        return True
+    attributes = getattr(info, "st_file_attributes", 0)
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def link_in_path(root: Path, relative: str) -> str | None:
+    """返回路径上第一个 reparse point（相对 root），没有则 None。"""
+    root = Path(root)
+    current = root
+    for part in Path(relative).parts:
+        current = current / part
+        if _reparse_point(current):
+            try:
+                return str(current.relative_to(root)).replace("\\", "/")
+            except ValueError:
+                return str(current)
+    return None
 
 
 def changed_files(root: Path, base_commit: str) -> list[str]:
@@ -452,6 +480,21 @@ def verify_run(
             "write scope",
             not out_of_scope,
             "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope",
+        )
+        links = sorted(
+            {
+                found
+                for path in files
+                if (found := link_in_path(execution_root, path)) is not None
+            }
+        )
+        check(
+            "symlink",
+            not links,
+            "write path goes through a symlink/junction, which can escape the repository: "
+            + ", ".join(links)
+            if links
+            else "no symlink/junction in the changed paths",
         )
         if execution_root.resolve() != root.resolve():
             try:
