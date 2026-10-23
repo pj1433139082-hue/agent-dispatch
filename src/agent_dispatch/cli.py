@@ -452,6 +452,10 @@ def _parser() -> argparse.ArgumentParser:
         "--mark-done", action="store_true", dest="mark_done",
         help="Also mark the ticket done in dispatch and record .dispatch/external/<id>.json",
     )
+    dsh_outcome.add_argument(
+        "--evidence", default=None,
+        help="Path (relative to the project root) that proves the board actually produced the artifact.",
+    )
 
     dsh_update = dsh_sub.add_parser("update", help="Patch fields on a mapped DSH card.")
     dsh_update.add_argument("ticket_id")
@@ -1264,10 +1268,12 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     checks.append({"name": "failed", "ok": not failed, "detail": ", ".join(failed) or "none"})
 
     runs_dir = root / ".dispatch" / "runs"
+    external_dir = root / ".dispatch" / "external"
     ghosts = sorted(
         tid
         for tid, entry in (DispatchState(root).load().get("tickets") or {}).items()
         if not (runs_dir / str(entry.get("run_id", ""))).is_dir()
+        and not (external_dir / (tid + ".json")).is_file()
     )
     if ghosts:
         issues.append("index entries with no run on disk: " + ", ".join(ghosts) + " (run dispatch doctor --fix)")
@@ -1330,10 +1336,12 @@ def _fix_safe(root: Path) -> list[str]:
         state = DispatchState(Path(root))
         data = state.load()
         runs_dir = Path(root) / ".dispatch" / "runs"
+        external_dir = Path(root) / ".dispatch" / "external"
         stale = [
             tid
             for tid, entry in (data.get("tickets") or {}).items()
             if not (runs_dir / str(entry.get("run_id", ""))).is_dir()
+            and not (external_dir / (tid + ".json")).is_file()
         ]
         for tid in stale:
             data["tickets"].pop(tid, None)
@@ -1983,6 +1991,8 @@ def _cmd_dsh_status(args: argparse.Namespace) -> int:
     return 0
 
 def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
+    if getattr(args, "mark_done", False) and args.result == "succeeded":
+        evidence = str(getattr(args, "evidence", "") or "")
     try:
         result = outcome(
             args.ticket_id,
@@ -1997,6 +2007,13 @@ def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
         print(f"DSH: {exc}", file=sys.stderr)
         return 1
     if getattr(args, "mark_done", False) and args.result == "succeeded":
+        evidence = str(getattr(args, "evidence", "") or "")
+        if not evidence:
+            print("DSH: --mark-done needs --evidence <path>; board status alone is not evidence", file=sys.stderr)
+            return 1
+        if not (Path(args.root) / evidence).exists():
+            print(f"DSH: evidence not found: {evidence}", file=sys.stderr)
+            return 1
         external = Path(args.root) / ".dispatch" / "external"
         external.mkdir(parents=True, exist_ok=True)
         record = {
@@ -2006,6 +2023,7 @@ def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
             "summary": args.summary,
             "task_id": result["task_id"],
             "board_status": result["status"],
+            "evidence": evidence,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
         (external / (args.ticket_id + ".json")).write_text(
