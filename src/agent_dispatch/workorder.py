@@ -116,7 +116,7 @@ Write `receipt.json` in the run directory. It must validate against:
 Provide exactly one criterion per acceptance item, numbered 1..{len(ticket.acceptance)}.
 Every criterion needs at least one evidence item. Evidence kinds:
 
-- `file`: a path relative to the run directory; the verifier hashes it.
+- `file`: a path relative to the run directory, or to the execution root (worktree) — the verifier tries the run directory first, then the worktree; it hashes whatever it finds.
 - `inline`: literal content; include an optional sha256 to bind it.
 - `absent`: a path that must not exist.
 - `command`: a command and exit_code the executor observed (not rerun by verify).

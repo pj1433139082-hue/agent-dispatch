@@ -1961,6 +1961,18 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     return _auto_exit_code(result)
 
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
+    tickets_for_warning, _ = _load_and_lint(_tickets_dir(args), getattr(args, "root", None)) or ([], 1)
+    weak = sorted(
+        ticket.id
+        for ticket in (tickets_for_warning or [])
+        if ticket.risk in {"L0", "L1", "L2"}
+    )
+    if weak:
+        print(
+            "DSH: note: cards below L3 run with workspace-write, which cannot execute commands "
+            "in the board session; dispatch flows need L3+. Affected: " + ", ".join(weak),
+            file=sys.stderr,
+        )
     if not args.workspace and not getattr(args, "allow_default_workspace", False):
         print(
             "DSH: push needs --workspace <id>: the card runs inside that workspace, "
