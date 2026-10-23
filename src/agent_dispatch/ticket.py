@@ -252,11 +252,23 @@ def load_tickets(directory: Path) -> list[Ticket]:
     return [parse_ticket(path) for path in sorted(directory.glob("*.md"))]
 
 
-def _scope_error(scope: str) -> str | None:
+def _scope_error(scope: str, root: Path | None = None) -> str | None:
     if not scope:
         return "empty scope"
     if scope.startswith("/") or re.match(r"^[A-Za-z]:", scope):
-        return "absolute paths are not allowed"
+        if root is not None:
+            try:
+                relative = Path(scope).resolve().relative_to(Path(root).resolve())
+            except (OSError, ValueError):
+                return (
+                    "absolute paths are not allowed, and this one is outside the project root; "
+                    "write scopes must stay inside the repository"
+                )
+            return (
+                "absolute paths are not allowed; use the relative path "
+                + repr(relative.as_posix())
+            )
+        return "absolute paths are not allowed; use a path relative to the project root"
     normalized = scope.replace("\\", "/")
     if ".." in normalized.split("/"):
         return "parent-directory segments are not allowed"
@@ -304,7 +316,7 @@ def _placeholder(value: str) -> bool:
     return any(marker in text for marker in PLACEHOLDER_MARKERS)
 
 
-def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
+def lint_tickets(tickets: Iterable[Ticket], root: Path | None = None) -> list[Issue]:
     tickets = list(tickets)
     issues: list[Issue] = []
     by_id: dict[str, Ticket] = {}
@@ -338,7 +350,7 @@ def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
             if _placeholder(command):
                 issues.append(Issue("placeholder_value", ticket.id, f"verify {command!r} is still a placeholder"))
         for scope in (*ticket.write_scope, *ticket.read_scope):
-            error = _scope_error(scope)
+            error = _scope_error(scope, root)
             if error:
                 issues.append(Issue("invalid_scope", ticket.id, f"{scope!r}: {error}"))
         if ticket.id in by_id:

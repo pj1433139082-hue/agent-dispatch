@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.31.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.32.0。
 
 ## 何时使用
 
@@ -124,6 +124,16 @@ S1 / S2 / S3 三个门**不许由 agent 代拍板**。固定动作：
 3. 拿到答案后再落盘：问卷写进 `docs/questions/<slug>.md`、S2 签字用 `dispatch sign <slug> --by <人> --via dialog|card`、S3 规格核对用 `dispatch confirm <slug> --by <人> --via dialog|card`；没确认过 `tickets` 会拒绝拆票。
 
 没有 `--via` 的签字直接报错——审计时能分清"问过的"和"自己写的"。
+
+## auto 一票一停（别把整波塞进一个上下文）
+
+ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 水质会话实测：一个上下文里连着跑 `dispatch auto`，跑到第 10 张票时上下文约 **5.4M tokens**，直接 `prompt_too_long` 断掉，票停在半路。
+
+规则：
+
+1. **一次只推一张票**；要推进多张，用 `land --wave` 那份拓扑序，逐票开新会话或在每票之间压缩上下文。
+2. `--until` 是**停止点**，不是"继续往下跑到完"。
+3. 票失败时先 `dispatch retry <id> --reason …` 再重跑，不要手改 `.dispatch/state.json`（那会造出 EVIDENCE-MISMATCH）。
 
 ## 命令速查
 

@@ -492,9 +492,11 @@ def _tickets_dir(args: argparse.Namespace) -> Path:
     root = getattr(args, "root", Path("."))
     return root / "tickets"
 
-def _load_and_lint(directory: Path):
+def _load_and_lint(directory: Path, root: Path | None = None):
+    # 票目录的上一级就是项目根：用于把"绝对路径"翻译成相对写法
+    project_root = Path(root) if root is not None else Path(directory).parent
     tickets = load_tickets(directory)
-    issues = lint_tickets(tickets)
+    issues = lint_tickets(tickets, project_root)
     if issues:
         for issue in issues:
             print(issue.format(), file=sys.stderr)
@@ -519,7 +521,7 @@ def _state_map(root: Path) -> dict[str, str]:
     }
 
 def _cmd_status(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     document = status_document(tickets, _state_map(args.root))
@@ -534,7 +536,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 def _cmd_export(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     text = export_text(
@@ -778,7 +780,7 @@ def _find_ticket(tickets: list[Ticket], ticket_id: str) -> Ticket | None:
     return next((ticket for ticket in tickets if ticket.id == ticket_id), None)
 
 def _cmd_render(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -843,7 +845,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 def _cmd_context(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -860,7 +862,7 @@ def _cmd_context(args: argparse.Namespace) -> int:
     return 0
 
 def _cmd_brief(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -1024,7 +1026,7 @@ def _cmd_seat(args: argparse.Namespace) -> int:
 
 
 def _cmd_review_packet(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -1074,7 +1076,7 @@ def _cmd_checkpoint(args: argparse.Namespace) -> int:
 
 
 def _cmd_closeout(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -1206,7 +1208,7 @@ def _cmd_stage(args: argparse.Namespace) -> int:
 
 
 def _cmd_claim(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -1535,7 +1537,7 @@ def _auto_exit_code(result: dict[str, object]) -> int:
     return 1
 
 def _cmd_auto(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
@@ -1608,7 +1610,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     return _auto_exit_code(result)
 
 def _cmd_dsh_push(args: argparse.Namespace) -> int:
-    tickets, code = _load_and_lint(_tickets_dir(args))
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
     try:
