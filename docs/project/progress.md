@@ -108,7 +108,7 @@
 - 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
 - 文档曾长期停在 v0.6：v0.7–v0.9 的实现提交只改 `SKILL.md` 与代码，`README.md` / `docs/project/` / `docs/verification/` 由接管会话于 2026-10-22 补齐。
 
-## 2026-10-23 — v0.11 → v0.30（本段进展，细节见 git log）
+## 2026-10-23 — v0.11 → v0.39（本段进展，细节见 git log）
 
 - **协议化 auto**：`--protocol full` 串起 context / 环境前置 / brief 门 / checkpoint / closeout；失败语义写进 `auto.json`。
 - **生命周期**：`sweep`（只读判活）与 `repair`（索引重建）；`claim` 文件租约（O_EXCL 原子化）与 `gc` worktree 回收。
@@ -120,6 +120,9 @@
 - **真板验证**：DSH 看板（`127.0.0.1:62407`）实测 `dsh push / status / archive / delete` 全通；探针卡已删。注意直接 urllib 会 403，`dispatch` 自带 `sec-fetch-site: same-origin` 才过。
 - **发布前验收**：`python scripts/acceptance.py`（A 全链路 / B 老项目升级回归），CI 也会跑。
 - **CI**：push/PR 跑全量测试 + 验收；每日 03:00 UTC 另跑 `concurrency` job（claim 竞态 × 3 轮、wave/packet 门 × 2 轮）。
+- **失败可回头（v0.31–v0.34）**：`retry` 把 `failed` 拉回 `running`（旧证据归档 `attempts/`）；`release` 放掉卡住的租约；状态不匹配时报错直接给下一步命令。
+- **诊断友好（v0.32–v0.37）**：写域用绝对路径时给出应写的相对写法；`.dsh-hooks/` 等宿主产物不算越界；越界命中 `.agents/skills` 会说明"这是宿主装的包"；`doctor` 一条命令体检（票/索引/失败/超期/租约），`stage` 附带 health 摘要。
+- **自动修复与前置（v0.38–v0.39）**：`doctor --fix` 只做安全修复（重建索引、删过期租约、清幽灵条目）；`auto` 开跑前体检，索引与磁盘不一致就拒绝（`--force` 跳过）。
 
 ## 待办
 
