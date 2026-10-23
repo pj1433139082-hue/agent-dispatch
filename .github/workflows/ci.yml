@@ -29,3 +29,6 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Run publish acceptance smoke
+        run: python scripts/acceptance.py --json

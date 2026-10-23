@@ -223,6 +223,7 @@ def _review_and_land(
         notes=str(review.get("notes", "")),
         human=human,
         accept_degraded=accept_degraded,
+        packet_attested=bool(result.get("packet_attested", False)),
     )
     if errors:
         result["status"] = "review-invalid"

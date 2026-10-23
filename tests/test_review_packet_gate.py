@@ -139,3 +139,27 @@ def test_legacy_verify_record_is_flagged_in_the_packet(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     text = (run_dir / "review-packet.md").read_text(encoding="utf-8")
     assert "legacy" in text.lower(), text[:400]
+
+
+def test_land_can_require_a_reviewer_attestation(tmp_path: Path) -> None:
+    repo(tmp_path)
+    assert run_dispatch(tmp_path, "auto", "01", "--executor", "python exec.py").returncode == 0
+    assert run_dispatch(tmp_path, "review", "01", "--reviewer", "reviewer-b", "--verdict", "pass").returncode == 0
+    assert run_dispatch(tmp_path, "review-packet", "01").returncode == 0
+
+    result = run_dispatch(tmp_path, "land", "01", "--require-attestation")
+
+    assert result.returncode != 0
+    assert "attest" in (result.stdout + result.stderr).lower()
+
+
+def test_land_accepts_an_attested_review(tmp_path: Path) -> None:
+    repo(tmp_path)
+    result = run_dispatch(
+        tmp_path, "auto", "01", "--executor", "python exec.py",
+        "--until", "land", "--reviewer", "reviewer-b", "--reviewer-command", "python good.py",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    run_dir = sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]
+    review = json.loads((run_dir / "review.json").read_text(encoding="utf-8"))
+    assert review.get("packet_attested") is True

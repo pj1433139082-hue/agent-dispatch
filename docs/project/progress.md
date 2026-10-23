@@ -108,9 +108,18 @@
 - 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
 - 文档曾长期停在 v0.6：v0.7–v0.9 的实现提交只改 `SKILL.md` 与代码，`README.md` / `docs/project/` / `docs/verification/` 由接管会话于 2026-10-22 补齐。
 
+## 2026-10-23 — v0.11 → v0.28（本段进展，细节见 git log）
+
+- **协议化 auto**：`--protocol full` 串起 context / 环境前置 / brief 门 / checkpoint / closeout；失败语义写进 `auto.json`。
+- **生命周期**：`sweep`（只读判活）与 `repair`（索引重建）；`claim` 文件租约（O_EXCL 原子化）与 `gc` worktree 回收。
+- **流水线门**：`stage` 一屏 S1–S5；`spec` 要 S2 签字、`tickets` 要 S3 确认；`stage --prompt` 供弹窗；`sign` / `confirm` 留痕（含 `--via`）。
+- **评审对象**：ADR-0011 统一 diff 口径（`verify.diff_hash == packet.hashes.diff`）；`auto --until land` 先生成 review-packet 并校验 `packet_hash`；`land` 默认要求 packet，新增 `--require-attestation`。
+- **测试**：从 61 例涨到 246 例；覆盖 31 个命令、四个门（正/反）、状态机全链、环境异常（git 坏 / 嵌套仓 / 主仓脏 / 占位符）、真并发、dsh 假板。
+- **发布前验收**：`python scripts/acceptance.py`（A 全链路 / B 老项目升级回归），CI 也会跑。
+
 ## 下一步候选
 
-- 增加 `land --wave` 批量按依赖顺序合入，以及恢复点/回退的显式命令。
-- 增加 `auto --wave` 或 DSH 执行器适配层，但保持“外部执行器 + 本地门禁”的边界。
-- 增加 `dsh push --update` / 归档同步，或接入 Agent Teams 的团队运行结果回读。
-- 增加 Windows symlink 写域测试与发布流程。
+- `land --wave` 批量按依赖顺序合入（目前一票一次）。
+- dsh 真板验证（需要本机 DSH 看板在 127.0.0.1:50567 起来；目前只对假板测过）。
+- 把并发测试放进 CI 定时跑（本地 5/5 稳，慢机未验证）。
+- Windows symlink 越界写域测试。

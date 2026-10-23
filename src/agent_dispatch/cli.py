@@ -1329,6 +1329,26 @@ def _cmd_land(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+    if getattr(args, "require_attestation", False):
+        _, run = _current_run(args.root, args.ticket_id)
+        if run is None:
+            print(f"ticket {args.ticket_id}: no run to land", file=sys.stderr)
+            return 1
+        review_file = run.directory / "review.json"
+        attested = False
+        if review_file.is_file():
+            try:
+                attested = bool(json.loads(review_file.read_text(encoding="utf-8")).get("packet_attested"))
+            except (OSError, json.JSONDecodeError):
+                attested = False
+        if not attested:
+            print(
+                f"ticket {args.ticket_id}: reviewer did not attest the review packet; "
+                "rerun auto with a reviewer that returns packet_hash, or drop --require-attestation",
+                file=sys.stderr,
+            )
+            return 1
+
     try:
         record = land_run(
             args.root,
