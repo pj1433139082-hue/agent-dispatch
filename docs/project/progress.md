@@ -121,8 +121,19 @@
 - **发布前验收**：`python scripts/acceptance.py`（A 全链路 / B 老项目升级回归），CI 也会跑。
 - **CI**：push/PR 跑全量测试 + 验收；每日 03:00 UTC 另跑 `concurrency` job（claim 竞态 × 3 轮、wave/packet 门 × 2 轮）。
 
-## 下一步候选
+## 待办
 
-- dsh 真板验证（需要本机 DSH 看板在 127.0.0.1:50567 起来；目前只对假板测过）。
-- 并发用例已进 CI：每天 03:00 UTC 定时跑 3 轮（`concurrency` job）。
-- Windows symlink 越界写域测试。
+当前**无已知待办**（2026-10-23 清理）。原候选三条已全部落地：
+
+- ~~dsh 真板验证~~ → 已对真实看板（127.0.0.1:62407）验证 push / status / archive / delete。
+- ~~并发用例进 CI~~ → 已进 `concurrency` job，每天 03:00 UTC 跑 3 轮。
+- ~~Windows symlink 越界写域~~ → 已用 `mklink /J` 实测并修复（v0.30.0）。
+
+新工作需要走**票**进来，不要直接往这一节追加愿望清单：
+
+1. `dispatch align <slug>` → 答问卷；2. `dispatch select` → 签字；3. `dispatch spec` → `dispatch confirm`；4. `dispatch tickets` 拆票；5. `dispatch land --wave` 收口。
+
+已知边界（不是待办，是当前设计）：
+
+- `dsh run` 会真的在看板上起 agent 跑票，属于人工动作，不做自动化测试。
+- `verify` 只拦"改动路径"，不阻止执行器先写坏——它是门禁不是沙箱。
