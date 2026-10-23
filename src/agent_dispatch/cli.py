@@ -210,6 +210,12 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    retry_parser = subparsers.add_parser("retry", help="Put a failed ticket back to running so it can be verified again.")
+    retry_parser.add_argument("ticket_id")
+    retry_parser.add_argument("--reason", default="", help="Why the ticket is being retried (kept in the audit trail).")
+    retry_parser.add_argument("--root", type=Path, default=Path("."))
+    retry_parser.add_argument("--json", action="store_true", dest="as_json")
+
     confirm_parser = subparsers.add_parser("confirm", help="Record the S3 spec confirmation (client checked the delivery standard).")
     confirm_parser.add_argument("slug")
     confirm_parser.add_argument("--by", required=True)
@@ -522,7 +528,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
         return 0
     for row in document["tickets"]:
         suffix = f" (blocked by {', '.join(row['blocked_by'])})" if row["blocked_by"] else ""
-        print(f"{row['id']}  {row['state']:<10} {row['title']}{suffix}")
+        hint = f"   -> {row['hint']}" if str(row.get("hint", "")) else ""
+        print(f"{row['id']}  {row['state']:<10} {row['title']}{suffix}{hint}")
     print(f"Frontier: {', '.join(document['frontier']) or '-'}")
     return 0
 
@@ -1086,6 +1093,72 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
         for finding in report.get("findings", []):
             print(f"  - {finding}")
     return 0 if report["status"] == "pass" else 1
+
+
+def _cmd_retry(args: argparse.Namespace) -> int:
+    state = DispatchState(args.root)
+    entry = state.ticket(args.ticket_id)
+    if entry is None:
+        print(f"ticket {args.ticket_id}: not in the index (render it first)", file=sys.stderr)
+        return 1
+    current = str(entry.get("state", ""))
+    if current == "done":
+        print(f"ticket {args.ticket_id} is done; nothing to retry", file=sys.stderr)
+        return 1
+    if current != "failed":
+        print(
+            f"ticket {args.ticket_id} is {current or 'unknown'}; only a failed ticket can be retried",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        run = Run.load(args.root, str(entry.get("run_id", "")))
+    except Exception:
+        print(f"ticket {args.ticket_id}: run {entry.get('run_id')!r} is missing", file=sys.stderr)
+        return 1
+    attempts = run.directory / "attempts"
+    attempts.mkdir(parents=True, exist_ok=True)
+    number = len(list(attempts.glob("verify-*.json"))) + 1
+    kept: list[str] = []
+    for name in ("verify.json", "review.json", "closeout.json"):
+        source = run.directory / name
+        if source.is_file():
+            target = attempts / (name.replace(".json", "") + "-" + f"{number:02d}" + ".json")
+            source.replace(target)
+            kept.append(str(target.relative_to(run.directory)).replace("\\", "/"))
+    run.data["attempt"] = int(run.data.get("attempt", 1)) + 1
+    run.set_state("running")
+    run.write()
+    data = state.load()
+    ticket_entry = data.setdefault("tickets", {}).setdefault(args.ticket_id, {})
+    history = ticket_entry.setdefault("history", [])
+    if isinstance(history, list):
+        history.append(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "from": current,
+                "to": "running",
+                "reason": args.reason,
+            }
+        )
+    ticket_entry["run_id"] = run.id
+    ticket_entry["state"] = "running"
+    ticket_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+    state.save(data)
+    payload = {
+        "ticket_id": args.ticket_id,
+        "run_id": run.id,
+        "state": "running",
+        "attempt": run.data["attempt"],
+        "archived": kept,
+    }
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"Retried {args.ticket_id} -> running (attempt {run.data['attempt']})")
+        for item in kept:
+            print(f"  archived {item}")
+    return 0
 
 
 def _cmd_confirm(args: argparse.Namespace) -> int:
@@ -1724,6 +1797,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "retry":
+        return _cmd_retry(args)
     if args.command == "confirm":
         return _cmd_confirm(args)
     if args.command == "sign":

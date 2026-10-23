@@ -62,6 +62,7 @@ def status_document(
                 "id": ticket.id,
                 "title": ticket.title,
                 "state": state,
+                "hint": "dispatch retry " + ticket.id if state == "failed" else "",
                 "blocked_by": _blocked_by(ticket, done),
                 "next": ticket.id in ready_frontier,
                 "owner": ticket.owner,
