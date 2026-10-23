@@ -70,6 +70,7 @@ def render_markdown(report: dict[str, object]) -> str:
         "",
         "Base commit: " + str(report["base_commit"]),
         "Diff hash: " + str(report["diff_hash"]),
+        ("Diff scope: " + ("legacy (verified before diff_scope existed; hash 口径可能不同)" if report.get("legacy_diff") else "tracked+untracked")),
         "",
         "## Hashes",
         "",

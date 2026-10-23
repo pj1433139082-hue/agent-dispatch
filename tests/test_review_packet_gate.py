@@ -123,3 +123,19 @@ def test_land_requires_a_packet(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "packet" in (result.stdout + result.stderr).lower()
+
+
+def test_legacy_verify_record_is_flagged_in_the_packet(tmp_path: Path) -> None:
+    repo(tmp_path)
+    assert run_dispatch(tmp_path, "auto", "01", "--executor", "python exec.py").returncode == 0
+    run_dir = sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]
+    verify_path = run_dir / "verify.json"
+    data = json.loads(verify_path.read_text(encoding="utf-8"))
+    data.pop("diff_scope", None)
+    verify_path.write_text(json.dumps(data), encoding="utf-8")
+
+    result = run_dispatch(tmp_path, "review-packet", "01", "--json")
+
+    assert result.returncode == 0, result.stderr
+    text = (run_dir / "review-packet.md").read_text(encoding="utf-8")
+    assert "legacy" in text.lower(), text[:400]
