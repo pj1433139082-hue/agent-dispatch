@@ -859,7 +859,8 @@ def _cmd_render(args: argparse.Namespace) -> int:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
 
-    if getattr(args, "require_brief", False):
+    require_brief = getattr(args, "require_brief", False) or bool(load_config(Path(args.root)).get("require_brief", False))
+    if require_brief:
         ok, why = approval_status(args.root, ticket)
         if not ok:
             print(f"ticket {ticket.id}: {why}", file=sys.stderr)
@@ -1181,6 +1182,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         "tickets_dir": tickets.replace("\\", "/"),
         "executor_mode": args.executor_mode or str(current.get("executor_mode", "command")),
         "default_reviewer": args.default_reviewer or str(current.get("default_reviewer", "")),
+        "require_brief": True,
         "skill_version": __version__,
     }
     ignore = root / ".gitignore"

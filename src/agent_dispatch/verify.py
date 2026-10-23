@@ -262,7 +262,7 @@ def _evidence_path(value: object) -> str | None:
 
 
 def _evaluate_evidence(
-    item: object, *, run_dir: Path, prefix: str
+    item: object, *, run_dir: Path, prefix: str, execution_root: Path | None = None
 ) -> tuple[dict[str, object] | None, str | None, bool]:
     """Return (record, error, attested) for one evidence item."""
     if not isinstance(item, dict):
@@ -273,6 +273,10 @@ def _evaluate_evidence(
         if value is None:
             return None, f"{prefix}.path must be a non-empty relative path", False
         path = run_dir / value
+        if not path.is_file() and execution_root is not None:
+            candidate = Path(execution_root) / value
+            if candidate.is_file():
+                path = candidate
         if not path.is_file():
             return None, f"{prefix}: evidence file is missing: {value}", False
         digest = _sha256(path)
@@ -333,7 +337,7 @@ def _evaluate_evidence(
 
 
 def _evaluate_criteria(
-    receipt: dict[str, object], ticket: Ticket, run_dir: Path
+    receipt: dict[str, object], ticket: Ticket, run_dir: Path, execution_root: Path | None = None
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str], bool]:
     errors: list[str] = []
     records: list[dict[str, object]] = []
@@ -372,6 +376,7 @@ def _evaluate_criteria(
                 evidence_item,
                 run_dir=run_dir,
                 prefix=f"{prefix}.evidence[{evidence_index}]",
+                execution_root=execution_root,
             )
             if error:
                 errors.append(error)
@@ -562,7 +567,7 @@ def verify_run(
     if receipt is not None:
         if receipt_kind == "criteria":
             criteria, evidence, criteria_errors, degraded = _evaluate_criteria(
-                receipt, ticket, run_dir
+                receipt, ticket, run_dir, run.execution_root
             )
         elif receipt_kind == "legacy":
             for item in receipt.get("evidence", []):
