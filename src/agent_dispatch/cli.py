@@ -282,7 +282,15 @@ def _parser() -> argparse.ArgumentParser:
         "land",
         help="Create an integration branch for a reviewed run; never pushes or merges the target.",
     )
-    land_parser.add_argument("ticket_id")
+    land_parser.add_argument("ticket_id", nargs="?", default=None)
+    land_parser.add_argument(
+        "--wave", action="store_true",
+        help="Land every done, unlanded ticket in dependency order; stops at the first failure.",
+    )
+    land_parser.add_argument(
+        "--continue-on-error", action="store_true", dest="continue_on_error",
+        help="With --wave: keep landing independent tickets after a failure.",
+    )
     land_parser.add_argument(
         "--into",
         default=None,
@@ -1297,7 +1305,78 @@ def _current_run(root: Path, ticket_id: str):
     return store, Run.load(root, str(existing["run_id"]))
 
 
+def _land_wave(args: argparse.Namespace) -> int:
+    directory = Path(getattr(args, "tickets", None) or (Path(args.root) / "tickets"))
+    tickets, issues = _load_and_lint(directory)
+    if issues:
+        for issue in issues:
+            print(f"ERROR {issue.ticket_id} {issue.code}: {issue.message}", file=sys.stderr)
+        return 1
+    states = _state_map(args.root)
+    done = {
+        ticket.id
+        for ticket in tickets
+        if states.get(ticket.id) == "done" or str(ticket.status).strip().lower() == "done"
+    }
+    order: list[str] = []
+    pending = {ticket.id: ticket for ticket in tickets}
+    while pending:
+        # 纯拓扑：只有依赖都已排进去的才就绪（完成与否不影响顺序）
+        ready = [
+            tid
+            for tid, ticket in pending.items()
+            if all(dep in order or dep not in pending for dep in ticket.depends_on)
+        ]
+        ready = ready or sorted(pending)  # 环或坏依赖：给个确定顺序，别死循环
+        for tid in sorted(ready):
+            order.append(tid)
+            pending.pop(tid)
+    landed: list[dict[str, object]] = []
+    skipped: list[dict[str, object]] = []
+    failed: list[dict[str, object]] = []
+    landed_ids: set[str] = set()
+    for tid in order:
+        ticket = next(item for item in tickets if item.id == tid)
+        blocked = [dep for dep in ticket.depends_on if dep not in landed_ids]
+        if tid not in done:
+            skipped.append({"ticket_id": tid, "reason": "not done"})
+            continue
+        if blocked:
+            skipped.append({"ticket_id": tid, "reason": "dependency not landed: " + ", ".join(blocked)})
+            continue
+        _, run = _current_run(args.root, tid)
+        if run is None:
+            skipped.append({"ticket_id": tid, "reason": "no run"})
+            continue
+        if (run.directory / "landing.json").is_file():
+            landed_ids.add(tid)
+            skipped.append({"ticket_id": tid, "reason": "already landed"})
+            continue
+        try:
+            record = land_run(args.root, tid, target_branch=args.into, integration_branch=args.branch)
+        except LandingError as error:
+            failed.append({"ticket_id": tid, "reason": str(error)})
+            if not args.continue_on_error:
+                break
+            continue
+        landed_ids.add(tid)
+        landed.append({"ticket_id": tid, "branch": record.get("integration_branch")})
+    payload = {"landed": landed, "skipped": skipped, "failed": failed}
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        for item in landed:
+            print(f"LANDED {item['ticket_id']} -> {item['branch']}")
+        for item in skipped:
+            print(f"SKIP   {item['ticket_id']}  {item['reason']}")
+        for item in failed:
+            print(f"FAILED {item['ticket_id']}  {item['reason']}", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def _cmd_land(args: argparse.Namespace) -> int:
+    if getattr(args, "wave", False):
+        return _land_wave(args)
     if getattr(args, "require_closeout", False):
         _, run = _current_run(args.root, args.ticket_id)
         if run is None:
