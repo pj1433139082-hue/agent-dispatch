@@ -448,6 +448,10 @@ def _parser() -> argparse.ArgumentParser:
     dsh_outcome.add_argument("--by", required=True, dest="initiated_by", help="Who performed the work.")
     dsh_outcome.add_argument("--summary", default="")
     dsh_outcome.add_argument("--json", action="store_true", dest="as_json")
+    dsh_outcome.add_argument(
+        "--mark-done", action="store_true", dest="mark_done",
+        help="Also mark the ticket done in dispatch and record .dispatch/external/<id>.json",
+    )
 
     dsh_update = dsh_sub.add_parser("update", help="Patch fields on a mapped DSH card.")
     dsh_update.add_argument("ticket_id")
@@ -1992,10 +1996,30 @@ def _cmd_dsh_outcome(args: argparse.Namespace) -> int:
     except (TaskBoardError, ValueError) as exc:
         print(f"DSH: {exc}", file=sys.stderr)
         return 1
+    if getattr(args, "mark_done", False) and args.result == "succeeded":
+        external = Path(args.root) / ".dispatch" / "external"
+        external.mkdir(parents=True, exist_ok=True)
+        record = {
+            "ticket_id": args.ticket_id,
+            "result": args.result,
+            "by": args.initiated_by,
+            "summary": args.summary,
+            "task_id": result["task_id"],
+            "board_status": result["status"],
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+        (external / (args.ticket_id + ".json")).write_text(
+            json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        store = DispatchState(Path(args.root))
+        entry = store.ticket(args.ticket_id) or {}
+        store.set_ticket(args.ticket_id, str(entry.get("run_id", "")), "done")
     if args.as_json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(f"Recorded {result['status']} for {result['ticket_id']} ({result['task_id']})")
+        if getattr(args, "mark_done", False):
+            print("Marked done in dispatch" if args.result == "succeeded" else "Left state alone (result was not succeeded)")
     return 0
 
 def _cmd_dsh_update(args: argparse.Namespace) -> int:
