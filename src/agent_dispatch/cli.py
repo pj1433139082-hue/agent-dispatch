@@ -210,6 +210,11 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    doctor_parser = subparsers.add_parser("doctor", help="Read-only health check: tickets, index, leases, runs.")
+    doctor_parser.add_argument("--root", type=Path, default=Path("."))
+    doctor_parser.add_argument("--tickets", type=Path, default=None)
+    doctor_parser.add_argument("--json", action="store_true", dest="as_json")
+
     release_parser = subparsers.add_parser("release", help="Release this ticket's file leases (used when a run is stuck).")
     release_parser.add_argument("ticket_id")
     release_parser.add_argument("--root", type=Path, default=Path("."))
@@ -1108,6 +1113,61 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    directory = Path(getattr(args, "tickets", None) or (root / "tickets"))
+    issues: list[str] = []
+    checks: list[dict[str, object]] = []
+
+    tickets, _ = _load_and_lint(directory, root) if directory.exists() else ([], 1)
+    if tickets is None:
+        tickets = []
+    if not directory.exists():
+        issues.append(f"tickets directory is missing: {directory}")
+    elif not tickets:
+        issues.append("no tickets found; dispatch cannot advance anything")
+    checks.append({"name": "tickets", "ok": bool(tickets), "detail": f"{len(tickets)} ticket(s)"})
+
+    states = _state_map(root)
+    failed = sorted(tid for tid, value in states.items() if value == "failed")
+    if failed:
+        issues.append("failed tickets need dispatch retry: " + ", ".join(failed))
+    checks.append({"name": "failed", "ok": not failed, "detail": ", ".join(failed) or "none"})
+
+    try:
+        report = repair_state(root, write=False)
+        conflicts = report.get("conflicts", []) if isinstance(report, dict) else []
+        mismatches = [
+            row for row in report.get("rows", []) if str(row.get("action", "")) == "mismatch"
+        ] if isinstance(report, dict) else []
+        if conflicts:
+            issues.append(f"index/disk conflicts: {len(conflicts)}")
+        if mismatches:
+            issues.append(f"state/evidence mismatches: {len(mismatches)} (run dispatch repair --write)")
+    except Exception as error:  # noqa: BLE001 - doctor 不该因为一项检查崩掉
+        issues.append(f"repair check failed: {error}")
+
+    overdue = [row for row in sweep_runs(root) if row.get("over_deadline")]
+    if overdue:
+        issues.append("runs past their deadline: " + ", ".join(str(row.get("ticket_id")) for row in overdue))
+    checks.append({"name": "deadline", "ok": not overdue, "detail": f"{len(overdue)} overdue"})
+
+    locks = sorted((root / ".dispatch" / "locks").glob("*.json")) if (root / ".dispatch" / "locks").exists() else []
+    if locks:
+        checks.append({"name": "leases", "ok": True, "detail": f"{len(locks)} active lease(s)"})
+
+    payload = {"ok": not issues, "issues": issues, "checks": checks}
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print("OK" if not issues else "PROBLEMS")
+        for check in checks:
+            print(f"  {check['name']:<10} {check['detail']}")
+        for issue in issues:
+            print("  - " + issue)
+    return 0 if not issues else 1
+
+
 def _cmd_release(args: argparse.Namespace) -> int:
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -1827,6 +1887,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "doctor":
+        return _cmd_doctor(args)
     if args.command == "release":
         return _cmd_release(args)
     if args.command == "retry":
