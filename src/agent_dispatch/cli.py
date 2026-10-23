@@ -503,6 +503,12 @@ def _load_and_lint(directory: Path, root: Path | None = None):
         return None, 1
     return tickets, 0
 
+def _state_hint(ticket_id: str, current: object) -> str:
+    if str(current) == "failed":
+        return f" (the ticket is failed: run 'dispatch retry {ticket_id}' first)"
+    return ""
+
+
 def _cmd_lint(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(args.tickets)
     if tickets is None:
@@ -1297,7 +1303,8 @@ def _cmd_start(args: argparse.Namespace) -> int:
         return 1
     if existing.get("state") != "claimed":
         print(
-            f"ticket {args.ticket_id} is {existing.get('state')}, expected claimed",
+            f"ticket {args.ticket_id} is {existing.get('state')}, expected claimed"
+            + _state_hint(args.ticket_id, existing.get("state")),
             file=sys.stderr,
         )
         return 1
@@ -1315,7 +1322,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         return 1
     if existing.get("state") != "running":
         print(
-            f"ticket {args.ticket_id} is {existing.get('state')}, expected running",
+            f"ticket {args.ticket_id} is {existing.get('state')}, expected running"
+            + _state_hint(args.ticket_id, existing.get("state")),
             file=sys.stderr,
         )
         return 1
