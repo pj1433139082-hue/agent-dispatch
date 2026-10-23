@@ -382,6 +382,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     auto_parser.add_argument("--root", type=Path, default=Path("."))
     auto_parser.add_argument("--json", action="store_true", dest="as_json")
+    auto_parser.add_argument(
+        "--force", action="store_true",
+        help="Skip the preflight health check (index vs disk).",
+    )
 
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
     status_parser.add_argument("--tickets", type=Path, default=None)
@@ -1141,6 +1145,15 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
         issues.append("failed tickets need dispatch retry: " + ", ".join(failed))
     checks.append({"name": "failed", "ok": not failed, "detail": ", ".join(failed) or "none"})
 
+    runs_dir = root / ".dispatch" / "runs"
+    ghosts = sorted(
+        tid
+        for tid, entry in (DispatchState(root).load().get("tickets") or {}).items()
+        if not (runs_dir / str(entry.get("run_id", ""))).is_dir()
+    )
+    if ghosts:
+        issues.append("index entries with no run on disk: " + ", ".join(ghosts) + " (run dispatch doctor --fix)")
+
     try:
         report = repair_state(root, write=False)
     except Exception as error:  # noqa: BLE001 - 一项检查挂了不该拖垮整个体检
@@ -1194,6 +1207,23 @@ def _fix_safe(root: Path) -> list[str]:
             if written:
                 count = written if isinstance(written, int) and not isinstance(written, bool) else None
                 fixed.append("index rebuilt" + (f" ({count} ticket(s))" if count else ""))
+    # 索引里指向不存在 run 的条目：索引是投影，磁盘没有就该删
+    try:
+        state = DispatchState(Path(root))
+        data = state.load()
+        runs_dir = Path(root) / ".dispatch" / "runs"
+        stale = [
+            tid
+            for tid, entry in (data.get("tickets") or {}).items()
+            if not (runs_dir / str(entry.get("run_id", ""))).is_dir()
+        ]
+        for tid in stale:
+            data["tickets"].pop(tid, None)
+        if stale:
+            state.save(data)
+            fixed.append("dropped stale index entries: " + ", ".join(sorted(stale)))
+    except Exception as error:  # noqa: BLE001
+        fixed.append(f"index cleanup failed: {error}")
     now = datetime.now(timezone.utc)
     lock_dir = Path(root) / ".dispatch" / "locks"
     if lock_dir.is_dir():
@@ -1698,6 +1728,12 @@ def _auto_exit_code(result: dict[str, object]) -> int:
         return 2 if result.get("verify_status") == "degraded" else 0
     return 1
 
+def _preflight(root: Path, tickets_dir: Path) -> list[str]:
+    """开跑前的最小体检：只挡会让 auto 在烂索引上瞎跑的问题。"""
+    health = _health_report(Path(root), Path(tickets_dir))
+    return [issue for issue in health["issues"] if "retry" not in issue]
+
+
 def _cmd_auto(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
@@ -1706,6 +1742,14 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     if ticket is None:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
+    if not getattr(args, "force", False):
+        problems = _preflight(args.root, _tickets_dir(args))
+        if problems:
+            print("AUTO preflight failed; fix the index first:", file=sys.stderr)
+            for problem in problems:
+                print("  - " + problem, file=sys.stderr)
+            print("  try: dispatch doctor --fix  (or pass --force)", file=sys.stderr)
+            return 1
     try:
         result = auto_run(
             args.root,
