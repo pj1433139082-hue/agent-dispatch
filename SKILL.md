@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.39.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.40.0。
 
 ## 何时使用
 
@@ -136,10 +136,23 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 2. `--until` 是**停止点**，不是"继续往下跑到完"。
 3. 票失败时先 `dispatch retry <id> --reason …` 再重跑，不要手改 `.dispatch/state.json`（那会造出 EVIDENCE-MISMATCH）。
 
+## 执行端：三条真实路径（dispatch 不创建 agent）
+
+`dispatch` 只做**契约与证据**；谁真的动手，由会话决定。现有三条路，选哪条取决于会话里有什么：
+
+1. **teammate（harness 的 spawn provider）**
+   `dispatch handoff <id> --to <agent>` 打出交接内容 → 你用 `send_message` 发过去 → 它交 brief → 批准 → 在 worktree 执行 → `dispatch verify` → **另一个** reviewer 跑 `dispatch review`。
+   ⚠️ `render --agent X` 只是把名字写进工作单，**不会创建 teammate**。`list_agents` 里没有这个 target 就发不出去——这时别假装派了。
+2. **DSH 看板**
+   `dsh push --project <p>` 建卡 → 人在板上点 run（或 `dsh run <id>`）→ 结果用 `dsh outcome` 回写。看板在 `127.0.0.1:62407`（不是 50567），且请求要带 `sec-fetch-site: same-origin`。
+3. **外部执行器命令**
+   `auto <id> --executor "<cmd>"`。没有 teammate、没接看板时，这条路等同**主代理自己执行**——要如实说明，不要包装成"已派给子智能体"。
+
 ## 命令速查
 
 | 命令 | 用途 |
 |---|---|
+| `handoff <id> [--to <agent>] [--json]` | 打印"该发给谁、发什么"的交接内容（工作单路径、执行根、分支、回执位置） |
 | `doctor [--json] [--fix]` | 只读体检：票能否 lint、索引与磁盘是否一致、失败票、超期 run、活跃租约；`--fix` 只做安全修复（重建索引 + 删过期租约）；有问题 exit 1 |
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
 | `retry <id> [--reason …]` | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`，索引里留 history |

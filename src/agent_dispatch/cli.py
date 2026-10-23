@@ -210,6 +210,13 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    handoff_parser = subparsers.add_parser("handoff", help="Print the message to send a teammate so it can execute this run.")
+    handoff_parser.add_argument("ticket_id")
+    handoff_parser.add_argument("--to", default=None, help="Agent to hand off to (default: the ticket owner).")
+    handoff_parser.add_argument("--root", type=Path, default=Path("."))
+    handoff_parser.add_argument("--tickets", type=Path, default=None)
+    handoff_parser.add_argument("--json", action="store_true", dest="as_json")
+
     doctor_parser = subparsers.add_parser("doctor", help="Read-only health check: tickets, index, leases, runs.")
     doctor_parser.add_argument("--root", type=Path, default=Path("."))
     doctor_parser.add_argument("--tickets", type=Path, default=None)
@@ -1121,6 +1128,58 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def _cmd_handoff(args: argparse.Namespace) -> int:
+    tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
+    if tickets is None:
+        return code
+    ticket = _find_ticket(tickets, args.ticket_id)
+    if ticket is None:
+        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        return 1
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run; render it first", file=sys.stderr)
+        return 1
+    work_order = (run.directory / "work-order.md").resolve()
+    if not work_order.is_file():
+        print(f"ticket {args.ticket_id}: work-order.md is missing", file=sys.stderr)
+        return 1
+    target = args.to or ticket.owner or "implementer"
+    execution_root = run.execution_root
+    message = "\n".join(
+        [
+            f"请执行票据 {ticket.id}（run {run.id}）。",
+            "",
+            f"工作单：{work_order}",
+            f"执行根：{execution_root}",
+            f"分支：dispatch/{run.id}",
+            "",
+            "要求：",
+            f"1. 只在执行根内改动，写域见工作单；",
+            f"2. 完成后把回执写到 {run.directory / 'receipt.json'}（status=done + 每条判据的证据）；",
+            "3. 环境变量 DISPATCH_RUN_DIR / DISPATCH_RUN_ID 已由派单方提供；",
+            "4. 不要改票据、不要合并分支。",
+        ]
+    )
+    payload = {
+        "ticket_id": ticket.id,
+        "run_id": run.id,
+        "to": target,
+        "work_order": str(work_order),
+        "execution_root": str(execution_root),
+        "branch": "dispatch/" + run.id,
+        "run_dir": str(run.directory.resolve()),
+        "receipt": str((run.directory / "receipt.json").resolve()),
+        "message": message,
+    }
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"Hand off {ticket.id} to {target}:")
+        print(message)
+    return 0
+
+
 def _health_report(root: Path, directory: Path) -> dict[str, object]:
     """只读体检：票、索引、失败票、超期 run、宿主装进来的技能包。"""
     root = Path(root)
@@ -2005,6 +2064,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "handoff":
+        return _cmd_handoff(args)
     if args.command == "doctor":
         return _cmd_doctor(args)
     if args.command == "release":
