@@ -78,6 +78,13 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
 
 
+HOST_OWNED_PREFIXES = (".agents/", ".claude/", ".codex/", ".cursor/", ".gemini/")
+
+
+def host_owned(path: str) -> bool:
+    return path.startswith(HOST_OWNED_PREFIXES)
+
+
 PIPELINE_DOC_PREFIXES = (
     ".dispatch/",
     "docs/questions/",
@@ -477,11 +484,15 @@ def verify_run(
             for path in files
             if not any(path_matches_scope(scope, path) for scope in ticket.write_scope)
         ]
-        check(
-            "write scope",
-            not out_of_scope,
-            "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope",
-        )
+        scope_detail = "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope"
+        host_paths = [path for path in out_of_scope if host_owned(path)]
+        if host_paths:
+            scope_detail += (
+                " | these look like host-installed packages, not this ticket's output: "
+                + ", ".join(host_paths)
+                + " (add them to the write scope only if the ticket really ships them)"
+            )
+        check("write scope", not out_of_scope, scope_detail)
         links = sorted(
             {
                 found
