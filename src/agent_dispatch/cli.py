@@ -1113,19 +1113,22 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
-def _cmd_doctor(args: argparse.Namespace) -> int:
-    root = Path(args.root)
-    directory = Path(getattr(args, "tickets", None) or (root / "tickets"))
+def _health_report(root: Path, directory: Path) -> dict[str, object]:
+    """只读体检：票、索引、失败票、超期 run、宿主装进来的技能包。"""
+    root = Path(root)
     issues: list[str] = []
+    warnings: list[str] = []
     checks: list[dict[str, object]] = []
 
-    tickets, _ = _load_and_lint(directory, root) if directory.exists() else ([], 1)
-    if tickets is None:
-        tickets = []
+    tickets: list = []
     if not directory.exists():
         issues.append(f"tickets directory is missing: {directory}")
-    elif not tickets:
-        issues.append("no tickets found; dispatch cannot advance anything")
+    else:
+        tickets, _ = _load_and_lint(directory, root)
+        if tickets is None:
+            tickets = []
+        if not tickets:
+            issues.append("no tickets found; dispatch cannot advance anything")
     checks.append({"name": "tickets", "ok": bool(tickets), "detail": f"{len(tickets)} ticket(s)"})
 
     states = _state_map(root)
@@ -1136,16 +1139,18 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
     try:
         report = repair_state(root, write=False)
-        conflicts = report.get("conflicts", []) if isinstance(report, dict) else []
-        mismatches = [
-            row for row in report.get("rows", []) if str(row.get("action", "")) == "mismatch"
-        ] if isinstance(report, dict) else []
-        if conflicts:
-            issues.append(f"index/disk conflicts: {len(conflicts)}")
-        if mismatches:
-            issues.append(f"state/evidence mismatches: {len(mismatches)} (run dispatch repair --write)")
-    except Exception as error:  # noqa: BLE001 - doctor 不该因为一项检查崩掉
+    except Exception as error:  # noqa: BLE001 - 一项检查挂了不该拖垮整个体检
         issues.append(f"repair check failed: {error}")
+    else:
+        if isinstance(report, dict):
+            conflicts = report.get("conflicts", [])
+            mismatches = [
+                row for row in report.get("rows", []) if str(row.get("action", "")) == "mismatch"
+            ]
+            if conflicts:
+                issues.append(f"index/disk conflicts: {len(conflicts)}")
+            if mismatches:
+                issues.append(f"state/evidence mismatches: {len(mismatches)} (run dispatch repair --write)")
 
     overdue = [row for row in sweep_runs(root) if row.get("over_deadline")]
     if overdue:
@@ -1156,16 +1161,37 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     if locks:
         checks.append({"name": "leases", "ok": True, "detail": f"{len(locks)} active lease(s)"})
 
-    payload = {"ok": not issues, "issues": issues, "checks": checks}
+    host_packages: list[str] = []
+    for base in (".agents/skills", ".claude/skills", ".codex/skills"):
+        folder = root / base
+        if folder.is_dir():
+            host_packages.extend(base + "/" + child.name for child in sorted(folder.iterdir()) if child.is_dir())
+    if host_packages:
+        warnings.append(
+            "host-installed skill packages inside the repo: "
+            + ", ".join(host_packages[:5])
+            + (" …" if len(host_packages) > 5 else "")
+            + " (keep them out of the repo unless they are part of what this project ships)"
+        )
+
+    return {"ok": not issues, "issues": issues, "warnings": warnings, "checks": checks}
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    directory = Path(getattr(args, "tickets", None) or (root / "tickets"))
+    payload = _health_report(root, directory)
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print("OK" if not issues else "PROBLEMS")
-        for check in checks:
+        print("OK" if payload["ok"] else "PROBLEMS")
+        for check in payload["checks"]:
             print(f"  {check['name']:<10} {check['detail']}")
-        for issue in issues:
+        for issue in payload["issues"]:
             print("  - " + issue)
-    return 0 if not issues else 1
+        for warning in payload["warnings"]:
+            print("  ! " + warning)
+    return 0 if payload["ok"] else 1
 
 
 def _cmd_release(args: argparse.Namespace) -> int:
@@ -1282,6 +1308,8 @@ def _cmd_stage(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if payload["questions"] else 2
     report = stage_report(args.root, args.slug)
+    health = _health_report(Path(args.root), Path(args.root) / "tickets")
+    report = {**report, "health": {"ok": health["ok"], "issues": health["issues"]}}
     if args.as_json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
@@ -1289,6 +1317,7 @@ def _cmd_stage(args: argparse.Namespace) -> int:
             item = report["stages"][name]
             mark = "OK  " if item["ok"] else "MISS"
             print(mark + " " + name + "  " + str(item["detail"]))
+        print("health: " + ("OK" if health["ok"] else "; ".join(str(x) for x in health["issues"][:2])))
         print("next: " + str(report["next"]))
     return 0 if report["ok"] else 1
 
