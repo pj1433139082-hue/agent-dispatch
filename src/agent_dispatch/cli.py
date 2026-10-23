@@ -210,6 +210,11 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    release_parser = subparsers.add_parser("release", help="Release this ticket's file leases (used when a run is stuck).")
+    release_parser.add_argument("ticket_id")
+    release_parser.add_argument("--root", type=Path, default=Path("."))
+    release_parser.add_argument("--json", action="store_true", dest="as_json")
+
     retry_parser = subparsers.add_parser("retry", help="Put a failed ticket back to running so it can be verified again.")
     retry_parser.add_argument("ticket_id")
     retry_parser.add_argument("--reason", default="", help="Why the ticket is being retried (kept in the audit trail).")
@@ -1103,6 +1108,21 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def _cmd_release(args: argparse.Namespace) -> int:
+    _, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print(f"ticket {args.ticket_id} has no run; nothing to release", file=sys.stderr)
+        return 1
+    released = release_claims(args.root, run.id)
+    if args.as_json:
+        print(json.dumps({"ticket_id": args.ticket_id, "run_id": run.id, "released": released}, ensure_ascii=False, indent=2))
+    else:
+        print(f"Released {len(released)} lease(s) for {run.id}")
+        for path in released:
+            print("  - " + path)
+    return 0
+
+
 def _cmd_retry(args: argparse.Namespace) -> int:
     state = DispatchState(args.root)
     entry = state.ticket(args.ticket_id)
@@ -1113,9 +1133,9 @@ def _cmd_retry(args: argparse.Namespace) -> int:
     if current == "done":
         print(f"ticket {args.ticket_id} is done; nothing to retry", file=sys.stderr)
         return 1
-    if current != "failed":
+    if current not in {"failed", "claimed"}:
         print(
-            f"ticket {args.ticket_id} is {current or 'unknown'}; only a failed ticket can be retried",
+            f"ticket {args.ticket_id} is {current or 'unknown'}; only a failed or stuck-claimed ticket can be retried",
             file=sys.stderr,
         )
         return 1
@@ -1807,6 +1827,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "release":
+        return _cmd_release(args)
     if args.command == "retry":
         return _cmd_retry(args)
     if args.command == "confirm":
