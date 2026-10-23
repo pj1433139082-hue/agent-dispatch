@@ -214,6 +214,10 @@ def _parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--root", type=Path, default=Path("."))
     doctor_parser.add_argument("--tickets", type=Path, default=None)
     doctor_parser.add_argument("--json", action="store_true", dest="as_json")
+    doctor_parser.add_argument(
+        "--fix", action="store_true",
+        help="Apply safe fixes only: rebuild a stale index and drop expired leases.",
+    )
 
     release_parser = subparsers.add_parser("release", help="Release this ticket's file leases (used when a run is stuck).")
     release_parser.add_argument("ticket_id")
@@ -1177,10 +1181,49 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     return {"ok": not issues, "issues": issues, "warnings": warnings, "checks": checks}
 
 
+def _fix_safe(root: Path) -> list[str]:
+    """只做两种安全修复：重建索引、清掉过期租约。别的只报告。"""
+    fixed: list[str] = []
+    try:
+        report = repair_state(Path(root), write=True)
+    except Exception as error:  # noqa: BLE001
+        fixed.append(f"index repair failed: {error}")
+    else:
+        if isinstance(report, dict):
+            written = report.get("written", report.get("repaired", 0))
+            if written:
+                count = written if isinstance(written, int) and not isinstance(written, bool) else None
+                fixed.append("index rebuilt" + (f" ({count} ticket(s))" if count else ""))
+    now = datetime.now(timezone.utc)
+    lock_dir = Path(root) / ".dispatch" / "locks"
+    if lock_dir.is_dir():
+        for lock in sorted(lock_dir.glob("*.json")):
+            try:
+                data = json.loads(lock.read_text(encoding="utf-8"))
+                expires = datetime.fromisoformat(str(data.get("expires_at", "")))
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires < now:
+                try:
+                    lock.unlink()
+                    fixed.append(f"removed expired lease {lock.stem}")
+                except OSError:
+                    continue
+    return fixed
+
+
 def _cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.root)
     directory = Path(getattr(args, "tickets", None) or (root / "tickets"))
-    payload = _health_report(root, directory)
+    fixed: list[str] = []
+    if getattr(args, "fix", False):
+        fixed = _fix_safe(root)
+        payload = _health_report(root, directory)
+    else:
+        payload = _health_report(root, directory)
+    payload = {**payload, "fixed": fixed}
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -1191,6 +1234,8 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             print("  - " + issue)
         for warning in payload["warnings"]:
             print("  ! " + warning)
+        for item in payload["fixed"]:
+            print("  + fixed: " + item)
     return 0 if payload["ok"] else 1
 
 
