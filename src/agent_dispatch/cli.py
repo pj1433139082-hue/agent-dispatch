@@ -1720,6 +1720,16 @@ def _cmd_review(args: argparse.Namespace) -> int:
     run = Run.load(args.root, str(existing["run_id"]))
     ticket = parse_ticket(run.ticket_path)
     attested = False
+    if getattr(args, "packet_hash", None) and ticket.risk in {"L0", "L1"}:
+        packet = run.directory / "review-packet.md"
+        if not packet.is_file():
+            print(f"REVIEW L0/L1: review packet missing: run dispatch review-packet {args.ticket_id}", file=sys.stderr)
+            return 1
+        actual = hashlib.sha256(packet.read_bytes()).hexdigest()
+        if str(args.packet_hash).lower() != actual:
+            print(f"REVIEW packet hash mismatch: packet is {actual}", file=sys.stderr)
+            return 1
+        attested = True
     if ticket.risk in {"L2", "L3", "L4"}:
         packet = run.directory / "review-packet.md"
         if not packet.is_file():
@@ -1846,6 +1856,24 @@ def _land_wave(args: argparse.Namespace) -> int:
 def _cmd_land(args: argparse.Namespace) -> int:
     if getattr(args, "wave", False):
         return _land_wave(args)
+    if getattr(args, "require_attestation", False):
+        _, run = _current_run(args.root, args.ticket_id)
+        if run is None:
+            print(f"ticket {args.ticket_id}: no run to check attestation", file=sys.stderr)
+            return 1
+        review_file = run.directory / "review.json"
+        attested = False
+        if review_file.is_file():
+            try:
+                attested = bool(json.loads(review_file.read_text(encoding="utf-8")).get("packet_attested"))
+            except (OSError, json.JSONDecodeError):
+                attested = False
+        if not attested:
+            print(
+                f"ticket {args.ticket_id}: review is not packet-attested (run review --packet-hash for L2+, or reviewer must echo packet_hash in auto)",
+                file=sys.stderr,
+            )
+            return 1
     if getattr(args, "require_closeout", False):
         _, run = _current_run(args.root, args.ticket_id)
         if run is None:

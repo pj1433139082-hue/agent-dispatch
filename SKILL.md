@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.62.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.63.0。
 
 ## 何时使用
 
@@ -242,6 +242,13 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 - `--no-require-packet`：**跳过"有没有包"**的检查（迁移逃生口）。
 - `--require-attestation`：更严，要求 reviewer **回填过正确的 `packet_hash`**；手审（review）默认 `packet_attested=false`，会被它挡住。
+
+## 依赖与分波的真实语义（实测 v0.63）
+
+- **`plan` 的 frontier 是静态拓扑**：它不看 state，done 的票照样列在 frontier 里。要"现在能开工的票"用 **`status`**，别用 `plan`。
+- **写域冲突只比同波**：同波两票写同一路径 → `Conflict A / B: path`；被依赖链拉开到不同波的票即使写域重叠，**一个字都不报**。
+- **`status` 的 blocked 只列直接阻挡**：`21 blocked by 20` 不会告诉你 20 又被 19 挡着，要自己顺链。
+- **未跟踪的票文件**：`verify` 会把 `tickets/…` 列进 "outside the write scope" 但判 ok（流水线文档豁免）；`land` 不豁免，落地前必须提交。
 
 ## 运维命令的边界（实测，v0.61）
 
