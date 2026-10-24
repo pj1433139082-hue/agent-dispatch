@@ -2058,7 +2058,7 @@ def _cmd_dsh_push(args: argparse.Namespace) -> int:
             "in the board session; dispatch flows need L3+. Affected: " + ", ".join(weak),
             file=sys.stderr,
         )
-    if not args.workspace and not getattr(args, "allow_default_workspace", False):
+    if not getattr(args, "dry_run", False) and not args.workspace and not getattr(args, "allow_default_workspace", False):
         print(
             "DSH: push needs --workspace <id>: the card runs inside that workspace, "
             "not in this repo. Pass --allow-default-workspace to accept the board default.",

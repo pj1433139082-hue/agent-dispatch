@@ -85,6 +85,10 @@ def test_land_lists_the_dirty_paths(tmp_path: Path) -> None:
 def test_review_falls_back_to_the_configured_default_reviewer(tmp_path: Path) -> None:
     repo(tmp_path)
     assert run_dispatch(tmp_path, "setup", "--default-reviewer", "reviewer-config").returncode == 0
+    config = tmp_path / ".dispatch" / "config.json"
+    settings = json.loads(config.read_text(encoding="utf-8"))
+    settings["require_brief"] = False
+    config.write_text(json.dumps(settings), encoding="utf-8")
     assert run_dispatch(tmp_path, "render", "01", "--no-worktree").returncode == 0
     assert run_dispatch(tmp_path, "start", "01").returncode == 0
     run_dir = sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]

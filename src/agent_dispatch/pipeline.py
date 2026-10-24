@@ -90,7 +90,7 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
         next_step = "s5"
     else:
         next_step = ""
-    if draft_files and next_step in {"", "s5"}:
+    if draft_files and next_step == "":
         next_step = "s4-move-drafts"
     return {"slug": slug, "stages": stages, "next": next_step or "done", "ok": next_step == ""}
 
