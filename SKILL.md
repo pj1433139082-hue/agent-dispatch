@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.49.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.50.0。
 
 ## 何时使用
 
@@ -174,13 +174,19 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 4. **land 与 review-packet**：`review` 通过时会自动快照一份 packet，所以 `land` 通常直接过；`review-packet` 命令用于手动补/分享，`--no-require-packet` 只给老 run 迁移用。
 5. **票面的 `**Status:**` 只是作者标记**：真实状态看 `dispatch status` / `.dispatch/state.json`，工具不会回写票面。
 
-### 身份：名字不等于执行者
+### 身份：名字不等于执行者（有硬门，分三层）
 
-`--agent` 和 `--reviewer` 都是**声明**，dispatch 不校验那个名字背后有没有真人/真 agent：
+`--agent` 只是写进工作单的声明；`--reviewer` 有**三层硬门**（ADR-0008 D5 + v0.50）：
 
-- `render --agent research-scout` 只是把名字写进工作单；`list_agents` 里没有这个 target 时，实际干活的是你自己。**这种情况要在交付说明里写清"主代理自执行"**，不要包装成"已派给子智能体"。
-- `review --reviewer X` 同理：满足"异体"只靠**名字与执行者不同**，不证明真的换了人。想留硬证据：L0/L1 允许 `--self-reviewed` 显式标注自审；L2+ 要求独立评审 + review packet（`--require-attestation` 时还要回填 `packet_hash`）。
-- 判断"到底谁执行的"看两处：`receipt.json` 的 `summary`/`evidence` 里写的执行者，以及 `review.json.reviewer`。
+| 层 | 规则 | 触发条件 |
+|---|---|---|
+| 1. 名字 | `reviewer` 等于票的 `Owner` 或 run 的 `claimed_by` → **拒绝** | 所有等级 |
+| 2. 自审 | L0/L1 可 `--self-reviewed` 显式留痕放行；**L2+ 一律不许** | reviewer 与执行者同名时 |
+| 3. 读包证明 | **L2+ 必须 `--packet-hash <review-packet.md 的 sha256>`**，哈希不符即拒；通过后 `packet_attested=true` | L2/L3/L4 |
+
+- L4 还要 `--human`（人工评审）。
+- 这三层挡的是"手滑"和"没读包"，**挡不住"同一个模型换个名字"**——要那样得靠会话隔离（`list_agents` 里真有第二个 agent）。
+- 没 teammate 时 `render --agent X` 只是标签；交付说明里要写"主代理自执行"。
 
 ### brief 门是否强制：看配置，命令自己会说
 

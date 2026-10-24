@@ -306,6 +306,10 @@ def _parser() -> argparse.ArgumentParser:
         help="L0/L1 only: record an explicit self-review trace (ADR-0008 D5).",
     )
     review_parser.add_argument(
+        "--packet-hash", default=None, dest="packet_hash",
+        help="sha256 of review-packet.md; required for L2+ so the reviewer proves they read the packet.",
+    )
+    review_parser.add_argument(
         "--accept-degraded",
         action="store_true",
         help="Accept a degraded verification result (attested evidence only).",
@@ -1692,6 +1696,21 @@ def _cmd_review(args: argparse.Namespace) -> int:
         return 1
     run = Run.load(args.root, str(existing["run_id"]))
     ticket = parse_ticket(run.ticket_path)
+    attested = False
+    if ticket.risk in {"L2", "L3", "L4"}:
+        packet = run.directory / "review-packet.md"
+        if not packet.is_file():
+            print(f"REVIEW L2+ needs a review packet: run dispatch review-packet {args.ticket_id} first", file=sys.stderr)
+            return 1
+        supplied = str(getattr(args, "packet_hash", "") or "")
+        if not supplied:
+            print("REVIEW L2+ needs --packet-hash <sha256 of review-packet.md>", file=sys.stderr)
+            return 1
+        actual = hashlib.sha256(packet.read_bytes()).hexdigest()
+        if supplied.lower() != actual:
+            print(f"REVIEW packet hash mismatch: packet is {actual}", file=sys.stderr)
+            return 1
+        attested = True
     record, errors = submit_review(
         args.root,
         ticket,
@@ -1702,6 +1721,7 @@ def _cmd_review(args: argparse.Namespace) -> int:
         human=args.human,
         accept_degraded=args.accept_degraded,
         self_reviewed=args.self_reviewed,
+        packet_attested=attested,
     )
     if errors:
         for error in errors:
