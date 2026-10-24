@@ -8,6 +8,19 @@ description: 派单流程路由：判断手上的活该走「需求→票」「�
 > 这是**我们自己的**流程路由，与 @ask-matt@ 无关；ask-matt 是 Matt 的技能，不动它。
 > 机制细节在 `agent-dispatch` 的 `docs/flows.md`；本卡只做"选路 + 每步调谁"。
 
+## 接在你现有流程上（重要）
+
+平时的 `grill-with-docs → to-spec → to-tickets → implement` **不用换**；dispatch 替掉的是 **to-tickets 之后的 implement**：
+
+| 你手上有什么 | 前面照旧 | dispatch 从哪接 |
+|---|---|---|
+| 想法 | grill-with-docs → to-spec | 出票后从 B 开始 |
+| spec | to-spec | `dispatch tickets <slug>` → lint |
+| 票 | to-tickets | **直接 B**：brief → render → 执行端 → verify → review → land |
+| 什么都没有 | 可跳过 | align → select → sign → spec → confirm → tickets（可选入口） |
+
+只打了 `/agent-dispatch` 时：**先问"票在哪"**，再 `dispatch lint` → `dispatch status` → 挑 frontier 走 B。
+
 ## 先问三句
 
 1. **有没有票？** 没有 → 流程 A；有 → 流程 B。

@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.51.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.52.0。
 
 ## 何时使用
 
@@ -22,6 +22,34 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 - 单文件、一步就能完成的小改动：直接用目标项目的测试/评审流程即可。
 - 只需要讨论方案、还没有可执行任务：先用 `grill-with-docs` 或 `to-tickets`。
 - 需要替代 DSH Agent Teams、Codex 或 CI：本技能只做票据、工单、门禁与投递，不做执行器；`auto` 只调用你提供的外部命令，不内置模型运行时。
+
+## 你从哪来（接在现有流程上，前面的技能不用换）
+
+如果你平时的流程是 `grill-with-docs → to-spec → to-tickets → implement`，**dispatch 替掉的是 to-tickets 之后的 implement 这一段**，前面的照旧。
+
+| 你手上有什么 | 前半段照旧 | dispatch 接在哪 |
+|---|---|---|
+| 一句模糊需求 | `grill-with-docs` → `to-spec` | 出票后从「B 单票执行」开始 |
+| 已有 spec | `to-spec` | `dispatch tickets <slug>`（要 S3 confirm）或手写票 → `dispatch lint` |
+| 已有票（`tickets/` 或 `.scratch/<feature>/issues/`） | `to-tickets` | **直接走 B**：`brief → render → 执行端 → verify → review → land` |
+| 什么都没有，只有一句话 | 可跳过前两步 | `align → select → sign → spec → confirm → tickets`（自带 S1–S5，可选入口） |
+
+### 只打了 /agent-dispatch，该做什么
+
+1. **先问一句：票在哪？**（`tickets/`、`.scratch/<feature>/issues/`、还是只有 spec）
+2. 有票 → `dispatch lint` → `dispatch status` → 挑一张 frontier（`next: true`）→ 走 B
+3. 没票但有 spec → `dispatch tickets <slug>`，或让对方先跑 `to-tickets`
+4. 只有想法 → 建议先去 `grill-with-docs`，别在 dispatch 里想需求
+
+### 没有 teammate 怎么办（三条路，选一条，别装）
+
+| 你有的 | 怎么走 | 代价 |
+|---|---|---|
+| 会话里有第二个 agent（`list_agents` 看得到） | `render` → `handoff` → `send_message` | 真隔离，reviewer 能真换人 |
+| DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` | 慢（十几分钟），要先有 workspace |
+| 都没有 | `render` → 自己在 worktree 干 → `verify` → `review --reviewer <名字>` | **主代理自执行**；review 只是换名字，不是真异体——交付说明里必须写清 |
+
+最后一条**不是错误用法**，是单 agent 环境的正常用法，只要如实标注。dispatch 的价值（写域、证据、验收、可回溯的 landing）在只有一个 agent 时同样成立。
 
 ## 自带框架
 
@@ -157,7 +185,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
    `dispatch handoff <id> --to <agent>` 打出交接内容 → 你用 `send_message` 发过去 → 它交 brief → 批准 → 在 worktree 执行 → `dispatch verify` → **另一个** reviewer 跑 `dispatch review`。
    ⚠️ `render --agent X` 只是把名字写进工作单，**不会创建 teammate**。`list_agents` 里没有这个 target 就发不出去——这时别假装派了。
 2. **DSH 看板**
-   `dsh push --project <p>` 建卡 → 人在板上点 run（或 `dsh run <id>`）→ 结果用 `dsh outcome` 回写。看板在 `127.0.0.1:62407`（不是 50567），且请求要带 `sec-fetch-site: same-origin`。
+   `dsh push --project <p>` 建卡 → 人在板上点 run（或 `dsh run <id>`）→ 结果用 `dsh outcome` 回写。看板地址以会话 runtime context 里的 **DSH Web GUI URL** 为准（端口每次可能不同），请求要带 `sec-fetch-site: same-origin`。
 3. **外部执行器命令**
    `auto <id> --executor "<cmd>"`。没有 teammate、没接看板时，这条路等同**主代理自己执行**——要如实说明，不要包装成"已派给子智能体"。
 
@@ -246,7 +274,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 | `align <slug> [--level quick 或 standard 或 thorough]` | S1：出需求问卷 `docs/questions/<slug>.md`，第一段就是档位选择（3 / 6 / 10 问） |
 | `closeout <id> [--json]` | 对照 票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |
 | `spec <slug> [--force]` | S3：问卷答满 **且 S2 已签字** 才允许写规格骨架（--force 跳过签字门） `docs/specs/<slug>.md`（Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope） |
-| `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` || `closeout <id> [--json]` | 对照票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |
+| `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` |
 
 通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
 
@@ -367,7 +395,7 @@ codex exec --skip-git-repo-check --ephemeral -s read-only --color never -C <目�
 - 执行者不能直接改票据状态；只有 `verify` / `review` 能推进状态。
 - `verify` 在 Run 的 execution root（默认是 `.dispatch/worktrees/<run-id>`）通过当前平台 shell 运行票据声明的命令，并额外检查主仓是否被污染；票据是受信任输入，但仍建议只给 L0/L1 自动执行。
 - `verify` 的门禁防误不防恶意：执行者与验收者若共享同一文件系统，执行者理论上能改 `.dispatch/`；高信任要求时用独立用户/容器隔离。
-- 写域检查基于 git diff 的规范化相对路径；symlink 越界是已知限制。
+- 写域检查基于 git diff 的规范化相对路径；改动路径穿过 symlink/junction 会被**判死**（v0.30，`link_in_path`）。
 - L4 票据永远需要人工评审；不要用 `--human` 代替真实的人。
 - `dispatch land` 只创建本地 integration branch，绝不 push、不合并目标分支，也不替代人工 PR 审查；land 前会复核 verify 的 worktree diff 哈希。
 - `dispatch auto` 会执行你传入的任意 shell 命令；只在受信任的票据和受控环境中使用。它不绕过 verify/review，也不自动 push 或合并目标分支。
