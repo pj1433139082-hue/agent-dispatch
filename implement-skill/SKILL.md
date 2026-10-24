@@ -71,6 +71,16 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land --w
 2. **receipt 和 evidence 不会归档**：旧 `receipt.json` 还在 run 目录里，执行端必须为新的 attempt 重写，否则 verify 会复算旧证据。
 3. 归档的只有 `attempts/verify-01.json`、`review`、`closeout` 的快照；`logs/01.log` 会被覆盖。
 
+## 会话收口（每次收工前跑）
+
+```bash
+python C:\\Users\\14331\\.agents\\skills\\agent-dispatch\\scripts\\dispatch.py status   # 看末尾有没有 Session wrap-up
+python C:\\Users\\14331\\.agents\\skills\\agent-dispatch\\scripts\\dispatch.py doctor   # 看 failed / 超期 / 会挡 land 的脏文件
+```
+
+- failed → `retry <id>`；卡住 → `release` / `sweep`；已完结 → `gc --apply`
+- 一次会话别超过 3–5 张票（AD​R-0010 的实测来源：10 张 → 5.4M tokens → prompt_too_long）
+
 ## 纪律
 
 - **一票一停**：别把整波塞进一个上下文（实测 10 票会 prompt_too_long）

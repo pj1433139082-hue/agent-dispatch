@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.72.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.73.0。
 
 ## 何时使用
 
@@ -297,6 +297,14 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 - `sign` 现在支持 `--note "<一句话>"`，写进 `99-summary.md` 的 `- 备注：` 行（老会话里出现过 `unrecognized arguments: --note`）。
 - `verify` 的「主仓脏」判定现在忽略 `.scratch/`（本地 issue tracker 的常用目录，老会话因为它整票 verify 失败）。
+
+## 会话收口三步（v0.73，来自两次真实会话的教训）
+
+1. `dispatch status`：末行会打 `Session wrap-up: N failed (...); M active run(s) (...)` —— 有这行就说明这个会话没收干净。
+2. `dispatch doctor`：还会报 `uncommitted files will block land: ...`（`.dispatch/`、`.scratch/` 不算）。
+3. 逐项处理：failed → `retry <id>`；卡住的 run → `release <id>` / `sweep`；已完结的 → `gc --apply`。
+
+**一次会话推几张票**：实战里 10 张票把上下文推到 5.4M tokens 直接 `prompt_too_long`。经验值：**一次会话 3–5 张**，或上下文过 150k 就换会话——票是自包含的，换会话不丢信息。
 
 ## 命令速查
 

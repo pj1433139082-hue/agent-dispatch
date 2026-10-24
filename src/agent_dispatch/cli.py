@@ -615,6 +615,19 @@ def _cmd_status(args: argparse.Namespace) -> int:
         hint = f"   -> {row['hint']}" if str(row.get("hint", "")) else ""
         print(f"{row['id']}  {row['state']:<10} {row['title']}{suffix}{hint}")
     print(f"Frontier: {', '.join(document['frontier']) or '-'}")
+    counts = {"failed": 0, "running": 0, "claimed": 0}
+    for row in document["tickets"]:
+        state = str(row["state"])
+        if state in counts:
+            counts[state] += 1
+    if counts["failed"] or counts["running"] or counts["claimed"]:
+        bits = []
+        if counts["failed"]:
+            bits.append(f"{counts['failed']} failed (dispatch retry <id>)")
+        active = counts["running"] + counts["claimed"]
+        if active:
+            bits.append(f"{active} active run(s) (dispatch sweep / start)")
+        print("Session wrap-up: " + "; ".join(bits) + "  |  then dispatch doctor")
     return 0
 
 def _cmd_export(args: argparse.Namespace) -> int:
@@ -1281,6 +1294,26 @@ def _cmd_handoff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _dirty_paths(root: Path) -> list[str]:
+    import subprocess as _subprocess
+
+    try:
+        out = _subprocess.run(
+            ["git", "status", "--porcelain", "-uall"], cwd=root, capture_output=True, text=True, check=False
+        ).stdout
+    except OSError:
+        return []
+    paths = [line[3:].strip() for line in out.splitlines() if line.strip()]
+    return [path for path in paths if path]
+
+
+def _blocks_land(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    if normalized.startswith(".dispatch/") or normalized.startswith(".scratch/"):
+        return False
+    return True
+
+
 def _health_report(root: Path, directory: Path) -> dict[str, object]:
     """只读体检：票、索引、失败票、超期 run、宿主装进来的技能包。"""
     root = Path(root)
@@ -1315,6 +1348,14 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     )
     if ghosts:
         issues.append("index entries with no run on disk: " + ", ".join(ghosts) + " (run dispatch doctor --fix)")
+
+    dirty = _dirty_paths(root)
+    blockers = [path for path in dirty if _blocks_land(path)]
+    if blockers:
+        warnings.append(
+            "uncommitted files will block land (commit or ignore): " + ", ".join(blockers[:8])
+        )
+    checks.append({"name": "checkout", "ok": not blockers, "detail": ", ".join(blockers[:8]) or "clean"})
 
     try:
         report = repair_state(root, write=False)
