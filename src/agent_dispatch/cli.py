@@ -1641,7 +1641,12 @@ def _cmd_repair(args: argparse.Namespace) -> int:
             print("CONFLICT " + conflict["ticket_id"] + ": index=" + str(conflict["state_run"]) + " disk=" + str(conflict["disk_run"]), file=sys.stderr)
         for item in report.get("evidence_mismatch", []):
             print("EVIDENCE-MISMATCH " + item["ticket_id"] + ": state=" + str(item["state_run"]) + " evidence=" + str(item["evidence"]))
-        print("Written: yes" if report["written"] else "Written: no (dry run; add --write)")
+        if report["written"] and report["conflicts"]:
+            print("Written: partial (conflicts skipped; see CONFLICT above)")
+        elif report["written"]:
+            print("Written: yes")
+        else:
+            print("Written: no (dry run; add --write)")
     return 1 if report["conflicts"] else 0
 
 

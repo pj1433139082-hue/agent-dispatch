@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.69.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.70.0。
 
 ## 何时使用
 
@@ -260,6 +260,21 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 - `assign` 写的是**路径**（`personas/dispatcher.md`）不是名字，同时复制文件 + 追加 `.dispatch/assignments.jsonl`（含改票前后的 `ticket_hash`）。
 - `context` 只读**仓库根**的 `AGENTS.md` / `CLAUDE.md` / `CONTEXT.md`；三者都没有就写一句 "(no … at the repository root)"，不会去子目录找。
 - `export`：`agent-team` 有 Team Lead 简报 + 每票段；`codex` / `generic` 是平铺的票段（generic 多个总标题）；`dsh-team` 是 JSON 数组。人设都会展开成 `### Agent persona`（不是只给路径）。
+
+## repair 与 gc 的实测细节（v0.70）
+
+**repair**
+- 证据优先级 **review > closeout > verify**：想造 evidence_mismatch 得改 `review.json`，改 `verify.json` 没用。
+- evidence_mismatch：exit **0**，但**这张票不写**（其余照写）；打印 `EVIDENCE-MISMATCH`。
+- run_id 冲突：exit **1**，stderr 打 `CONFLICT`；此时若仍写了别的票，输出是 `Written: partial (conflicts skipped)`（v0.70 起；以前一律 `Written: yes`，容易误读成冲突被处理了）。
+- 只重写"有 run 且不冲突"的票的 `updated_at`；**不清理幽灵索引项**（那是 `doctor --fix`）；state.json 全丢时只重建"有 run 的票"。
+
+**gc**
+- `REMOVE` 删：worktree 目录 + `dispatch/<run_id>` 分支 + 释放租约；**不删** run 目录、`landing.json`、`dispatch/land/<run_id>` 分支、state 条目、票面。
+- `landed` 判定 = `run 目录里有 landing.json`，与是否合并进 main 无关。
+- `HOLD` **不释放租约**；文本模式**不显示 worktree 路径/分支名**（要 `--json`）。
+- **没有单票过滤**；孤儿 run、worktree 已手工删掉的 run 都静默跳过（无行、无汇总）。
+- 永远 exit 0。
 
 ## 运维命令的边界（实测，v0.61）
 
