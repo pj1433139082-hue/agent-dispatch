@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.63.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.64.0。
 
 ## 何时使用
 
@@ -249,6 +249,13 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 - **写域冲突只比同波**：同波两票写同一路径 → `Conflict A / B: path`；被依赖链拉开到不同波的票即使写域重叠，**一个字都不报**。
 - **`status` 的 blocked 只列直接阻挡**：`21 blocked by 20` 不会告诉你 20 又被 19 挡着，要自己顺链。
 - **未跟踪的票文件**：`verify` 会把 `tickets/…` 列进 "outside the write scope" 但判 ok（流水线文档豁免）；`land` 不豁免，落地前必须提交。
+
+## 人设与导出的实测细节（v0.64）
+
+- `personas list` 会把**同一份人设列两次**：`assign` 把它复制到 `tickets/personas/`，下次搜索就命中内置+本地两份（内容相同）。只想看内置的加 `--search-root <技能目录>/agents/personas`。
+- `assign` 写的是**路径**（`personas/dispatcher.md`）不是名字，同时复制文件 + 追加 `.dispatch/assignments.jsonl`（含改票前后的 `ticket_hash`）。
+- `context` 只读**仓库根**的 `AGENTS.md` / `CLAUDE.md` / `CONTEXT.md`；三者都没有就写一句 "(no … at the repository root)"，不会去子目录找。
+- `export`：`agent-team` 有 Team Lead 简报 + 每票段；`codex` / `generic` 是平铺的票段（generic 多个总标题）；`dsh-team` 是 JSON 数组。人设都会展开成 `### Agent persona`（不是只给路径）。
 
 ## 运维命令的边界（实测，v0.61）
 

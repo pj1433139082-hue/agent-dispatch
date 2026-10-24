@@ -910,7 +910,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     )
     store.set_ticket(ticket.id, run.id, "claimed")
     if getattr(args, "with_context", False):
-        pack_text = build_context_pack(args.root, ticket)
+        pack_text = build_context_pack(args.root, ticket, exclude_run_id=run.id)
         context_file = run.directory / "context.md"
         context_file.write_text(pack_text, encoding="utf-8")
         work_order = run.directory / "work-order.md"
