@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.65.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.66.0。
 
 ## 何时使用
 
@@ -363,12 +363,24 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 `--until land` 还会先生成 `review-packet.md` 并把 `DISPATCH_REVIEW_PACKET` 交给 reviewer；reviewer 回执里的 `packet_hash` 与实际包**不一致** → `review-invalid`，不 land。**L2+ 的票在 auto 里也必须回填哈希**（不回填同样 `review-invalid`），L0/L1 不强制。
 
+## auto 的 preflight 是全局的（实测 v0.66）
+
+- 它会因为**别的票**遗留的超期 run 直接 exit 1（报 `runs past their deadline: 23`），哪怕你这次要跑的票干干净净。
+- `doctor --fix` 不会结束 claim 住的超期 run；要么先把那张票 `retry`/`release` 处理掉，要么这次 `--force`。
+- `auto/feedback-N.md` 只写"哪条判据挂了"，**不含 diff、不含执行器 stdout**；执行器要自己打开它读原因。
+- `auto.json` 的 `protocol` 里没有 "full" 字面值，只有 `enabled: true` + `context/env_hint/brief_gate/last_checkpoint/closeout`。
+
 ## --protocol full 到底注入什么（实测 v0.62）
 
 - **只写两个文件，不加环境变量**：`<run>/context.md`（票面 + 写域 + 完成定义 + Verify + 项目入口文档前 60 行 + 同票历史 run + 阻塞邻居 + 坑笔记清单）和 `work-order.md` 末尾的同一份内容。执行器**不读 `DISPATCH_WORK_ORDER` 就等于白写**。
 - `--env-hint` 追加到 work-order 的 `## Environment prerequisites`，并记进 `run.json.env_hint`。
 - checkpoint 在**每次 verify 之后、closeout 之前**写：`checkpoints/NNN-attempt-N/{checkpoint.json,status.txt,diff.patch,restore.md}`，代际**按 run 隔离**，`current.json` 原子指向最新。
 - `--accept-degraded` 只对 `--until land` 分支有用；`--until review` 不读它。
+
+## checkpoint 的 diff.patch（v0.66 起）
+
+- 未跟踪的新文件（`??`）以前**不会进 diff.patch**（`git diff` 看不见未跟踪文件，patch 是 0 字节）；现在会以 `--- /dev/null\n+++ b/<path>` 的形式补进去。
+- `restore.md` 的恢复步骤是 `git checkout <base> -- .` + `git apply <generation>/diff.patch`；二进制文件仍只有 sha256，没法从 patch 还原。
 
 ## closeout 的五条判据（实测）
 
