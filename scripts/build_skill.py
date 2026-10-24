@@ -44,6 +44,12 @@ def build(output: Path) -> Path:
     if (ROOT / "agents").is_dir():
         copy_tree(ROOT / "agents", output / "agents")
 
+    grill_dir = output.parent / "grill-dispatch"
+    if grill_dir.exists():
+        shutil.rmtree(grill_dir)
+    grill_dir.mkdir(parents=True)
+    copy_file(ROOT / "grill-skill" / "SKILL.md", grill_dir / "SKILL.md")
+
     flow_dir = output.parent / "dispatch-flow"
     if flow_dir.exists():
         shutil.rmtree(flow_dir)

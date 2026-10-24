@@ -249,3 +249,36 @@ def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Pa
     )
     spec.write_text(text.rstrip() + "\n\n" + block, encoding="utf-8")
     return spec
+
+
+def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
+    """把 adversary 的假设 + oss 里没写"不采用理由"的参照，变成可以直接问的问题。"""
+    folder = pack_dir(Path(root), slug)
+    adversary = folder / "03-adversary.md"
+    if not folder.is_dir():
+        raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
+    items: list[dict[str, object]] = []
+    lines: list[str] = []
+    if adversary.is_file():
+        for raw in adversary.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line.startswith(("- ", "* ")):
+                continue
+            text = line[2:].strip()
+            if not text or text.startswith("（") or text.startswith("<") or "TODO" in text:
+                continue
+            lines.append(text)
+    for index, text in enumerate(lines[:10], start=1):
+        items.append(
+            {
+                "id": f"adversary-{index}",
+                "header": "对抗审查",
+                "question": f"这条假设成立吗：{text}",
+                "options": [
+                    {"label": "成立", "description": "按这个假设继续"},
+                    {"label": "不成立", "description": "写下反例，我据此改方案"},
+                    {"label": "不确定", "description": "先做最小实验验证再定"},
+                ],
+            }
+        )
+    return items

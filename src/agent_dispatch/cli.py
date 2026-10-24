@@ -49,6 +49,7 @@ from .landing import LandingError, land_run
 from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .pipeline import (
+    grill_questions,
     confirm_spec,
     selection_signed,
     sign_selection,
@@ -209,6 +210,11 @@ def _parser() -> argparse.ArgumentParser:
     gc_parser.add_argument("--apply", action="store_true")
     gc_parser.add_argument("--root", type=Path, default=Path("."))
     gc_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    questions_parser = subparsers.add_parser("questions", help="Turn the selection pack into grill questions.")
+    questions_parser.add_argument("slug")
+    questions_parser.add_argument("--root", type=Path, default=Path("."))
+    questions_parser.add_argument("--json", action="store_true", dest="as_json")
 
     setup_parser = subparsers.add_parser("setup", help="Write .dispatch/config.json (tickets dir, executor mode, default reviewer).")
     setup_parser.add_argument("--root", type=Path, default=Path("."))
@@ -1172,6 +1178,17 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
         for finding in report.get("findings", []):
             print(f"  - {finding}")
     return 0 if report["status"] == "pass" else 1
+
+
+def _cmd_questions(args: argparse.Namespace) -> int:
+    try:
+        items = grill_questions(args.root, args.slug)
+    except FileNotFoundError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    if args.as_json or True:
+        print(json.dumps(items, ensure_ascii=False, indent=2))
+    return 0 if items else 2
 
 
 def _cmd_setup(args: argparse.Namespace) -> int:
@@ -2220,6 +2237,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_closeout(args)
     if args.command == "repair":
         return _cmd_repair(args)
+    if args.command == "questions":
+        return _cmd_questions(args)
     if args.command == "setup":
         return _cmd_setup(args)
     if args.command == "handoff":
