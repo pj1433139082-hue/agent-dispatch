@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.61.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.62.0。
 
 ## 何时使用
 
@@ -348,6 +348,23 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 失败语义：closeout 不过 → `status=closeout-failed`，findings 写进 `auto/feedback-<n>.md` **不自动重跑**（由人或下一张票决定）。
 
 `--until land` 还会先生成 `review-packet.md` 并把 `DISPATCH_REVIEW_PACKET` 交给 reviewer；reviewer 回执里的 `packet_hash` 与实际包**不一致** → `review-invalid`，不 land。**L2+ 的票在 auto 里也必须回填哈希**（不回填同样 `review-invalid`），L0/L1 不强制。
+
+## --protocol full 到底注入什么（实测 v0.62）
+
+- **只写两个文件，不加环境变量**：`<run>/context.md`（票面 + 写域 + 完成定义 + Verify + 项目入口文档前 60 行 + 同票历史 run + 阻塞邻居 + 坑笔记清单）和 `work-order.md` 末尾的同一份内容。执行器**不读 `DISPATCH_WORK_ORDER` 就等于白写**。
+- `--env-hint` 追加到 work-order 的 `## Environment prerequisites`，并记进 `run.json.env_hint`。
+- checkpoint 在**每次 verify 之后、closeout 之前**写：`checkpoints/NNN-attempt-N/{checkpoint.json,status.txt,diff.patch,restore.md}`，代际**按 run 隔离**，`current.json` 原子指向最新。
+- `--accept-degraded` 只对 `--until land` 分支有用；`--until review` 不读它。
+
+## closeout 的五条判据（实测）
+
+1. `verify.json` 存在且是 passed/degraded
+2. **receipt.criteria 条数 == 票面 Acceptance 条数**（老式 `evidence` 数组会被算成 0 → 必 fail）
+3. 改动都在写域内
+4. 改动都在 brief 声明内（**仅当 brief 至少声明了一个"像路径"的 bullet**）
+5. brief 声明的每个路径都真的改了
+
+"像路径"判得很粗：`- `/`* ` 开头、取第一个空格/冒号/括号前的 token，含 `/`、`\`、`.txt`/`.py`/`.md` 就算。brief 正文里随手写的文件名也会被当声明。
 
 ## 半自动推进（v0.6）
 
