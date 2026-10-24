@@ -10,13 +10,13 @@ description: 我们的拷问阶段：问需求 + 三视角取证（开源借鉴/
 ## 做什么
 
 1. 出问卷：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py align <slug> --level standard`（quick 3 / standard 6 / thorough 10）
-2. 出证据包：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py select <slug> --with domain-owner,cost-keeper`
+2. 出角色 brief（**注意：`select` 生成的是 brief，不是证据**；执行者要把 `01/02/03` 原地改写成证据；重跑 `select` 会重写 `99-summary.md`，先备份）：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py select <slug> --with domain-owner,cost-keeper`
 3. 派三个执行者填三份证据（有 teammate 用 send_message；没有就自己写，文件里标注"主代理代做"）：
    - `01-oss.md`：≥2 个开源参照，指到 `文件:函数` 或 commit，并写**不采用的理由**
    - `02-sources.md`：每条事实带 URL + 原文摘录 + 抓取日期 + 版本
    - `03-adversary.md`：没说出口的假设，每条给可证伪实验（≤7 条）
 4. **等 adversary 把 03 写完再问**（还是模板时 `questions` 会拒绝）
-5. **把对抗变成问题**：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py questions <slug> --json` → 原样喂 `ask_user_question` → 答案写回 `docs/questions/<slug>.md`
+5. **把对抗变成问题**（只读 `## 假设` 小节，`## 未证实项` 之类不会被当成问题）：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py questions <slug> --json` → 原样喂 `ask_user_question` → 答案写回 `docs/questions/<slug>.md`
 
 ## 收敛标准
 

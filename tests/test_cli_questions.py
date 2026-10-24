@@ -36,3 +36,17 @@ def test_questions_fail_without_a_selection_pack(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "selection" in (result.stdout + result.stderr).lower()
+
+
+def test_questions_only_read_the_assumption_section(tmp_path: Path) -> None:
+    assert run_dispatch(tmp_path, "select", "demo").returncode == 0
+    adversary = tmp_path / "docs" / "selection" / "demo" / "03-adversary.md"
+    adversary.write_text(
+        "# adversary\n\n## 假设\n\n- 假设 A\n- 假设 B\n\n## 未证实项\n\n- 版本号从源码推断\n",
+        encoding="utf-8",
+    )
+
+    items = json.loads(run_dispatch(tmp_path, "questions", "demo", "--json").stdout)
+
+    assert len(items) == 2
+    assert all("假设" in item["question"] for item in items)

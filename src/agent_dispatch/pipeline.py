@@ -265,8 +265,19 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
         )
     lines: list[str] = []
     if adversary.is_file():
+        in_assumptions = False
+        has_assumption_section = any(
+            heading.strip().startswith("#") and "假设" in heading
+            for heading in adversary.read_text(encoding="utf-8").splitlines()
+        )
         for raw in adversary.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
+            stripped = raw.strip()
+            if stripped.startswith("#"):
+                in_assumptions = "假设" in stripped
+                continue
+            if has_assumption_section and not in_assumptions:
+                continue
+            line = stripped
             if not line.startswith(("- ", "* ")):
                 continue
             text = line[2:].strip()

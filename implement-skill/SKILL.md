@@ -20,6 +20,11 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py review <
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id>                      # 只建分支，不 push、不合并 main
 ```
 
+## 两条硬规矩（实测踩过）
+
+1. **回执写 run 目录**：`receipt.json` 必须放在 `.dispatch/runs/<run-id>/`，**不要**写进 worktree——写进 worktree 会被判 `write scope: out of scope: receipt.json`。
+2. **land 前主仓必须干净**：`land` 只忽略 `.dispatch/`，`docs/`、`tickets/` 里的新文件都会让它报 `main checkout is dirty`，**verify 绿了不代表能 land**。落地前跑 `git status --porcelain`，只剩 `.dispatch/` 才动手。
+
 ## 执行端三条路
 
 | 你有的 | 怎么走 |
