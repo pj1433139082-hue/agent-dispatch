@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.60.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.61.0。
 
 ## 何时使用
 
@@ -242,6 +242,17 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 - `--no-require-packet`：**跳过"有没有包"**的检查（迁移逃生口）。
 - `--require-attestation`：更严，要求 reviewer **回填过正确的 `packet_hash`**；手审（review）默认 `packet_attested=false`，会被它挡住。
+
+## 运维命令的边界（实测，v0.61）
+
+| 命令 | 必须知道的三件事 |
+|---|---|
+| `claim` / `release` | 都要**先有 run**（brief+render）；`claim` 对 done/failed 票没有状态门；`release` 释放该 run **全部**租约，没有 run 时是 no-op（exit 0）；同 run 再 `claim` 会**续期**；退出码 0/3(冲突)/4(写域展不开) |
+| `sweep` | 只读、永远 exit 0；**文本模式只印一部分字段**（last_artifact / deadline_seconds 要用 `--json`） |
+| `repair` | 默认 dry-run；`--write` 会把整张 state 的 `updated_at` 换成 `run.created_at`；run_id 冲突 → exit 1，evidence_mismatch 只打印不拦 |
+| `gc` | `--apply` 会**删掉 worktree 分支**；只处理索引里还有的 run（孤儿 run 不提示）；永远 exit 0 |
+| `seat` | 超 cap 不报错，只给负数 `free`；`inactive` 只在满员时才进建议 |
+| `doctor --fix` | 同样会重写 `updated_at`；只做安全修复，不动票、不删 run |
 
 ## 命令速查
 

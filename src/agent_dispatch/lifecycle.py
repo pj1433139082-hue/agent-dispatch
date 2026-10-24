@@ -297,7 +297,12 @@ def claim(
                 if existing is None:
                     continue
                 if str(existing.get("run_id", "")) == run_id:
-                    won = True  # 自己已持有：续租
+                    # 自己已持有：真正续租（重写 expires_at），不是只标记成功
+                    try:
+                        file.write_text(payload, encoding="utf-8")
+                    except OSError:
+                        continue
+                    won = True
                     break
                 if _expired(existing, now):
                     try:

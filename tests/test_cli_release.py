@@ -86,7 +86,7 @@ def test_releasing_one_ticket_lets_another_claim_the_file(tmp_path: Path) -> Non
     assert allowed.returncode == 0, allowed.stdout + allowed.stderr
 
 
-def test_release_without_a_run_fails(tmp_path: Path) -> None:
+def test_release_without_a_run_is_a_no_op(tmp_path: Path) -> None:
     (tmp_path / "tickets").mkdir()
     (tmp_path / "tickets" / "01.md").write_text(TICKET.format(id="01"), encoding="utf-8")
     for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
@@ -94,5 +94,5 @@ def test_release_without_a_run_fails(tmp_path: Path) -> None:
 
     result = run_dispatch(tmp_path, "release", "01")
 
-    assert result.returncode != 0
+    assert result.returncode == 0
     assert "run" in (result.stdout + result.stderr).lower()

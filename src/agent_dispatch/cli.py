@@ -1435,8 +1435,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 def _cmd_release(args: argparse.Namespace) -> int:
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
-        print(f"ticket {args.ticket_id} has no run; nothing to release", file=sys.stderr)
-        return 1
+        if args.as_json:
+            print(json.dumps({"ticket_id": args.ticket_id, "run_id": "", "released": []}, ensure_ascii=False))
+        else:
+            print(f"Released 0 lease(s) for {args.ticket_id} (no run)")
+        return 0
     released = release_claims(args.root, run.id)
     if args.as_json:
         print(json.dumps({"ticket_id": args.ticket_id, "run_id": run.id, "released": released}, ensure_ascii=False, indent=2))
