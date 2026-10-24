@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.70.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.71.0。
 
 ## 何时使用
 
@@ -226,7 +226,8 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 | 2. 自审 | L0/L1 可 `--self-reviewed` 显式留痕放行；**L2+ 一律不许** | reviewer 与执行者同名时 |
 | 3. 读包证明 | **L2+ 必须 `--packet-hash <review-packet.md 的 sha256>`**，哈希不符即拒；通过后 `packet_attested=true` | L2/L3/L4 |
 
-- L4 还要 `--human`（人工评审）。
+- L4 还要 `--human`（人工评审）。**顺序是：先有 packet → 再对 `--packet-hash` → 最后才问 `--human`**；不跑 `review-packet` 就永远看不到 human 的报错。
+- `--human` 现在会记进 `review.json` 与 ledger 的 `human: true`（v0.71 起；以前只在退出码里，事后无法区分）。
 - 这三层挡的是"手滑"和"没读包"，**挡不住"同一个模型换个名字"**——要那样得靠会话隔离（`list_agents` 里真有第二个 agent）。
 - 没 teammate 时 `render --agent X` 只是标签；交付说明里要写"主代理自执行"。
 
@@ -286,6 +287,11 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 | `gc` | `--apply` 会**删掉 worktree 分支**；只处理索引里还有的 run（孤儿 run 不提示）；永远 exit 0 |
 | `seat` | 超 cap 不报错，只给负数 `free`；`inactive` 只在满员时才进建议 |
 | `doctor --fix` | 同样会重写 `updated_at`；只做安全修复，不动票、不删 run |
+
+## stage 的两个细节（v0.71）
+
+- `stage <slug> --prompt` 的退出码是 **0 = 有问题要问 / 2 = 没有问题（已完成）**；不带 `--prompt` 的 `stage` 未就绪才是 exit 1。
+- 输出的 `stage` 字段到顶时是 **`done`**（不是 `s5`）；且 **s4/s5 是仓库级判断**（看 `tickets/*.md`），不是按 slug 的——任何 slug 只要有票在 `tickets/` 就会显示 s4/s5 OK。
 
 ## 命令速查
 

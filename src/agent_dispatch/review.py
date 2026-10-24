@@ -26,6 +26,7 @@ def _append_ledger(root: Path, record: dict[str, object], review_hash: str) -> N
         "accepted_degraded": record["accepted_degraded"],
         "self_reviewed": record["self_reviewed"],
         "packet_attested": record["packet_attested"],
+        "human": bool(record.get("human")),
         "review_hash": review_hash,
     }
     with ledger.open("a", encoding="utf-8") as handle:
@@ -97,6 +98,7 @@ def submit_review(
         "verify_status": verify_status,
         "accepted_degraded": bool(accept_degraded and verify_status == "degraded"),
         "self_reviewed": bool(self_reviewed),
+        "human": bool(human),
         "packet_attested": bool(packet_attested),
     }
     review_path = run.directory / "review.json"
