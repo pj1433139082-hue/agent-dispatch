@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.50.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.51.0。
 
 ## 何时使用
 
@@ -297,7 +297,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 失败语义：closeout 不过 → `status=closeout-failed`，findings 写进 `auto/feedback-<n>.md` **不自动重跑**（由人或下一张票决定）。
 
-`--until land` 还会先生成 `review-packet.md` 并把 `DISPATCH_REVIEW_PACKET` 交给 reviewer；reviewer 回执里的 `packet_hash` 与实际包**不一致** → `review-invalid`，不 land。
+`--until land` 还会先生成 `review-packet.md` 并把 `DISPATCH_REVIEW_PACKET` 交给 reviewer；reviewer 回执里的 `packet_hash` 与实际包**不一致** → `review-invalid`，不 land。**L2+ 的票在 auto 里也必须回填哈希**（不回填同样 `review-invalid`），L0/L1 不强制。
 
 ## 半自动推进（v0.6）
 

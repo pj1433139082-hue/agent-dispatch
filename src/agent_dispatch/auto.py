@@ -204,6 +204,13 @@ def _review_and_land(
         )
         _write_result(run, result)
         return
+    if ticket.risk in {"L2", "L3", "L4"} and not attested:
+        result["status"] = "review-invalid"
+        result["error"] = (
+            "L2+ review needs the reviewer to echo packet_hash; the reviewer did not attest the packet"
+        )
+        _write_result(run, result)
+        return
     result["packet_attested"] = bool(attested)
 
     if review["verdict"] == "pass" and execution["exit_code"] != 0:
