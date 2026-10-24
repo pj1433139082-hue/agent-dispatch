@@ -54,6 +54,10 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py plan    
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py status    # frontier 是哪几张
 ```
 
+## 占位 checkbox 不用管
+
+`spec` 模板自带的 `- [ ] （可命令化的验收项）` / `- [ ] （人工核对项）` 会被 `delivery_items` **忽略**（以 `（` 开头即跳过），删不删都行；补一条真项即可。
+
 ## 写域冲突怎么办
 
 `plan` 报 `Conflict A / B: path` 时：**不阻止单票执行，但这两张不能同波并行**。三选一——改其中一张的写域、串行做、或者把它们并成一张票。历史遗留票的冲突不用为了跑新票去改它。

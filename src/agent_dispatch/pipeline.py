@@ -90,6 +90,8 @@ def stage_report(root: Path, slug: str) -> dict[str, object]:
         next_step = "s5"
     else:
         next_step = ""
+    if draft_files and next_step in {"", "s5"}:
+        next_step = "s4-move-drafts"
     return {"slug": slug, "stages": stages, "next": next_step or "done", "ok": next_step == ""}
 
 
@@ -164,6 +166,12 @@ def stage_prompt(root: Path, slug: str) -> dict[str, object]:
 VIA_MARKERS = ("dialog", "card")
 
 
+def _today() -> str:
+    from datetime import date
+
+    return date.today().isoformat()
+
+
 def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "") -> Path:
     """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
     if via not in VIA_MARKERS:
@@ -182,6 +190,9 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
             continue
         if stripped.startswith("- 确认方式："):
             out.append("- 确认方式：" + via)
+            continue
+        if stripped.startswith("- 日期："):
+            out.append("- 日期：" + _today())
             continue
         if stripped.startswith("- 选择："):
             boxes = []

@@ -18,9 +18,9 @@ description: 把已拷问过的需求收敛成规格：写 docs/specs/<slug>.md�
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py spec <slug>        # 问卷没答满 / S2 没签字 → 拒绝；--force 跳过（不推荐）
 ```
 
-产出 `docs/specs/<slug>.md`：Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope。
+产出 `docs/specs/<slug>.md`：Problem / Solution / Stories / Delivery standard / Implementation Decisions / Testing / Out of scope。
 
-**三角色逐段挑刺**（各写一段评论，结论写进 `## Decisions`）：
+**三角色逐段挑刺**（各写一段评论，结论写进 `## Implementation Decisions`（`spec` 模板的正式小节名，口头叫 Decisions 也是它））：
 
 | 角色 | 挑什么 |
 |---|---|

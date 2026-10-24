@@ -32,6 +32,12 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id
 
 `dispatch brief <id> --check` 只校验"五段非空、不是占位"（`<填写：…>`），**不判长度和内容质量**；写没写清楚由批准的人负责。
 
+## 落地前后的小事
+
+- **"先提交"提到哪**：直接 commit 到 `main`（land 只建分支、不动 main）。
+- **验收报告不用提交**：land 之后写报告会让 main 变脏，留着未跟踪即可。
+- **父票 vs 历史票**：本轮任务的父票和各轮遗留票的写域冲突一样处理——不改它、串行跑新票。
+
 ## 两条硬规矩（实测踩过）
 
 1. **回执写 run 目录**：`receipt.json` 必须放在 `.dispatch/runs/<run-id>/`，**不要**写进 worktree——写进 worktree 会被判 `write scope: out of scope: receipt.json`。
