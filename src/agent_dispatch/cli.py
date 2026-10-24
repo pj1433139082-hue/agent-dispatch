@@ -863,8 +863,9 @@ def _cmd_render(args: argparse.Namespace) -> int:
     if require_brief:
         ok, why = approval_status(args.root, ticket)
         if not ok:
-            print(f"ticket {ticket.id}: {why}", file=sys.stderr)
+            print(f"ticket {ticket.id}: brief gate ON, {why}", file=sys.stderr)
             return 1
+        print(f"Brief gate: {why}")
 
     store = DispatchState(args.root)
     existing = store.ticket(ticket.id)

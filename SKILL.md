@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.48.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.49.0。
 
 ## 何时使用
 
@@ -173,6 +173,31 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 3. **brief 门默认是开的**：`setup` 会写 `require_brief: true`，之后 `render` 自动校验审批；不想要就改配置。老项目没配置时行为不变（需显式 `--require-brief`）。
 4. **land 与 review-packet**：`review` 通过时会自动快照一份 packet，所以 `land` 通常直接过；`review-packet` 命令用于手动补/分享，`--no-require-packet` 只给老 run 迁移用。
 5. **票面的 `**Status:**` 只是作者标记**：真实状态看 `dispatch status` / `.dispatch/state.json`，工具不会回写票面。
+
+### 身份：名字不等于执行者
+
+`--agent` 和 `--reviewer` 都是**声明**，dispatch 不校验那个名字背后有没有真人/真 agent：
+
+- `render --agent research-scout` 只是把名字写进工作单；`list_agents` 里没有这个 target 时，实际干活的是你自己。**这种情况要在交付说明里写清"主代理自执行"**，不要包装成"已派给子智能体"。
+- `review --reviewer X` 同理：满足"异体"只靠**名字与执行者不同**，不证明真的换了人。想留硬证据：L0/L1 允许 `--self-reviewed` 显式标注自审；L2+ 要求独立评审 + review packet（`--require-attestation` 时还要回填 `packet_hash`）。
+- 判断"到底谁执行的"看两处：`receipt.json` 的 `summary`/`evidence` 里写的执行者，以及 `review.json.reviewer`。
+
+### brief 门是否强制：看配置，命令自己会说
+
+- `dispatch setup` 默认写 `require_brief: true`；老项目没有这条配置时行为不变（不强制）。
+- 强制时 `render` 会打印 `Brief gate: brief 已由 <人> 于 <时间> 审核`；被拦时打印 `brief gate ON, …` 并说明缺什么。
+- 想临时强制/绕过：`render --require-brief`（加严）；配置文件改成 `false` 才放行。
+
+### review-packet 与 land 的边界
+
+| 场景 | packet 谁生成 | land 会不会过 |
+|---|---|---|
+| `review`（手审） | **review 通过时自动快照一份** `review-packet.md/.json` | 过（文件已存在） |
+| `auto --until land` | 评审**之前**先生成，并把 `DISPATCH_REVIEW_PACKET` 交给 reviewer | 过；reviewer 回填了错 `packet_hash` 则 `review-invalid` |
+| 老 run（没有 packet） | 需要手动 `review-packet <id>` | 不过，除非 `--no-require-packet`（迁移用） |
+
+- `--no-require-packet`：**跳过"有没有包"**的检查（迁移逃生口）。
+- `--require-attestation`：更严，要求 reviewer **回填过正确的 `packet_hash`**；手审（review）默认 `packet_attested=false`，会被它挡住。
 
 ## 命令速查
 
