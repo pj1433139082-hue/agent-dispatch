@@ -51,11 +51,25 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id
 | DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` |
 | 都没有 | 自己在 worktree 干，交付里写"主代理自执行" |
 
+## land --wave 的语义（实测）
+
+- **每票一条 integration 分支**，都基于同一个 target；**不是**一条合并分支。PR 要按票开。
+- 依赖顺序只决定**建分支的顺序**，不会把上游改动带进下游分支——下游分支里看不到上游文件，别指望"落完 wave 就有完整功能"。
+- 完成判定是 **state=done 或 票面 `Status: done`**（两者 OR）；票面写着 ready 但 state done 的票也会被落。
+- `--require-closeout` 现在对 wave 也生效（closeout 不是 pass 的票会被判 FAILED）；`--require-packet` / `--require-attestation` 仍只作用于单票 `land`。
+- wave 会先 lint 全部票：任何 lint error 直接退出，一张都不落。
+
 ## 整波
 
 ```bash
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land --wave            # 按拓扑序逐票落地
 ```
+
+## retry 的三件事（实测）
+
+1. `retry` 不只救 `failed`：**卡在 `claimed` 的 run 也能 retry**（直接到 running，attempt+1）。
+2. **receipt 和 evidence 不会归档**：旧 `receipt.json` 还在 run 目录里，执行端必须为新的 attempt 重写，否则 verify 会复算旧证据。
+3. 归档的只有 `attempts/verify-01.json`、`review`、`closeout` 的快照；`logs/01.log` 会被覆盖。
 
 ## 纪律
 
