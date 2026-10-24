@@ -39,6 +39,9 @@ def build(output: Path) -> Path:
     copy_file(ROOT / "scripts" / "acceptance.py", output / "scripts" / "acceptance.py")
     copy_tree(ROOT / "src" / "agent_dispatch", output / "src" / "agent_dispatch")
     copy_file(ROOT / "docs" / "flows.md", output / "docs" / "flows.md")
+    testing = ROOT / "docs" / "testing"
+    if testing.is_dir():
+        copy_tree(testing, output / "docs" / "testing")
     copy_tree(ROOT / "references", output / "references")
     copy_tree(ROOT / "templates", output / "templates")
     if (ROOT / "agents").is_dir():

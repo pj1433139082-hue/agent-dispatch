@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.68.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.69.0。
 
 ## 何时使用
 
@@ -296,7 +296,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 | `render <id> --agent <name> [--no-worktree] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
 | `start <id>` | claimed → running |
 | `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
-| `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed]` | 异体评审；通过 → done，并追加 review ledger |
+| `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed] [--packet-hash <sha>]` | 异体评审；通过 → done，并追加 review ledger。**L2+ 必须给 `--packet-hash`**（L0/L1 可选，给了也会记 attested） |
 | `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--continue-on-error]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
@@ -395,6 +395,21 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 5. brief 声明的每个路径都真的改了
 
 "像路径"判得很粗：`- `/`* ` 开头、取第一个空格/冒号/括号前的 token，含 `/`、`\`、`.txt`/`.py`/`.md` 就算。brief 正文里随手写的文件名也会被当声明。
+
+## auto 与 retry 的实测口径（v0.69）
+
+- **退出码**：`auto --until review` 0 = passed、2 = degraded、1 = failed；`landed` 只在 `--until land` 时出现。
+- **执行器必须先提交进 git**：`auto` 用 `base_commit` 建 worktree，未提交的 `tools/xxx.py` 在 worktree 里不存在。
+- **两个目录别混**：`auto/` 是 auto 写的（`attempt-NN.log`、`feedback-N.md`，**不补零**）；`attempts/` 是 `retry` 建的归档（`verify-01.json` 等）。
+- **retry 后不能直接再 auto**：票变 running，`auto` 会拒（`already has an active run`）。救法：自己重跑执行器 + `verify`，或 `review`/`land` 接着走。
+- **`--force` 只跳过 preflight**，不跳过"已有 active run"这类前置检查。
+- **失败的 auto 不会刷新 auto.json**：票后来 done 了，`auto.json.status` 仍是 failed——真实状态看 `status`/`state.json`。
+
+## degraded 的判定与记录（v0.69）
+
+- **触发**：某条判据的**全部**证据都是 attested（只有 `kind:"note"` 算 attested；file/inline/absent/command 都不算）→ `verify` 判 degraded，**退出码 2**，票进 `review`（不是 failed）。
+- **拒绝可重试**：不带 `--accept-degraded` 的 `review` exit 1，只有一句 stderr，**不写 review.json / 不写 ledger / 状态不变**。
+- **接受后**：`review.json` 的 `status` 是 **passed**（不是 degraded），降解事实在 `verify_status: degraded` + `accepted_degraded: true`。
 
 ## 半自动推进（v0.6）
 
