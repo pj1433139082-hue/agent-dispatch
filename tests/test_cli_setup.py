@@ -70,5 +70,5 @@ def test_setup_refuses_a_missing_tickets_directory(tmp_path: Path) -> None:
 
     result = run_dispatch(tmp_path, "setup", "--tickets", "nope/tickets")
 
-    assert result.returncode != 0
-    assert "missing" in (result.stdout + result.stderr).lower()
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "nope" / "tickets").is_dir()

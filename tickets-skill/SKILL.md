@@ -40,6 +40,8 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py tickets 
 - [ ] 具体可验收的一条
 ```
 
+拆出来的票 **id 就是 `01`**（文件名 `01-<slug>.md`），后面 `brief 01` 用这个号。
+
 ## 校验
 
 ```bash

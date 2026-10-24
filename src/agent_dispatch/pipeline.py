@@ -258,6 +258,11 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
     if not folder.is_dir():
         raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
     items: list[dict[str, object]] = []
+    text = adversary.read_text(encoding="utf-8") if adversary.is_file() else ""
+    if "## What to produce" in text or "Persona: builtin:adversary" in text:
+        raise ValueError(
+            "03-adversary.md 还是模板：先让 adversary 把假设与反例写进去，再跑 questions"
+        )
     lines: list[str] = []
     if adversary.is_file():
         for raw in adversary.read_text(encoding="utf-8").splitlines():
@@ -266,6 +271,8 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
                 continue
             text = line[2:].strip()
             if not text or text.startswith("（") or text.startswith("<") or "TODO" in text:
+                continue
+            if "**" in text or text.startswith("写 ") or text.startswith("证据门槛") or text.startswith("只读"):
                 continue
             lines.append(text)
     for index, text in enumerate(lines[:10], start=1):

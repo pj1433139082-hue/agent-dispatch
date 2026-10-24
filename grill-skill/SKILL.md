@@ -15,7 +15,8 @@ description: 我们的拷问阶段：问需求 + 三视角取证（开源借鉴/
    - `01-oss.md`：≥2 个开源参照，指到 `文件:函数` 或 commit，并写**不采用的理由**
    - `02-sources.md`：每条事实带 URL + 原文摘录 + 抓取日期 + 版本
    - `03-adversary.md`：没说出口的假设，每条给可证伪实验（≤7 条）
-4. **把对抗变成问题**：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py questions <slug> --json` → 原样喂 `ask_user_question` → 答案写回 `docs/questions/<slug>.md`
+4. **等 adversary 把 03 写完再问**（还是模板时 `questions` 会拒绝）
+5. **把对抗变成问题**：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py questions <slug> --json` → 原样喂 `ask_user_question` → 答案写回 `docs/questions/<slug>.md`
 
 ## 收敛标准
 

@@ -184,7 +184,7 @@ def delivery_diagnosis(spec_text: str) -> tuple[list[str], str]:
 
 def render_draft_ticket(number: int, slug: str, item: str) -> str:
     return "\n".join([
-        "# " + slug + "-" + str(number).zfill(2) + ": " + item,
+        "# " + str(number).zfill(2) + ": " + item,
         "",
         "## What to build",
         "",

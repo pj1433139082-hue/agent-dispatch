@@ -1186,6 +1186,9 @@ def _cmd_questions(args: argparse.Namespace) -> int:
     except FileNotFoundError as error:
         print(str(error), file=sys.stderr)
         return 1
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     if args.as_json or True:
         print(json.dumps(items, ensure_ascii=False, indent=2))
     return 0 if items else 2
@@ -1197,8 +1200,8 @@ def _cmd_setup(args: argparse.Namespace) -> int:
     tickets = args.tickets or str(current.get("tickets_dir", "tickets"))
     target = root / tickets
     if not target.is_dir():
-        print(f"tickets directory is missing: {target} (create it or point --tickets elsewhere)", file=sys.stderr)
-        return 1
+        target.mkdir(parents=True, exist_ok=True)
+        print(f"Created {target}")
     updated = {
         "version": 1,
         "tickets_dir": tickets.replace("\\", "/"),
