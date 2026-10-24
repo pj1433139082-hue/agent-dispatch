@@ -172,7 +172,7 @@ def _today() -> str:
     return date.today().isoformat()
 
 
-def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "") -> Path:
+def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "", note: str = "") -> Path:
     """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
     if via not in VIA_MARKERS:
         raise ValueError("--via must be one of: " + ", ".join(VIA_MARKERS))
@@ -193,6 +193,9 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
             continue
         if stripped.startswith("- 日期："):
             out.append("- 日期：" + _today())
+            continue
+        if note and stripped.startswith("- 备注："):
+            out.append("- 备注：" + note)
             continue
         if stripped.startswith("- 选择："):
             boxes = []

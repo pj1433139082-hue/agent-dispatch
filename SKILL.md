@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.71.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.72.0。
 
 ## 何时使用
 
@@ -292,6 +292,11 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 - `stage <slug> --prompt` 的退出码是 **0 = 有问题要问 / 2 = 没有问题（已完成）**；不带 `--prompt` 的 `stage` 未就绪才是 exit 1。
 - 输出的 `stage` 字段到顶时是 **`done`**（不是 `s5`）；且 **s4/s5 是仓库级判断**（看 `tickets/*.md`），不是按 slug 的——任何 slug 只要有票在 `tickets/` 就会显示 s4/s5 OK。
+
+## 两个实测补丁（v0.72）
+
+- `sign` 现在支持 `--note "<一句话>"`，写进 `99-summary.md` 的 `- 备注：` 行（老会话里出现过 `unrecognized arguments: --note`）。
+- `verify` 的「主仓脏」判定现在忽略 `.scratch/`（本地 issue tracker 的常用目录，老会话因为它整票 verify 失败）。
 
 ## 命令速查
 

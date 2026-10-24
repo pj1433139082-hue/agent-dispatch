@@ -260,6 +260,7 @@ def _parser() -> argparse.ArgumentParser:
     sign_parser = subparsers.add_parser("sign", help="Record the client signature on the S2 selection summary.")
     sign_parser.add_argument("slug")
     sign_parser.add_argument("--by", required=True, help="Who signs it.")
+    sign_parser.add_argument("--note", default="", help="Optional note recorded on the signature line.")
     sign_parser.add_argument(
         "--via", required=True, choices=("dialog", "card"),
         help="How the client confirmed: dialog (interactive question) or card (text decision card).",
@@ -1532,7 +1533,7 @@ def _cmd_confirm(args: argparse.Namespace) -> int:
 def _cmd_sign(args: argparse.Namespace) -> int:
     choice = "reject" if args.reject else ("hold" if args.hold else "pass")
     try:
-        path = sign_selection(args.root, args.slug, args.by, choice, args.via)
+        path = sign_selection(args.root, args.slug, args.by, choice, args.via, getattr(args, "note", ""))
     except FileNotFoundError as error:
         print(str(error), file=sys.stderr)
         return 1

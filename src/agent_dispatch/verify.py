@@ -16,6 +16,7 @@ from .ticket import Ticket
 
 IGNORED_PREFIXES = (
     ".dispatch/",
+    ".scratch/",
     ".dsh-hooks/",
     ".git/",
     "__pycache__/",
