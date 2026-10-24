@@ -54,6 +54,18 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py plan    
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py status    # frontier 是哪几张
 ```
 
+## 写域冲突怎么办
+
+`plan` 报 `Conflict A / B: path` 时：**不阻止单票执行，但这两张不能同波并行**。三选一——改其中一张的写域、串行做、或者把它们并成一张票。历史遗留票的冲突不用为了跑新票去改它。
+
+## Status 的例外
+
+`land --wave` 会读**票面**的 `Status: done` 来决定跳过哪些票；单票 `land <id>` 看的是 `state.json`。所以票面 Status 平时只是备注，走整波时它会生效。
+
+## stage 的 s4 数字
+
+`stage` 里 `s4: N draft(s)` 统计的是 `.dispatch/drafts/<slug>/` 里**还剩几个文件**，不是"还有几张票没补"。挪完票再删掉草稿，这个数字就归零（删不删都不影响 lint/tickets）。
+
 ## 拆票规则
 
 - 一张票 = 一个可独立验收的切片

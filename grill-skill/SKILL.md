@@ -18,6 +18,13 @@ description: 我们的拷问阶段：问需求 + 三视角取证（开源借鉴/
 4. **等 adversary 把 03 写完再问**（还是模板时 `questions` 会拒绝）
 5. **把对抗变成问题**：只读 `## 假设` 小节（`## 未证实项` 不会被当成问题；文件里没有"假设"标题时才退化成读全文所有 bullet），最多取 20 条；以"写 "/"证据门槛"/"只读"开头的模板说明和 `<`/`TODO` 占位会被**跳过并在 stderr 说明**：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py questions <slug> --json` → 原样喂 `ask_user_question` → 答案写回 `docs/questions/<slug>.md`
 
+## 几个容易踩的细节
+
+- **档位 ≠ 空行数**：`--level standard` 是 6 问，但模板有 **7 个 `> `**（6 问 + 最后的 `Anything else?`）。**全部都要填**，留一个空 `spec` 会拒："还有 1 个问题没填"。
+- **可选角色 04/05**：`--with domain-owner,cost-keeper` 只多两个 brief；写最小证据即可，**不写不卡 `sign`**（`sign` 只改签字三行）。
+- **`99-summary` 的表格不影响门禁**：`sign` 不校验表格，`spec` 只校验签字行——但填了才好审计。
+- **`questions` 的 stderr 只报条数**，不列具体哪几条被跳过；`TODO` 是**包含匹配**（行内任何位置出现都跳过）。
+
 ## 收敛标准
 
 - 问卷答满（对应档位）

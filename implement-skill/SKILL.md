@@ -25,7 +25,12 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id
 - `criteria` 的 `id` 必须**正好覆盖**票面 `## Acceptance` 的 `1..N`，多一条少一条都判失败
 - 证据只有 5 种：`file`（run 目录或 worktree 相对路径）/ `inline` / `absent` / `command` / `note`
 - **只有 `note` 一条证据** → 整票判 `degraded`（verify 退出码 2），还得 `review --accept-degraded` 才能往下走
+- `note` 可以**和可复算证据混用**（file/inline/command 都在时不会 degraded）；只有"**仅 note**"才降级
 - 完整 schema 在 `references/ticket-contract.md`，每次 `render` 也会写进 `work-order.md` 的 `## Receipt contract`
+
+## brief 的判据
+
+`dispatch brief <id> --check` 只校验"五段非空、不是占位"（`<填写：…>`），**不判长度和内容质量**；写没写清楚由批准的人负责。
 
 ## 两条硬规矩（实测踩过）
 
