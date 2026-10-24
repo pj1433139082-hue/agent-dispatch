@@ -1814,6 +1814,10 @@ def _land_wave(args: argparse.Namespace) -> int:
         if run is None:
             skipped.append({"ticket_id": tid, "reason": "no run"})
             continue
+        if (run.directory / "landing.json").is_file():
+            landed_ids.add(tid)
+            skipped.append({"ticket_id": tid, "reason": "already landed"})
+            continue
         if getattr(args, "require_closeout", False):
             closeout_file = run.directory / "closeout.json"
             verdict = ""
@@ -1827,10 +1831,7 @@ def _land_wave(args: argparse.Namespace) -> int:
                 if not args.continue_on_error:
                     break
                 continue
-        if (run.directory / "landing.json").is_file():
-            landed_ids.add(tid)
-            skipped.append({"ticket_id": tid, "reason": "already landed"})
-            continue
+
         try:
             record = land_run(args.root, tid, target_branch=args.into, integration_branch=args.branch)
         except LandingError as error:
