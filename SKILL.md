@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.53.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.54.0。
 
 ## 何时使用
 
@@ -92,6 +92,16 @@ python <技能目录>/scripts/dispatch.py new 01 \
   --write-scope tests/ \
   --verify "python -m pytest -q"
 ```
+
+## 配套技能（4 个，可与本技能并行使用）
+
+| 技能 | 干什么 |
+|---|---|
+| `grill-dispatch` | 阶段 1：拷问 + 三视角取证 + 把对抗变成问题 |
+| `to-spec-dispatch` | 阶段 2：出 spec + 三角色挑刺 + `confirm` |
+| `to-tickets-dispatch` | 阶段 3：拆票 + `lint`/`plan` |
+| `implement-dispatch` | 阶段 4：`brief → render → verify → review → land` |
+| `implement-spec-dispatch` | 规格 → 票 → 落地，一条龙 |
 
 ## 流程地图（四条）
 

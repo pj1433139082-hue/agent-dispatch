@@ -1,0 +1,41 @@
+---
+name: implement-dispatch
+description: 按票执行：brief 审批 → render（一票一 worktree）→ 执行端动手 → verify 独立验收 → review 异体评审 → land 到 integration branch。触发：implement-dispatch、按票开发、派单执行、跑票、验收落地。
+---
+
+# 4/4 · Implement
+
+上一步：**to-tickets-dispatch**（或直接拿现成的票进来）
+
+## 单票流程
+
+```bash
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py brief <id>                     # 填五段（理解/计划/要改的文件/风险/疑问）
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py brief <id> --approve <你>       # 不批，render 不放行（配置默认开）
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py render <id> --agent <执行者>     # 一票一 worktree，产出 work-order.md
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py start <id>
+#   ← 执行端在这里干活（见下）
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py verify <id>                    # 复跑票上的 Verify，逐条对证据
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py review <id> --reviewer <另一人> --verdict pass    # L2+ 还要 --packet-hash
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id>                      # 只建分支，不 push、不合并 main
+```
+
+## 执行端三条路
+
+| 你有的 | 怎么走 |
+|---|---|
+| teammate（`list_agents` 里真有） | `handoff <id> --to <它>` → `send_message` |
+| DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` |
+| 都没有 | 自己在 worktree 干，交付里写"主代理自执行" |
+
+## 整波
+
+```bash
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land --wave            # 按拓扑序逐票落地
+```
+
+## 纪律
+
+- **一票一停**：别把整波塞进一个上下文（实测 10 票会 prompt_too_long）
+- 失败先 `retry <id> --reason …`，不要手改 `.dispatch/state.json`
+- 卡住：`doctor` → `doctor --fix` → `release <id>` → `sweep`

@@ -44,23 +44,21 @@ def build(output: Path) -> Path:
     if (ROOT / "agents").is_dir():
         copy_tree(ROOT / "agents", output / "agents")
 
-    grill_dir = output.parent / "grill-dispatch"
-    if grill_dir.exists():
-        shutil.rmtree(grill_dir)
-    grill_dir.mkdir(parents=True)
-    copy_file(ROOT / "grill-skill" / "SKILL.md", grill_dir / "SKILL.md")
-
-    flow_dir = output.parent / "dispatch-flow"
-    if flow_dir.exists():
-        shutil.rmtree(flow_dir)
-    flow_dir.mkdir(parents=True)
-    copy_file(ROOT / "flow-skill" / "SKILL.md", flow_dir / "SKILL.md")
-
-    setup_dir = output.parent / "setup-agent-dispatch"
-    if setup_dir.exists():
-        shutil.rmtree(setup_dir)
-    setup_dir.mkdir(parents=True)
-    copy_file(ROOT / "setup-skill" / "SKILL.md", setup_dir / "SKILL.md")
+    companions = {
+        "grill-skill": "grill-dispatch",
+        "spec-skill": "to-spec-dispatch",
+        "tickets-skill": "to-tickets-dispatch",
+        "implement-skill": "implement-dispatch",
+        "implement-spec-skill": "implement-spec-dispatch",
+        "flow-skill": "dispatch-flow",
+        "setup-skill": "setup-agent-dispatch",
+    }
+    for source, name in companions.items():
+        target = output.parent / name
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True)
+        copy_file(ROOT / source / "SKILL.md", target / "SKILL.md")
 
     print(output)
     return output
