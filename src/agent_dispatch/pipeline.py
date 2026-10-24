@@ -264,6 +264,7 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
             "03-adversary.md 还是模板：先让 adversary 把假设与反例写进去，再跑 questions"
         )
     lines: list[str] = []
+    skipped: list[str] = []
     if adversary.is_file():
         in_assumptions = False
         has_assumption_section = any(
@@ -281,12 +282,24 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
             if not line.startswith(("- ", "* ")):
                 continue
             text = line[2:].strip()
-            if not text or text.startswith("（") or text.startswith("<") or "TODO" in text:
+            if not text or text.startswith("<") or "TODO" in text:
+                skipped.append("占位：" + text[:30])
                 continue
-            if "**" in text or text.startswith("写 ") or text.startswith("证据门槛") or text.startswith("只读"):
+            if text.startswith("写 ") or text.startswith("证据门槛") or text.startswith("只读"):
+                skipped.append("模板说明：" + text[:30])
                 continue
             lines.append(text)
-    for index, text in enumerate(lines[:10], start=1):
+    if skipped:
+        import sys as _sys
+
+        _sys.stderr.write(
+            "questions: 跳过 %d 条（模板说明/占位），要变成问题请改写后再跑\n" % len(skipped)
+        )
+    if len(lines) > 20:
+        import sys as _sys2
+
+        _sys2.stderr.write("questions: 只取前 20 条假设（共 %d 条）\n" % len(lines))
+    for index, text in enumerate(lines[:20], start=1):
         items.append(
             {
                 "id": f"adversary-{index}",

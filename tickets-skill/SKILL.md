@@ -42,7 +42,9 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py tickets 
 
 拆出来的票 **id 由标题 `# <id>:` 决定**（不是文件名），文件名 `01-<slug>.md`，后面 `brief 01` 用这个号。
 
-**合并进已有 `tickets/` 前**：先分配一个没被占用的号（改成 `# 05: …` + `05-<slug>.md`），再把 `Status: draft` 改成 `ready-for-agent`、把 `（待填）` 填掉——否则 `lint` 会报 `duplicate_id` / `placeholder_value`。
+**合并进已有 `tickets/` 前**：先分配一个没被占用的号（改成 `# 05: …` + `05-<slug>.md`），把 `（待填）` 填掉——否则 `lint` 报 `placeholder_value`；票号没换则报 `duplicate_id`。
+
+`Status:` 只是**给人看的建议值**（契约里可选，工具不校验它），改成 `ready-for-agent` 只为可读性，lint 不看它。
 
 ## 校验
 

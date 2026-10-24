@@ -20,6 +20,13 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py review <
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id>                      # 只建分支，不 push、不合并 main
 ```
 
+## 回执长什么样（照这个写）
+
+- `criteria` 的 `id` 必须**正好覆盖**票面 `## Acceptance` 的 `1..N`，多一条少一条都判失败
+- 证据只有 5 种：`file`（run 目录或 worktree 相对路径）/ `inline` / `absent` / `command` / `note`
+- **只有 `note` 一条证据** → 整票判 `degraded`（verify 退出码 2），还得 `review --accept-degraded` 才能往下走
+- 完整 schema 在 `references/ticket-contract.md`，每次 `render` 也会写进 `work-order.md` 的 `## Receipt contract`
+
 ## 两条硬规矩（实测踩过）
 
 1. **回执写 run 目录**：`receipt.json` 必须放在 `.dispatch/runs/<run-id>/`，**不要**写进 worktree——写进 worktree 会被判 `write scope: out of scope: receipt.json`。
