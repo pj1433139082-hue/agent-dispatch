@@ -19,17 +19,18 @@
 
 ## 覆盖矩阵（命令 × 路径）
 
-| 区域 | 已覆盖 | 待覆盖（本计划重点） |
-|---|---|---|
-| S1–S5 主链 | align/select/questions/sign/spec/confirm/tickets/lint/plan | `sign --reject`、`stage --prompt` 的 JSON 形状、`spec --force` |
-| 单票执行 | brief/render/start/verify/review/land | `review --accept-degraded`、L4 的 `--human` 门、`--no-worktree` 逃生口 |
-| 自动推进 | auto 默认、`--protocol full`、`--max-attempts` | **attempt 用尽**后的状态、`--until land` 时 closeout 不过的表现 |
-| 波次落地 | `land --wave`、依赖顺序、`--require-closeout` | **混入一条 closeout 不过的票**（整波停还是跳过）、`--continue-on-error` |
-| 证据与收口 | verify 判据、closeout 五条、checkpoint | closeout 的 **criteria 条数不匹配**、`note-only` → degraded → `review --accept-degraded` 全链 |
-| 运维 | doctor/`--fix`、claim/release、sweep、repair、gc、seat | `repair --write` 在 evidence_mismatch 下的行为、`gc --apply` 对"未 land 但有改动"的处理 |
-| 人设/导出 | personas/assign/context/export 四格式 | `export` 对 **blocked 票**是否过滤、`assign` 的 persona 文件丢失时的报错 |
-| 看板 | push/status/run/outcome/update/archive | `dsh outcome --mark-done` 缺证据时的拒付（已测）、`dsh push` 对 L1 的警告（已测） |
+> v0.97.1 按 adversary 的核对结果重写：**旧矩阵把 12 项已有测试写成"待覆盖"**（104 个测试文件 / 361 个 `def test_` 逐个比对过）。右列现在只留 6 条真正没有测试的空白。
 
+| 区域 | 已覆盖（有测试） | 真实空白（无测试） |
+|---|---|---|
+| S1–S5 主链 | align / select / questions / sign 三态中的 pass+hold / spec --force / stage --prompt / confirm / tickets / lint / plan | **`sign --reject`**（`cli.py` 有分支，零测试） |
+| 单票执行 | brief / render（含 `--no-worktree`）/ start / verify / review（含 `--accept-degraded`、L2+ 哈希、L1 自审）/ land | **L4 不带 `--human` 的拒绝路径**（`review.py:84`；现在只测了"带 --human 记 human=true"） |
+| 自动推进 | auto 默认 / `--protocol full` / `--max-attempts` / attempt 用尽 / `--resume` | **`--until land` 时 closeout 不过** |
+| 波次落地 | `land --wave` / 依赖顺序 / `--require-closeout` / 混入 closeout 不过的票 / `--dry-run` | **`--continue-on-error`** |
+| 证据与收口 | verify 判据 / closeout 五条 / criteria 条数不匹配 / note-only→degraded→accept / checkpoint | — |
+| 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots | **`gc` 对"未 land 但 worktree 还在"的处理** |
+| 人设/导出 | personas / assign / new --persona / context / export 四格式 | — |
+| 看板 | push / status / run / outcome / update / archive / mark-done 缺证据拒付 | **`dsh push` 对 L3 以下票的警告**（`cli.py:2574` 有代码，零测试） |
 ## 每轮协议（固定动作）
 
 1. 建一张 **L3** 任务票 → `dsh push --workspace <id>` → `dsh run`。
