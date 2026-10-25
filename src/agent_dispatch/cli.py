@@ -216,6 +216,11 @@ def _parser() -> argparse.ArgumentParser:
     questions_parser.add_argument("--root", type=Path, default=Path("."))
     questions_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    wrap_parser = subparsers.add_parser("wrap", help="One-shot session wrap-up: status counts + doctor + next actions.")
+    wrap_parser.add_argument("--root", type=Path, default=Path("."))
+    wrap_parser.add_argument("--tickets", type=Path, default=None)
+    wrap_parser.add_argument("--json", action="store_true", dest="as_json")
+
     setup_parser = subparsers.add_parser("setup", help="Write .dispatch/config.json (tickets dir, executor mode, default reviewer).")
     setup_parser.add_argument("--root", type=Path, default=Path("."))
     setup_parser.add_argument("--tickets", default=None, help="Ticket directory, relative to the project root (default: tickets).")
@@ -1206,6 +1211,58 @@ def _cmd_questions(args: argparse.Namespace) -> int:
     if args.as_json or True:
         print(json.dumps(items, ensure_ascii=False, indent=2))
     return 0 if items else 2
+
+
+def _cmd_wrap(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    directory = _tickets_dir(args)
+    report = _health_report(root, directory)
+    tickets, _ = _load_and_lint(directory, root)
+    document = status_document(tickets or [], _state_map(root))
+    counts: dict[str, int] = {}
+    for row in document["tickets"]:
+        counts[str(row["state"])] = counts.get(str(row["state"]), 0) + 1
+    issues = list(report.get("issues", [])) + list(report.get("warnings", []))
+    actions: list[str] = []
+    for issue in issues:
+        if "need dispatch retry:" in issue:
+            ids = issue.split("need dispatch retry:")[1].strip()
+            for ticket_id in [item.strip() for item in ids.split(",") if item.strip()]:
+                actions.append(f"dispatch retry {ticket_id}")
+        elif "past their deadline" in issue:
+            actions.append("dispatch sweep            # 看哪条 run 超期")
+        elif "will block land" in issue:
+            actions.append("git add/commit 或 .gitignore 掉上面列的文件")
+        elif "no run on disk" in issue:
+            actions.append("dispatch doctor --fix")
+        elif "repair check failed" in issue:
+            actions.append("dispatch repair           # 先 dry-run 看看")
+    payload = {
+        "tickets": len(document["tickets"]),
+        "states": counts,
+        "frontier": document["frontier"],
+        "issues": issues,
+        "actions": actions,
+        "clean": not issues,
+    }
+    if args.as_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if not issues else 1
+    summary = ", ".join(f"{state} {count}" for state, count in sorted(counts.items())) or "no tickets"
+    print(f"Wrap-up: {len(document['tickets'])} ticket(s) — {summary}")
+    print("Frontier: " + (", ".join(document["frontier"]) or "-"))
+    if issues:
+        print("Issues:")
+        for issue in issues:
+            print("  - " + issue)
+        if actions:
+            print("Next:")
+            for action in actions:
+                print("  " + action)
+        print(f"Verdict: NOT CLEAN ({len(issues)} issue(s))")
+        return 1
+    print("Verdict: CLEAN")
+    return 0
 
 
 def _cmd_setup(args: argparse.Namespace) -> int:
@@ -2334,6 +2391,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_repair(args)
     if args.command == "questions":
         return _cmd_questions(args)
+    if args.command == "wrap":
+        return _cmd_wrap(args)
     if args.command == "setup":
         return _cmd_setup(args)
     if args.command == "handoff":
