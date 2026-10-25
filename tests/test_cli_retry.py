@@ -57,7 +57,7 @@ def start_failed_run(tmp_path: Path) -> Path:
 def test_retry_puts_a_failed_ticket_back_to_running(tmp_path: Path) -> None:
     run_dir = start_failed_run(tmp_path)
 
-    retried = run_dispatch(tmp_path, "retry", "01", "--reason", "补上缺失文件后重跑")
+    retried = run_dispatch(tmp_path, "retry", "01", "--reason", "probe", "--reason", "补上缺失文件后重跑")
     assert retried.returncode == 0, retried.stdout + retried.stderr
 
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
@@ -75,7 +75,7 @@ def test_retry_puts_a_failed_ticket_back_to_running(tmp_path: Path) -> None:
 def test_retry_keeps_the_previous_verdict_for_audit(tmp_path: Path) -> None:
     run_dir = start_failed_run(tmp_path)
 
-    assert run_dispatch(tmp_path, "retry", "01", "--reason", "second attempt").returncode == 0
+    assert run_dispatch(tmp_path, "retry", "01", "--reason", "probe", "--reason", "second attempt").returncode == 0
 
     attempts = sorted((run_dir / "attempts").glob("verify-*.json"))
     assert attempts, "上一次的 verify.json 应该被归档"
@@ -90,7 +90,7 @@ def test_retry_refuses_a_done_ticket(tmp_path: Path) -> None:
     (tmp_path / ".dispatch").mkdir()
     (tmp_path / ".dispatch" / "state.json").write_text(json.dumps(state), encoding="utf-8")
 
-    result = run_dispatch(tmp_path, "retry", "01")
+    result = run_dispatch(tmp_path, "retry", "01", "--reason", "probe")
 
     assert result.returncode != 0
     assert "done" in (result.stdout + result.stderr).lower()
