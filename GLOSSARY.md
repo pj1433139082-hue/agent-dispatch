@@ -1,0 +1,33 @@
+# GLOSSARY · agent-dispatch
+
+> 只收"用错就会出事"的词。每个词给：定义 / 不算什么 / 判据。
+
+## 票（ticket）
+- **定义**：一个可独立验收的交付单元，含 Owner / Risk / Write scope / Verify / Acceptance。
+- **不算**：任务清单里的一行；没有 Verify 的"要做的事"不是票。
+- **判据**：`lint` 通过且能 `render` 出 run。
+
+## 判据（criterion）与验收项（acceptance item）
+- **判据**：`receipt.criteria[n]`，带证据（file / inline / command / note），回答"这一条凭什么算完成"。
+- **验收项**：票面 `- [ ]` 那一行，回答"要交付什么"。
+- **关系**：一一对应，`criteria` 的 id 必须正好 `1..N`（N = 验收项条数）。
+
+## 执行根（execution root）
+- **定义**：run 真正写文件的地方。默认是 `.dispatch/worktrees/<run-id>`；`--no-worktree` 时就是仓库根。
+- **不算**：run 目录（`.dispatch/runs/<run-id>`）——那是证据目录，不是干活的地方。
+
+## 快照判据（snapshot criterion）
+- **定义**：Verify 不断言远端/在线事实，只断言一份带时间戳的本地快照。
+- **不算**：把远端输出粘进票面（不可复跑）。
+
+## 重复失败指纹（failure fingerprint）
+- **定义**：`verify-history.jsonl` 里同一组错误文本的连续出现次数。
+- **用途**：第 3 次起提示"再跑没用"，把问题从"再试一次"推向"改环境或改判据"。
+
+## 落地区间（integration branch）
+- **定义**：`land` 建出的 `dispatch/land/<run-id>` 分支，聚合已验收的票。
+- **不算**：main；`land` 从不 push、不合并 main。
+
+## 收口（wrap-up）
+- **定义**：`dispatch wrap` 一次性给出"这轮活干完没有"：失败票、超期 run、未落地 run、会挡 land 的脏文件、过期租约。
+- **判据**：`wrap` exit 0 才算收工；exit 1 表示还有事没处理。
