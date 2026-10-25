@@ -1223,6 +1223,22 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
     for row in document["tickets"]:
         counts[str(row["state"])] = counts.get(str(row["state"]), 0) + 1
     issues = list(report.get("issues", [])) + list(report.get("warnings", []))
+    runs_dir = root / ".dispatch" / "runs"
+    runs_total = runs_landed = 0
+    runs_without_landing: list[str] = []
+    if runs_dir.is_dir():
+        for entry in sorted(runs_dir.iterdir()):
+            if not entry.is_dir() or not (entry / "run.json").is_file():
+                continue
+            runs_total += 1
+            if (entry / "landing.json").is_file():
+                runs_landed += 1
+            else:
+                runs_without_landing.append(entry.name)
+    if runs_without_landing:
+        issues.append(
+            f"{len(runs_without_landing)} ended run(s) without landing.json (dispatch gc to review, or land them)"
+        )
     actions: list[str] = []
     for issue in issues:
         if "need dispatch retry:" in issue:
@@ -1235,6 +1251,8 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
             actions.append("git add/commit 或 .gitignore 掉上面列的文件")
         elif "no run on disk" in issue:
             actions.append("dispatch doctor --fix")
+        elif "without landing.json" in issue:
+            actions.append("dispatch gc               # 看哪些 run 可 REMOVE / 需 HOLD")
         elif "repair check failed" in issue:
             actions.append("dispatch repair           # 先 dry-run 看看")
     payload = {
@@ -1243,6 +1261,9 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
         "frontier": document["frontier"],
         "issues": issues,
         "actions": actions,
+        "runs_total": runs_total,
+        "runs_landed": runs_landed,
+        "runs_without_landing": runs_without_landing,
         "clean": not issues,
     }
     if args.as_json:
