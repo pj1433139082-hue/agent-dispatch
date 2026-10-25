@@ -30,7 +30,7 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Run tests
-        run: python -m pytest -q
+        run: python scripts/test_parallel.py -j 4
 
       - name: Run publish acceptance smoke
         run: python scripts/acceptance.py --json
