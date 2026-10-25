@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.87.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.88.0。
 
 ## 何时使用
 
@@ -358,21 +358,21 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
 | `retry <id> [--reason …]` | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`，索引里留 history |
 | `confirm <slug> --by <人> --via <dialog 或 card> [--note …]` | 把 S3「规格已核对」写进 `docs/specs/<slug>.md` 的 `## Confirmation`；`tickets` 未确认前拒绝拆票（`--force` 跳过） |
-| `sign <slug> --by <人> --via <dialog 或 card> [--hold 或 --reject]` | 把甲方签字写回 `99-summary.md`（签字人 + 勾选 + 确认方式）；**`--via` 必填**，不写来源不许签 |
+| `sign <slug> --by <人> --via <dialog 或 card> [--hold 或 --reject] [--note "..."]` | 把甲方签字写回 `99-summary.md`（签字人 + 勾选 + 确认方式）；**`--via` 必填**，不写来源不许签 |
 | `stage <slug> [--json] [--prompt]` | S1–S5 一屏状态；`--prompt` 输出该阶段要人回答的问题（喂弹窗/决策卡）：问卷 / 选型 / 签字 / 规格 / 票；`next` 指下一步，未就绪 exit 1 |
 | `claim <id> [--ttl-minutes 15]` | 把票的写域展开成**文件租约**（`.dispatch/locks/`）：被别的活租约占着就 exit 3，不让两个 run 同时写同一文件 |
 | `gc [--apply]` | 回收 ended run 的 worktree：干净且已 land → REMOVE；有未提交改动或未 land → HOLD |
-| `seat [--cap 8] [--occupied N] [--inactive a,b]` | 派单前查名额：占用/上限/可回收 inactive，给出可/需回收/阻塞 |
+| `seat [--cap 8] [--occupied N] [--agent <名字>] [--inactive a,b]` | 派单前查名额：占用/上限/可回收 inactive，给出可/需回收/阻塞 |
 | `review-packet <id>` | 冻结票据、diff、回执与验收证据成评审包；`hashes.diff` 与 `verify.diff_hash` **同源同值** |
 | `dsh <push/status/outcome/update/archive/run/delete>` | 投递与看板联动（可选路径，不是默认执行端） |
 | `lint` | 校验票据；有错非零退出 |
 | `plan` | 拓扑波次、frontier、写域冲突 |
 | `status [--json]` | 每张票的有效状态 |
 | `new <id> ...` | 生成一张可 lint 的票据 |
-| `render <id> --agent <name> [--no-worktree] [--claim] [--seat-cap N] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
+| `render <id> --agent <name> [--no-worktree] [--claim] [--seat-cap N] [--with-context] [--require-brief] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
 | `start <id>` | claimed → running |
-| `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
-| `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed] [--packet-hash <sha>]` | 异体评审；通过 → done，并追加 review ledger。**L2+ 必须给 `--packet-hash`**（L0/L1 可选，给了也会记 attested） |
+| `verify <id> [--allow-main-drift]` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
+| `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed] [--human] [--notes "..."] [--packet-hash <sha>]` | 异体评审；通过 → done，并追加 review ledger。**L2+ 必须给 `--packet-hash`**（L0/L1 可选，给了也会记 attested） |
 | `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--continue-on-error] [--dry-run]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
@@ -392,7 +392,10 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 | `spec <slug> [--force]` | S3：问卷答满 **且 S2 已签字** 才允许写规格骨架（--force 跳过签字门） `docs/specs/<slug>.md`（Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope） |
 | `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` |
 
-通用参数：`--tickets` 指定票据目录，`--root` 指定仓库根（默认当前目录）。省略 `--tickets` 时，`render` / `status` / `export` 读取 `<root>/tickets`；`lint` / `plan` / `new` 读取当前目录下的 `tickets`。
+**`--tickets` / `--root` 不是通用的**（v0.88 实测：20 个命令不吃 `--tickets`，3 个不吃 `--root`，照抄会 `unrecognized arguments`）：
+- 吃 `--tickets` 的：`lint` `plan` `status` `render` `verify` `review` `review-packet` `land` `closeout` `dsh push` `export` `wrap` `doctor`
+- 吃 `--root` 的：几乎所有命令（`new` 除外），默认当前目录
+- 其余（`brief` `start` `claim` `release` `retry` `checkpoint` `auto` `context` `seat` 等）：只用位置参数 + 当前目录
 
 ## 票据最小模板
 

@@ -377,6 +377,19 @@ def _parser() -> argparse.ArgumentParser:
         dest="require_closeout",
         help="Refuse to land unless closeout.json reports pass.",
     )
+    land_parser.add_argument(
+        "--require-attestation",
+        action="store_true",
+        dest="require_attestation",
+        help="Refuse to land unless the review attested the review packet (packet_attested).",
+    )
+    land_parser.add_argument(
+        "--no-require-packet",
+        action="store_false",
+        dest="require_packet",
+        default=True,
+        help="Skip the L2+ requirement that review-packet.md exists with a matching hash.",
+    )
     land_parser.add_argument("--json", action="store_true", dest="as_json")
 
     auto_parser = subparsers.add_parser(
