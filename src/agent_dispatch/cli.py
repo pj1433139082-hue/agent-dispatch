@@ -224,6 +224,7 @@ def _parser() -> argparse.ArgumentParser:
     wrap_parser.add_argument("--root", type=Path, default=Path("."))
     wrap_parser.add_argument("--tickets", type=Path, default=None)
     wrap_parser.add_argument("--json", action="store_true", dest="as_json")
+    wrap_parser.add_argument("--fix", action="store_true", help="Also rebuild the index and drop expired leases before reporting.")
 
     setup_parser = subparsers.add_parser("setup", help="Write .dispatch/config.json (tickets dir, executor mode, default reviewer).")
     setup_parser.add_argument("--root", type=Path, default=Path("."))
@@ -1260,9 +1261,42 @@ def _cmd_questions(args: argparse.Namespace) -> int:
     return 0 if items else 2
 
 
+def _wrap_fix(root: Path) -> dict[str, object]:
+    """安全的自愈：重建索引 + 清掉过期租约。不动 worktree、不删分支。"""
+    summary: dict[str, object] = {}
+    try:
+        repair = repair_state(root, write=True)
+        summary["repaired"] = True
+        summary["added"] = repair.get("added", [])
+    except Exception as error:  # noqa: BLE001
+        summary["repaired"] = False
+        summary["error"] = str(error)
+    released: list[str] = []
+    locks = root / ".dispatch" / "locks"
+    if locks.is_dir():
+        now = datetime.now(timezone.utc)
+        for entry in sorted(locks.glob("*.json")):
+            try:
+                payload = json.loads(entry.read_text(encoding="utf-8"))
+                expires = datetime.fromisoformat(str(payload.get("expires_at", "")))
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires < now:
+                try:
+                    entry.unlink()
+                    released.append(str(payload.get("path", entry.name)))
+                except OSError:
+                    pass
+    summary["released"] = released
+    return summary
+
+
 def _cmd_wrap(args: argparse.Namespace) -> int:
     root = Path(args.root)
     directory = _tickets_dir(args)
+    fix_summary = _wrap_fix(root) if getattr(args, "fix", False) else None
     report = _health_report(root, directory)
     tickets, _ = _load_and_lint(directory, root)
     document = status_document(tickets or [], _state_map(root))
@@ -1315,6 +1349,7 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
         elif "repair check failed" in issue:
             actions.append("dispatch repair           # 先 dry-run 看看")
     payload = {
+        "fix": fix_summary,
         "tickets": len(document["tickets"]),
         "states": counts,
         "frontier": document["frontier"],
@@ -1329,6 +1364,14 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0 if not issues else 1
+    if fix_summary:
+        bits = []
+        if fix_summary.get("repaired"):
+            bits.append("index rebuilt")
+        released = fix_summary.get("released") or []
+        if released:
+            bits.append(f"released {len(released)} expired lease(s)")
+        print("Fixed: " + ("; ".join(bits) or "nothing to fix"))
     summary = ", ".join(f"{state} {count}" for state, count in sorted(counts.items())) or "no tickets"
     print(f"Wrap-up: {len(document['tickets'])} ticket(s) — {summary}")
     print("Frontier: " + (", ".join(document["frontier"]) or "-"))

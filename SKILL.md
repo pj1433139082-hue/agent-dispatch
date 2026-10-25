@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.83.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.84.0。
 
 ## 何时使用
 
@@ -335,7 +335,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 |---|---|
 | `setup [--tickets 目录] [--executor-mode teammate\|dsh\|command] [--default-reviewer 名字]` | 写 `.dispatch/config.json` + `.gitignore(.dispatch/)`；`default_reviewer` 只在 `review` 没传 `--reviewer` 时生效；幂等 |
 | `handoff <id> [--to <agent>] [--json]` | 打印"该发给谁、发什么"的交接内容（工作单路径、执行根、分支、回执位置） |
-| `wrap [--json]` | **会话收口一条命令**：状态计数 + doctor 全部问题 + **未 landing 的 run 数** + 下一步该跑什么；干净 exit 0，有事 exit 1 |
+| `wrap [--json] [--fix]` | **会话收口一条命令**：状态计数 + doctor 全部问题 + **未 landing 的 run 数** + 下一步该跑什么；干净 exit 0，有事 exit 1 |
 | `doctor [--json] [--fix]` | 只读体检：票能否 lint、索引与磁盘是否一致、失败票、超期 run、活跃租约；`--fix` 只做安全修复（重建索引 + 删过期租约）；有问题 exit 1 |
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
 | `retry <id> [--reason …]` | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`，索引里留 history |
