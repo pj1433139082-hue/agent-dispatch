@@ -1282,15 +1282,16 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
                 runs_landed += 1
             else:
                 runs_without_landing.append(entry.name)
-    store_for_runs = DispatchState(root)
-    unlanded_tickets: list[str] = []
-    for row in document["tickets"]:
-        if str(row["state"]) != "done":
+    unlanded: set[str] = set()
+    for name in runs_without_landing:
+        try:
+            info = json.loads((runs_dir / name / "run.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             continue
-        entry = store_for_runs.ticket(str(row["id"])) or {}
-        run_id = str(entry.get("run_id", ""))
-        if run_id and not (runs_dir / run_id / "landing.json").is_file():
-            unlanded_tickets.append(str(row["id"]))
+        ticket_id = str(info.get("ticket_id", ""))
+        if ticket_id:
+            unlanded.add(ticket_id)
+    unlanded_tickets = sorted(unlanded)
     if runs_without_landing:
         detail = f" — tickets: {', '.join(unlanded_tickets)}" if unlanded_tickets else ""
         issues.append(
