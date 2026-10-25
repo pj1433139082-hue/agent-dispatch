@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.82.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.83.0。
 
 ## 何时使用
 
@@ -468,6 +468,12 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 - **触发**：某条判据的**全部**证据都是 attested（只有 `kind:"note"` 算 attested；file/inline/absent/command 都不算）→ `verify` 判 degraded，**退出码 2**，票进 `review`（不是 failed）。
 - **拒绝可重试**：不带 `--accept-degraded` 的 `review` exit 1，只有一句 stderr，**不写 review.json / 不写 ledger / 状态不变**。
 - **接受后**：`review.json` 的 `status` 是 **passed**（不是 degraded），降解事实在 `verify_status: degraded` + `accepted_degraded: true`。
+
+## auto --resume（v0.83）
+
+- `retry <id>` 之后票是 `running`，直接 `auto` 会被拒（`already has an active run`）。
+- 加 **`--resume`** 就继续那个 run（不新建 run、不改 run-id），跑执行器 → verify。
+- 也可以用 `--force` 跳 preflight，但 `--force` 不等于 `--resume`：前者只管 preflight。
 
 ## 半自动推进（v0.6）
 

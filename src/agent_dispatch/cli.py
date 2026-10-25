@@ -378,6 +378,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     auto_parser.add_argument("--agent", default="", help="Agent claiming the run.")
     auto_parser.add_argument(
+        "--resume", action="store_true",
+        help="Continue the active run of this ticket instead of refusing (after dispatch retry).",
+    )
+    auto_parser.add_argument(
         "--max-attempts", type=int, default=1,
         help="Total executor attempts before failing (default: 1).",
     )
@@ -1278,9 +1282,19 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
                 runs_landed += 1
             else:
                 runs_without_landing.append(entry.name)
+    store_for_runs = DispatchState(root)
+    unlanded_tickets: list[str] = []
+    for row in document["tickets"]:
+        if str(row["state"]) != "done":
+            continue
+        entry = store_for_runs.ticket(str(row["id"])) or {}
+        run_id = str(entry.get("run_id", ""))
+        if run_id and not (runs_dir / run_id / "landing.json").is_file():
+            unlanded_tickets.append(str(row["id"]))
     if runs_without_landing:
+        detail = f" — tickets: {', '.join(unlanded_tickets)}" if unlanded_tickets else ""
         issues.append(
-            f"{len(runs_without_landing)} ended run(s) without landing.json (dispatch gc to review, or land them)"
+            f"{len(runs_without_landing)} ended run(s) without landing.json (dispatch gc to review, or land them){detail}"
         )
     actions: list[str] = []
     for issue in issues:
@@ -1308,6 +1322,7 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
         "runs_total": runs_total,
         "runs_landed": runs_landed,
         "runs_without_landing": runs_without_landing,
+        "unlanded_tickets": unlanded_tickets,
         "clean": not issues,
     }
     if args.as_json:
@@ -2195,6 +2210,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             protocol=args.protocol,
             env_hint=args.env_hint,
             require_brief=args.require_brief,
+            resume=getattr(args, "resume", False),
         )
     except AutoError as exc:
         print(f"AUTO {exc}", file=sys.stderr)

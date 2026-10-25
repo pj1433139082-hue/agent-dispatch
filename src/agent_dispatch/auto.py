@@ -272,6 +272,7 @@ def auto_run(
     protocol: str = "none",
     env_hint: str = "",
     require_brief: bool = False,
+    resume: bool = False,
 ) -> dict[str, object]:
     """Run a ticket through an external executor and the dispatch gates.
 
@@ -308,27 +309,38 @@ def auto_run(
 
     store = DispatchState(root)
     existing = store.ticket(ticket.id)
+    run = None
     if existing:
         state = str(existing.get("state", ""))
         if state == "done":
             raise AutoError(f"ticket {ticket.id} is already done")
         if state in ACTIVE_STATES:
-            raise AutoError(f"ticket {ticket.id} already has an active run")
+            if not resume or state not in {"running", "claimed"}:
+                raise AutoError(
+                    f"ticket {ticket.id} already has an active run (pass --resume to continue it)"
+                )
+            try:
+                run = Run.load(root, str(existing.get("run_id", "")))
+            except Exception as error:  # noqa: BLE001
+                raise AutoError(f"cannot resume run: {error}") from error
+            run.set_state("running")
+            store.set_ticket(ticket.id, run.id, "running")
     missing = sorted(dep for dep in ticket.depends_on if dep not in store.done_ids())
     if missing:
         raise AutoError(
             f"ticket {ticket.id} is blocked by unfinished tickets: {', '.join(missing)}"
         )
 
-    try:
-        run = Run.create(root, ticket, claimed_by=agent, use_worktree=True)
-    except ValueError as error:
-        raise AutoError(str(error)) from error
-    if not run.data.get("use_worktree"):
-        raise AutoError("auto requires a worktree run; render inside a git repository")
-    store.set_ticket(ticket.id, run.id, "claimed")
-    run.set_state("running")
-    store.set_ticket(ticket.id, run.id, "running")
+    if run is None:
+        try:
+            run = Run.create(root, ticket, claimed_by=agent, use_worktree=True)
+        except ValueError as error:
+            raise AutoError(str(error)) from error
+        if not run.data.get("use_worktree"):
+            raise AutoError("auto requires a worktree run; render inside a git repository")
+        store.set_ticket(ticket.id, run.id, "claimed")
+        run.set_state("running")
+        store.set_ticket(ticket.id, run.id, "running")
 
 
     protocol_info: dict[str, object] = {"enabled": protocol == "full"}

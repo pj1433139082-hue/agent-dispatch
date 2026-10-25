@@ -58,6 +58,7 @@ def test_wrap_reports_runs_without_landing(tmp_path: Path) -> None:
     assert payload["runs_landed"] == 0
     assert any("without landing.json" in issue for issue in payload["issues"])
     assert any("gc" in action for action in payload["actions"])
+    assert payload["unlanded_tickets"] == ["01"]
 
 
 def test_wrap_is_happy_once_the_run_is_landed(tmp_path: Path) -> None:
