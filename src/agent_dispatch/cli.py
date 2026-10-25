@@ -230,6 +230,10 @@ def _parser() -> argparse.ArgumentParser:
     wrap_parser.add_argument("--root", type=Path, default=Path("."))
     wrap_parser.add_argument("--tickets", type=Path, default=None)
     wrap_parser.add_argument("--json", action="store_true", dest="as_json")
+    hooks_parser = subparsers.add_parser("install-hooks", help="Install a pre-commit hook that runs dispatch wrap.")
+    hooks_parser.add_argument("--root", type=Path, default=Path("."))
+    hooks_parser.add_argument("--force", action="store_true")
+
     wrap_parser.add_argument("--fix", action="store_true", help="Also rebuild the index and drop expired leases before reporting.")
 
     setup_parser = subparsers.add_parser("setup", help="Write .dispatch/config.json (tickets dir, executor mode, default reviewer).")
@@ -1428,6 +1432,42 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_install_hooks(args: argparse.Namespace) -> int:
+    """装一个 pre-commit 钩子：有 .dispatch/ 就跑 wrap，不干净就挡提交。"""
+    root = Path(args.root).resolve()
+    hooks = root / ".git" / "hooks"
+    if not hooks.parent.is_dir():
+        print(f"not a git repository: {root}", file=sys.stderr)
+        return 1
+    hooks.mkdir(parents=True, exist_ok=True)
+    target = hooks / "pre-commit"
+    if target.exists() and not args.force:
+        print(f"{target} already exists; pass --force to overwrite", file=sys.stderr)
+        return 1
+    dispatch_py = Path(__file__).resolve().parents[2] / "scripts" / "dispatch.py"
+    if not dispatch_py.is_file():
+        dispatch_py = Path(sys.argv[0]).resolve()
+    hook_path = str(dispatch_py).replace("\\", "/")
+    lines = [
+        "#!/bin/sh",
+        "# installed by agent-dispatch: block commits while the dispatch wrap-up is not clean",
+        "[ -d .dispatch ] || exit 0",
+        "[ -f \"" + hook_path + "\" ] || exit 0",
+        "python \"" + hook_path + "\" wrap --root . || {",
+        "  echo 'dispatch wrap is not clean; fix the issues above (or commit with --no-verify)'",
+        "  exit 1",
+        "}",
+        "",
+    ]
+    target.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    try:
+        target.chmod(0o755)
+    except OSError:
+        pass
+    print(f"Installed {target}")
+    return 0
+
+
 def _cmd_setup(args: argparse.Namespace) -> int:
     root = Path(args.root)
     current = load_config(root)
@@ -2583,6 +2623,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_repair(args)
     if args.command == "questions":
         return _cmd_questions(args)
+    if args.command == "install-hooks":
+        return _cmd_install_hooks(args)
     if args.command == "wrap":
         return _cmd_wrap(args)
     if args.command == "setup":
