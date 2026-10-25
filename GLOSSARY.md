@@ -31,3 +31,15 @@
 ## 收口（wrap-up）
 - **定义**：`dispatch wrap` 一次性给出"这轮活干完没有"：失败票、超期 run、未落地 run、会挡 land 的脏文件、过期租约。
 - **判据**：`wrap` exit 0 才算收工；exit 1 表示还有事没处理。
+
+## 职能队友（functional teammate）
+- **定义**：按"环节"划分的常驻队友（scout/planner/executor/verifier/reviewer/auditor/fixer/scribe），能接任何项目的同类任务。
+- **不算**：领域人格（Agency Agents 那种 "Frontend Developer"）；领域人格只能干一类活。
+
+## fresh 实例（fresh instance）
+- **定义**：`spawn_teammate({context:"fresh"})` 起来的一次性队友，没有 Lead 历史，任务完即删。
+- **用途**：重活、需要无偏见判断的活；避免常驻成员的上下文腐烂。
+
+## 手账分离（hands vs ledger）
+- **定义**：teammate 是"手"（产出改动与证据），`dispatch` 是"账"（票状态、verify、review、land）。
+- **判据**：任何 teammate 都不写 `receipt.json`/`state.json`；写了的，一律判越界。

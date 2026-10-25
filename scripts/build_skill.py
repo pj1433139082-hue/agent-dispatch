@@ -42,6 +42,9 @@ def build(output: Path) -> Path:
     copy_file(ROOT / "docs" / "commands.md", output / "docs" / "commands.md")
     copy_tree(ROOT / "src" / "agent_dispatch", output / "src" / "agent_dispatch")
     copy_file(ROOT / "docs" / "flows.md", output / "docs" / "flows.md")
+    team = ROOT / "docs" / "team"
+    if team.is_dir():
+        copy_tree(team, output / "docs" / "team")
     adr = ROOT / "docs" / "adr"
     if adr.is_dir():
         copy_tree(adr, output / "docs" / "adr")
