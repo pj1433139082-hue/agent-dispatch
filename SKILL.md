@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.96.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.97.0。
 
 ## 何时使用
 
@@ -379,11 +379,11 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 
 `- Requires: local | network | ssh | browser`（默认 `local`）。当前只做解析 + lint 警告（`environment_needed` / `invalid_requires`），**不做硬门**——执行端能力清单还没定。
 
-命令表以 **`docs/commands.md`（自动生成）** 为准：`python scripts/gen_command_table.py` 重写，测试会比对该文件，漂移即红。
+命令表以 **`docs/commands.md`（随包分发的自动生成版）** 为准；在仓库里跑 `python scripts/gen_command_table.py` 重写，测试 `--check` 比对，漂移即红。（`scripts/build_skill.py` 是仓库打包脚本，不随包分发。）
 
 ## Verify 必须"本机一次跑通"（v0.89，来自 ts-sweep-server 的教训）
 
-写票时的闸门——**不满足就别写进票面**：
+写票时的**写作提示**（不是运行期检查——`verify` 只强制"别超时"，其余三条靠人）：
 
 1. **本机可跑**：不依赖 ssh / 远端机器 / 浏览器 / 需要登录的服务。
 2. **幂等**：连跑两次结果一样，不会因为"第一次改了状态"而第二次失败。
@@ -391,6 +391,8 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 4. **快**：单条 < 5 分钟；跑不完就拆成多条判据或落快照。
 
 需要远端事实时：**先跑一次把结果落成文件（带时间戳/主机名），Verify 只断言这个快照**。
+
+**判据强度的唯一可执行定义：变异检查**——把实现故意改坏（改错返回值、删掉关键分支），Verify **必须变红**。改坏了还绿，说明这条判据只验证了"命令能跑"，没验证"东西对"。`echo ok` / `print(1)` 这类恒真命令会被 lint 标 `weak_verify`。
 
 失败重复也会被点名：同一张票连续 3 次报同样的错误，`verify` 会打印
 `VERIFY repeated failure: … Re-running will not change it — fix the environment the command needs, or rewrite the criterion.`
@@ -431,15 +433,15 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 | `review-packet <id>` | 冻结票据、diff、回执与验收证据成评审包；`hashes.diff` 与 `verify.diff_hash` **同源同值** |
 | `dsh <push/status/outcome/update/archive/run/delete>` | 投递与看板联动（可选路径，不是默认执行端） |
 | `lint` | 校验票据；有错非零退出 |
-| `plan` | 拓扑波次、frontier、写域冲突 |
+| `plan [--json] [--done <id> ...]` | 拓扑波次、frontier、写域冲突 |
 | `status [--json]` | 每张票的有效状态 |
 | `new <id> ...` | 生成一张可 lint 的票据 |
 | `render <id> --agent <name> [--no-worktree] [--claim] [--seat-cap N] [--with-context] [--require-brief] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
 | `start <id>` | claimed → running |
-| `verify <id> [--allow-main-drift]` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
+| `verify <id> [--allow-main-drift] [--timeout 300]` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed] [--human] [--notes "..."] [--packet-hash <sha>]` | 异体评审；通过 → done，并追加 review ledger。**L2+ 必须给 `--packet-hash`**（L0/L1 可选，给了也会记 attested） |
 | `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--continue-on-error] [--dry-run]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
-| `auto <id> --executor <shell> [--max-attempts N] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
+| `auto <id> --executor <shell> [--agent <name>] [--resume] [--max-attempts N] [--timeout 1800] [--verify-timeout 300] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
 | `assign <id> --persona <文件或短名> [--by <名字>]` | 把可解析的人设写入票据 Persona；源文件复制到 `tickets/personas/`，并记 `.dispatch/assignments.jsonl` |
 | `personas list [--search-root <目录>] [--json]` | 搜索可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
@@ -457,11 +459,11 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 | `spec <slug> [--force]` | S3：问卷答满 **且 S2 已签字** 才允许写规格骨架（--force 跳过签字门） `docs/specs/<slug>.md`（Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope） |
 | `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` |
 
-**`--tickets` / `--root` 不是通用的**（v0.88 实测：20 个命令不吃 `--tickets`，3 个不吃 `--root`，照抄会 `unrecognized arguments`）：
-- 吃 `--tickets` 的：`lint` `plan` `status` `render` `verify` `review` `review-packet` `land` `closeout` `dsh push` `export` `wrap` `doctor`
-- 吃 `--root` 的：几乎所有命令（`new` 除外），默认当前目录
-- 其余（`brief` `start` `claim` `release` `retry` `checkpoint` `auto` `context` `seat` 等）：只用位置参数 + 当前目录
+**`--tickets` / `--root` 不是通用的**（v0.97 实测，40 个命令逐个 `--help` 核对）：
 
+- 吃 `--tickets` 的 17 个：`lint` `plan` `render` `context` `brief` `closeout` `review-packet` `claim` `wrap` `setup` `handoff` `doctor` `auto` `status` `export` `assign` `new`
+- 吃 `--root` 的 35 个：除下列 5 个之外全部支持——`lint` `plan` `dsh` `personas` `new`
+- **不吃 `--tickets` 的**：`verify` `review` `land` `start` `release` `retry` `checkpoint` `seat` `sweep` `gc` 等（传了会 `unrecognized arguments`，exit 2）
 ## 票据最小模板
 
 ```markdown

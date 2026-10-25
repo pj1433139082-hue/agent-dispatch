@@ -355,6 +355,15 @@ def lint_tickets(tickets: Iterable[Ticket], root: Path | None = None) -> list[Is
                 issues.append(Issue("environment_needed", ticket.id, "this ticket declares Requires: " + ", ".join(ticket.requires) + "; make sure the executor can satisfy it", level="warning"))
         for command in ticket.verify:
             lowered = command.lower()
+            trivial = (
+                lowered.strip() in {"true", "echo ok", "exit 0"}
+                or "print(1)" in lowered
+                or "print('ok')" in lowered
+                or 'print("ok")' in lowered
+                or lowered.strip().startswith("echo ")
+            )
+            if trivial:
+                issues.append(Issue("weak_verify", ticket.id, "verify command looks trivially true (it cannot fail): " + command, level="warning"))
             if any(marker in lowered for marker in ("ssh ", "scp ", "curl ", "wget ", "http://", "https://")):
                 issues.append(Issue("network_verify", ticket.id, "verify command looks network/remote dependent: " + command + " (prefer a local snapshot)", level="warning"))
         if not ticket.acceptance:

@@ -2192,7 +2192,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     if repeats >= 2:
         print(
             f"VERIFY repeated failure: the same {len(errors)} error(s) have now failed {repeats + 1} times. "
-            "Re-running will not change it — fix the environment the command needs, or rewrite the criterion.",
+            "Re-running will not change it. Fix the implementation or the environment the command needs — "
+            "do not weaken the criterion just to make it green (that hides the bug; if you must change it, "
+            "record why in the receipt notes).",
             file=sys.stderr,
         )
     print(f"Verification failed for {args.ticket_id} ({run.id})", file=sys.stderr)
