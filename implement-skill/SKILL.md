@@ -75,6 +75,13 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land --w
 2. **receipt 和 evidence 不会归档**：旧 `receipt.json` 还在 run 目录里，执行端必须为新的 attempt 重写，否则 verify 会复算旧证据。
 3. 归档的只有 `attempts/verify-01.json`、`review`、`closeout` 的快照；`logs/01.log` 会被覆盖。
 
+## 批量落地前先预览
+
+```bash
+dispatch land --wave --dry-run     # WOULD / SKIP，不建分支
+dispatch land --wave               # 确认后再落
+```
+
 ## 会话收口（每次收工前一条命令）
 
 ```bash
