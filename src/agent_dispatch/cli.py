@@ -94,6 +94,10 @@ def _parser() -> argparse.ArgumentParser:
         help="派单时限（分钟，默认 15）；sweep 用它判断 over_deadline。",
     )
     render_parser.add_argument(
+        "--claim", action="store_true",
+        help="Also take file leases for the write scope (blocks a second run touching the same files).",
+    )
+    render_parser.add_argument(
         "--with-context",
         action="store_true",
         dest="with_context",
@@ -962,6 +966,22 @@ def _cmd_render(args: argparse.Namespace) -> int:
                 encoding="utf-8",
             )
         print(f"Context pack: {context_file}")
+    if getattr(args, "claim", False):
+        try:
+            paths = expand_scope(args.root, list(ticket.write_scope))
+        except ScopeError as error:
+            print("SCOPE-UNRESOLVED " + str(error), file=sys.stderr)
+            return 4
+        lease_report = claim_paths(args.root, ticket.id, run.id, paths)
+        for item in lease_report["conflicts"]:
+            print(
+                "LEASE conflict " + item["path"] + " held by " + item["ticket_id"],
+                file=sys.stderr,
+            )
+        if lease_report["conflicts"]:
+            print(f"Rendered {ticket.id} -> {run.directory} (leases blocked; run dispatch release)", file=sys.stderr)
+            return 3
+        print("Claimed " + str(len(lease_report["granted"])) + " file lease(s)")
     print(f"Rendered {ticket.id} -> {run.directory}")
     print(f"Run ID: {run.id}")
     if run.data.get("use_worktree"):

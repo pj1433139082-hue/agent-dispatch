@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.81.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.82.0。
 
 ## 何时使用
 
@@ -301,6 +301,13 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 - `sign` 现在支持 `--note "<一句话>"`，写进 `99-summary.md` 的 `- 备注：` 行（老会话里出现过 `unrecognized arguments: --note`）。
 - `verify` 的「主仓脏」判定现在忽略 `.scratch/`（本地 issue tracker 的常用目录，老会话因为它整票 verify 失败）。
 
+## 多会话并行：render --claim（v0.82）
+
+- `render <id> --claim`：开局的同时把写域换成**文件租约**（`.dispatch/locks/`）。
+- 第二个 run 想动同一批文件 → exit 3，stderr 打 `LEASE conflict <path> held by <票>`。
+- 收工别忘了 `release <id>`（`land` 会自动释放）；`gc` 的 REMOVE 也会释放。
+- 不用 `--claim` 就还是老行为：两个会话靠 `plan` 的冲突提示 + 人自觉。
+
 ## 票在 render 后被改：现在能提前看见（v0.81）
 
 - `status`：该票那行会标 `-> 票在 render 后被改过（revert 或 retry 01）`
@@ -344,7 +351,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 | `plan` | 拓扑波次、frontier、写域冲突 |
 | `status [--json]` | 每张票的有效状态 |
 | `new <id> ...` | 生成一张可 lint 的票据 |
-| `render <id> --agent <name> [--no-worktree] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
+| `render <id> --agent <name> [--no-worktree] [--claim] [--deadline-minutes 15]` | 创建 Run、worktree 和 work-order（记 `skill_version` 与 `deadline_seconds`），状态进入 claimed |
 | `start <id>` | claimed → running |
 | `verify <id>` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed] [--packet-hash <sha>]` | 异体评审；通过 → done，并追加 review ledger。**L2+ 必须给 `--packet-hash`**（L0/L1 可选，给了也会记 attested） |
