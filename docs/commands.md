@@ -31,6 +31,7 @@
 | `retry` | `dispatch retry [-h] --reason REASON [--root ROOT] [--json] ticket_id` |
 | `review` | `dispatch review [-h] [--reviewer REVIEWER] --verdict {pass,fail} [--notes NOTES] [--human] [--self-reviewed] [--packet-hash PACKET_HASH] [--accept-degraded] [--root ROOT] ticket_id` |
 | `review-packet` | `dispatch review-packet [-h] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
+| `roots` | `dispatch roots [-h] [--root ROOT] [--json]` |
 | `seat` | `dispatch seat [-h] [--cap CAP] [--occupied OCCUPIED] [--inactive INACTIVE] [--agent AGENT] [--root ROOT] [--json]` |
 | `select` | `dispatch select [-h] [--title TITLE] [--with WITH_ROLES] [--add ID[:PERSONA]] [--list] [--root ROOT] [--json] [slug]` |
 | `setup` | `dispatch setup [-h] [--root ROOT] [--tickets TICKETS] [--executor-mode {teammate,dsh,command}] [--default-reviewer DEFAULT_REVIEWER] [--json]` |
@@ -38,7 +39,7 @@
 | `spec` | `dispatch spec [-h] [--title TITLE] [--force] [--root ROOT] [--json] slug` |
 | `stage` | `dispatch stage [-h] [--root ROOT] [--json] [--prompt] slug` |
 | `start` | `dispatch start [-h] [--root ROOT] ticket_id` |
-| `status` | `dispatch status [-h] [--tickets TICKETS] [--root ROOT] [--json]` |
+| `status` | `dispatch status [-h] [--tickets TICKETS] [--root ROOT] [--all] [--json]` |
 | `sweep` | `dispatch sweep [-h] [--root ROOT] [--json]` |
 | `tickets` | `dispatch tickets [-h] [--force] [--root ROOT] [--json] slug` |
 | `verify` | `dispatch verify [-h] [--root ROOT] [--timeout TIMEOUT] [--allow-main-drift] ticket_id` |

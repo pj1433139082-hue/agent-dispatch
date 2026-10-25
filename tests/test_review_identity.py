@@ -40,6 +40,8 @@ def run_dispatch(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def ready_for_review(tmp_path: Path, risk: str = "L1") -> Path:
     (tmp_path / "tickets").mkdir()
     (tmp_path / "tickets" / "01.md").write_text(TICKET.format(risk=risk), encoding="utf-8")
+    (tmp_path / ".dispatch").mkdir(exist_ok=True)
+    (tmp_path / ".dispatch" / "config.json").write_text(json.dumps({"persona_policy": "off"}), encoding="utf-8")
     for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
         subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@e.com", *args], cwd=tmp_path, check=True, capture_output=True)
     assert run_dispatch(tmp_path, "render", "01", "--no-worktree").returncode == 0

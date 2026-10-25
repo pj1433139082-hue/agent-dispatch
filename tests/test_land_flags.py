@@ -48,6 +48,8 @@ def test_land_require_attestation_rejects_a_plain_review(tmp_path: Path) -> None
     (tmp_path / "tickets" / "01.md").write_text(TICKET, encoding="utf-8")
     for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
         subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@e.com", *args], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / ".dispatch").mkdir(exist_ok=True)
+    (tmp_path / ".dispatch" / "config.json").write_text(json.dumps({"persona_policy": "off"}), encoding="utf-8")
     assert run_dispatch(tmp_path, "render", "01", "--agent", "lead").returncode == 0
     assert run_dispatch(tmp_path, "start", "01").returncode == 0
     run_dir = sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]

@@ -62,6 +62,8 @@ def run_dispatch(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def repo(tmp_path: Path, risk: str) -> None:
     (tmp_path / "tickets").mkdir()
     (tmp_path / "tickets" / "01.md").write_text(TICKET.format(risk=risk), encoding="utf-8")
+    (tmp_path / ".dispatch").mkdir(exist_ok=True)
+    (tmp_path / ".dispatch" / "config.json").write_text(json.dumps({"persona_policy": "off"}), encoding="utf-8")
     (tmp_path / "exec.py").write_text(EXECUTOR, encoding="utf-8")
     (tmp_path / "silent.py").write_text(SILENT, encoding="utf-8")
     (tmp_path / "attest.py").write_text(ATTEST, encoding="utf-8")

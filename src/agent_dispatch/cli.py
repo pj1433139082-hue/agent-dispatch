@@ -460,6 +460,7 @@ def _parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
     status_parser.add_argument("--tickets", type=Path, default=None)
     status_parser.add_argument("--root", type=Path, default=Path("."))
+    status_parser.add_argument("--all", action="store_true", dest="all_roots", help="Aggregate every dispatch root found under --root.")
     status_parser.add_argument("--json", action="store_true", dest="as_json")
 
     export_parser = subparsers.add_parser("export", help="Export ready work to another runner.")
@@ -654,7 +655,30 @@ def _state_map(root: Path) -> dict[str, str]:
         for ticket_id, value in data.get("tickets", {}).items()
     }
 
+def _cmd_status_all(args: argparse.Namespace) -> int:
+    """把本仓所有 dispatch 根的状态汇总打出来。"""
+    roots = _find_dispatch_roots(Path(args.root))
+    if not roots:
+        print("no dispatch roots found")
+        return 0
+    for item in roots:
+        root = Path(str(item["root"]))
+        tickets_dir = root / "tickets"
+        if not tickets_dir.is_dir():
+            continue
+        tickets = load_tickets(tickets_dir)
+        document = status_document(tickets, _state_map(root))
+        print(f"== {root} ({len(tickets)} ticket(s)) ==")
+        for row in document["tickets"]:
+            suffix = f" (blocked by {', '.join(row['blocked_by'])})" if row["blocked_by"] else ""
+            print(f"  {row['id']}  {row['state']:<10} {row['title']}{suffix}")
+        print(f"  Frontier: {', '.join(document['frontier']) or '-'}")
+    return 0
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
+    if getattr(args, "all_roots", False):
+        return _cmd_status_all(args)
     tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
@@ -961,6 +985,18 @@ def _cmd_render(args: argparse.Namespace) -> int:
             print(f"ticket {ticket.id}: brief gate ON, {why}", file=sys.stderr)
             return 1
         print(f"Brief gate: {why}")
+
+    policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
+    if policy in {"off", "none", "optional"}:
+        pass
+    else:
+        threshold = {"l2": {"L2", "L3", "L4"}, "l3": {"L3", "L4"}, "l4": {"L4"}}.get(policy, {"L2", "L3", "L4"})
+        if ticket.risk in threshold and not ticket.persona:
+            print(
+                f"ticket {ticket.id}: risk {ticket.risk} needs a persona; run dispatch assign {ticket.id} --persona <name> (or set persona_policy=off in .dispatch/config.json)",
+                file=sys.stderr,
+            )
+            return 6
 
     store = DispatchState(args.root)
     existing = store.ticket(ticket.id)
@@ -1559,6 +1595,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         "executor_mode": args.executor_mode or str(current.get("executor_mode", "command")),
         "default_reviewer": args.default_reviewer or str(current.get("default_reviewer", "")),
         "require_brief": True,
+        "persona_policy": "l2",
         "skill_version": __version__,
     }
     ignore = root / ".gitignore"
@@ -2418,6 +2455,13 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     if ticket is None:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
+    auto_policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
+    if auto_policy not in {"off", "none", "optional"} and ticket.risk in {"L2", "L3", "L4"} and not ticket.persona:
+        print(
+            f"ticket {ticket.id}: risk {ticket.risk} needs a persona; run dispatch assign {ticket.id} --persona <name>",
+            file=sys.stderr,
+        )
+        return 6
     if not getattr(args, "force", False):
         problems = _preflight(args.root, _tickets_dir(args))
         if problems:

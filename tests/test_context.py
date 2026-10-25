@@ -16,7 +16,7 @@ TICKET = """# 07: Add the widget
 ## Dispatch
 
 - Owner: implementer
-- Risk: L2
+- Risk: L1
 - Write scope: src/widget.py
 - Read scope: docs/widget.md
 - Verify: python -m pytest tests/test_widget.py -q

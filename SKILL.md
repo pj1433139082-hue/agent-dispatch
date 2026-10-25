@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.92.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.93.0。
 
 ## 何时使用
 
@@ -334,6 +334,19 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 - `status`：该票那行会标 `-> 票在 render 后被改过（revert 或 retry 01）`
 - `doctor`：报 `tickets edited after render: 01 (revert or dispatch retry)`，`wrap` 也会带出来
 - 处置：把票改回去（`git checkout -- tickets/01.md`）或 `retry` 重新开局；不要指望 verify 能过
+
+## 人格门：L2+ 必须有 Persona（v0.93）
+
+- `render` / `auto` 在 Risk ∈ {L2,L3,L4} 且票面没有 `Persona:` 时**拒绝开局**，exit **6**：
+  `ticket 01: risk L2 needs a persona; run dispatch assign 01 --persona <name>`
+- 阈值可配：`.dispatch/config.json` 的 `persona_policy` = `l2`（默认）/ `l3` / `l4` / `off`。
+- 为什么放在 render 而不是 new：`new` 只写票，`render` 才真正占 worktree/租约——门要在花资源之前。
+- 为什么不是 L0/L1：小改强绑人格只会增加摩擦；L2+ 才是"要异体评审"的级别。
+
+## 根级汇总：status --all（v0.93）
+
+- `dispatch status --all`：把仓库里所有 dispatch 根（含 `.planning/*/dispatch`）的票与 frontier 一起打出来。
+- 默认不聚合（多根输出长）；`wrap` 只在"本地没票"时提示 `other dispatch root(s) found`。
 
 ## 状态仓可以在子目录，但根上会看不见（v0.92）
 
