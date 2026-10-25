@@ -658,8 +658,13 @@ def _state_map(root: Path) -> dict[str, str]:
     }
 
 def _cmd_status_all(args: argparse.Namespace) -> int:
-    """把本仓所有 dispatch 根的状态汇总打出来。"""
-    roots = _find_dispatch_roots(Path(args.root))
+    """把本仓所有 dispatch 根的状态汇总打出来（含当前根）。"""
+    base = Path(args.root)
+    roots: list[dict[str, object]] = []
+    own_tickets = _tickets_dir(args)
+    if own_tickets.is_dir() and any(own_tickets.glob("*.md")):
+        roots.append({"root": str(base), "tickets": len(list(own_tickets.glob("*.md")))})
+    roots.extend(_find_dispatch_roots(base))
     if not roots:
         print("no dispatch roots found")
         return 0
@@ -990,14 +995,6 @@ def _cmd_render(args: argparse.Namespace) -> int:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
 
-    require_brief = getattr(args, "require_brief", False) or bool(load_config(Path(args.root)).get("require_brief", False))
-    if require_brief:
-        ok, why = approval_status(args.root, ticket)
-        if not ok:
-            print(f"ticket {ticket.id}: brief gate ON, {why}", file=sys.stderr)
-            return 1
-        print(f"Brief gate: {why}")
-
     policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
     if policy in {"off", "none", "optional"}:
         pass
@@ -1009,6 +1006,15 @@ def _cmd_render(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 6
+
+    require_brief = getattr(args, "require_brief", False) or bool(load_config(Path(args.root)).get("require_brief", False))
+    if require_brief:
+        ok, why = approval_status(args.root, ticket)
+        if not ok:
+            print(f"ticket {ticket.id}: brief gate ON, {why}", file=sys.stderr)
+            return 1
+        print(f"Brief gate: {why}")
+
 
     store = DispatchState(args.root)
     existing = store.ticket(ticket.id)
@@ -1044,13 +1050,17 @@ def _cmd_render(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 5
-    run = Run.create(
+    try:
+        run = Run.create(
             args.root,
             ticket,
             claimed_by=args.agent,
             use_worktree=not args.no_worktree,
             deadline_seconds=max(1, args.deadline_minutes) * 60,
-    )
+        )
+    except ValueError as error:
+        print(f"RENDER {error}", file=sys.stderr)
+        return 7
     store.set_ticket(ticket.id, run.id, "claimed")
     if getattr(args, "with_context", False):
         pack_text = build_context_pack(args.root, ticket, exclude_run_id=run.id)
@@ -1426,6 +1436,8 @@ def _find_dispatch_roots(root: Path, max_depth: int = 4) -> list[dict[str, objec
         has_config = (directory / "config.json").is_file() and directory.name == "dispatch"
         has_state = (directory / ".dispatch" / "state.json").is_file()
         has_tickets = (directory / "tickets").is_dir() and directory.name == "dispatch"
+        if ".dispatch" in directory.parts:
+            return
         if has_config or has_state or has_tickets:
             tickets_dir = directory / "tickets"
             count = 0
@@ -2468,7 +2480,8 @@ def _cmd_auto(args: argparse.Namespace) -> int:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
     auto_policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
-    if auto_policy not in {"off", "none", "optional"} and ticket.risk in {"L2", "L3", "L4"} and not ticket.persona:
+    auto_threshold = {"l2": {"L2", "L3", "L4"}, "l3": {"L3", "L4"}, "l4": {"L4"}}.get(auto_policy, {"L2", "L3", "L4"})
+    if auto_policy not in {"off", "none", "optional"} and ticket.risk in auto_threshold and not ticket.persona:
         print(
             f"ticket {ticket.id}: risk {ticket.risk} needs a persona; run dispatch assign {ticket.id} --persona <name>",
             file=sys.stderr,

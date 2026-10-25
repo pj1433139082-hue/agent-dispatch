@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.95.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.96.0。
 
 ## 何时使用
 
@@ -345,12 +345,22 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 
 `--persona` 接受 `tickets/personas/` 下的文件名（或 `--search-root` 找得到的名字），会复制人格文件、写 `- Persona:` 行、追加 `assignments.jsonl`。
 
+## 子根只能看不能跑（v0.96）
+
+- 把状态仓放 `.planning/<任务>/dispatch/`（在别的 git 仓库里面）时：`status`/`roots`/`status --all` 都能看，但 `render` 会 **exit 7**：
+  `RENDER root is inside another git repository (toplevel=…); run dispatch from that repository or git init this directory first`
+- 要在子根里真干活：给子目录 **单独 `git init`**，或者把状态仓放回仓库根。
+- `status --all` 现在**包含当前根**（v0.96），不用再 `status` + `status --all` 跑两遍。
+- `roots` 跳过 `.dispatch/` 内部（不再把 `.dispatch/tmp/*` 的探针根报成根）。
+
 ## 人格门：L2+ 必须有 Persona（v0.93）
 
 - `render` / `auto` 在 Risk ∈ {L2,L3,L4} 且票面没有 `Persona:` 时**拒绝开局**，exit **6**：
   `ticket 01: risk L2 needs a persona; run dispatch assign 01 --persona <name>`
 - 阈值可配：`.dispatch/config.json` 的 `persona_policy` = `l2`（默认）/ `l3` / `l4` / `off`。
 - 为什么放在 render 而不是 new：`new` 只写票，`render` 才真正占 worktree/租约——门要在花资源之前。
+- **顺序**：人格门在 **brief 门之前**（v0.96 起）；否则 `require_brief=true` 时先看到 exit 1 的 brief 报错，会以为人格门没生效。
+- **阈值对 render 和 auto 一致**（v0.96 修）：`persona_policy` 三个值 `l2/l3/l4` 两条路径都按同一张表判定。
 - 为什么不是 L0/L1：小改强绑人格只会增加摩擦；L2+ 才是"要异体评审"的级别。
 
 ## 根级汇总：status --all（v0.93）
