@@ -19,18 +19,18 @@
 
 ## 覆盖矩阵（命令 × 路径）
 
-> v0.97.1 按 adversary 的核对结果重写：**旧矩阵把 12 项已有测试写成"待覆盖"**（104 个测试文件 / 361 个 `def test_` 逐个比对过）。右列现在只留 6 条真正没有测试的空白。
+> v0.98 更新：上轮列出的 6 条真空白已全部补上测试（`tests/test_gap_*.py`，6 例）。补测过程中发现并修了一个真 bug：`sign --reject` 之后 `spec` 仍能通过（打勾判定把"☑ 打回"也算成已批准）。
 
 | 区域 | 已覆盖（有测试） | 真实空白（无测试） |
 |---|---|---|
-| S1–S5 主链 | align / select / questions / sign 三态中的 pass+hold / spec --force / stage --prompt / confirm / tickets / lint / plan | **`sign --reject`**（`cli.py` 有分支，零测试） |
-| 单票执行 | brief / render（含 `--no-worktree`）/ start / verify / review（含 `--accept-degraded`、L2+ 哈希、L1 自审）/ land | **L4 不带 `--human` 的拒绝路径**（`review.py:84`；现在只测了"带 --human 记 human=true"） |
-| 自动推进 | auto 默认 / `--protocol full` / `--max-attempts` / attempt 用尽 / `--resume` | **`--until land` 时 closeout 不过** |
-| 波次落地 | `land --wave` / 依赖顺序 / `--require-closeout` / 混入 closeout 不过的票 / `--dry-run` | **`--continue-on-error`** |
+| S1–S5 主链 | align / select / questions / **sign 三态（pass / hold / reject）** / spec --force / stage --prompt / confirm / tickets / lint / plan | — |
+| 单票执行 | brief / render（含 `--no-worktree`）/ start / verify / review（含 `--accept-degraded`、L2+ 哈希、L1 自审、**L4 拒绝路径**）/ land | — |
+| 自动推进 | auto 默认 / `--protocol full` / `--max-attempts` / attempt 用尽 / `--resume` / **`--until land` 时 closeout 不过** | — |
+| 波次落地 | `land --wave` / 依赖顺序 / `--require-closeout` / 混入 closeout 不过的票 / `--dry-run` / **`--continue-on-error`** | — |
 | 证据与收口 | verify 判据 / closeout 五条 / criteria 条数不匹配 / note-only→degraded→accept / checkpoint | — |
-| 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots | **`gc` 对"未 land 但 worktree 还在"的处理** |
+| 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots / **`gc` 对未 land worktree 判 HOLD** | — |
 | 人设/导出 | personas / assign / new --persona / context / export 四格式 | — |
-| 看板 | push / status / run / outcome / update / archive / mark-done 缺证据拒付 | **`dsh push` 对 L3 以下票的警告**（`cli.py:2574` 有代码，零测试） |
+| 看板 | push / status / run / outcome / update / archive / mark-done 缺证据拒付 / **push 对 L3 以下票的警告** | — |
 ## 每轮协议（固定动作）
 
 1. 建一张 **L3** 任务票 → `dsh push --workspace <id>` → `dsh run`。

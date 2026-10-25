@@ -28,10 +28,13 @@ def selection_signed(root: Path, slug: str) -> tuple[bool, str]:
             signer = stripped.split("：", 1)[1].strip()
             continue
         if stripped.startswith("- 选择："):
-            approved = "☑" in stripped
+            approved = ("☑ 通过" in stripped) or ("☑ 有保留通过" in stripped)
+            rejected = "☑ 打回" in stripped
     has_choice_line = "- 选择：" in text
     if not signer:
         return False, "selection is unsigned: fill '- 签字人：' in " + str(summary)
+    if "☑ 打回" in text:
+        return False, "selection was rejected (打回) in " + str(summary)
     if has_choice_line and not approved:
         return False, "selection has no approved box ticked in " + str(summary)
     return True, "signed by " + signer
