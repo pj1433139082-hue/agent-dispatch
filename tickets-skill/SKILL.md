@@ -7,6 +7,10 @@ description: 把规格拆成可执行票据：一条 Delivery standard 一张票
 
 上一步：**to-spec-dispatch**　下一步：**implement-dispatch**
 
+## 票面可选字段
+
+- `Requires: local | network | ssh | browser`（默认 `local`）：声明执行端需要什么；现在只做 lint 警告。
+
 ## Verify 怎么写（硬要求）
 
 - **本机可跑**：不依赖 ssh / 远端 / 浏览器 / 登录态。

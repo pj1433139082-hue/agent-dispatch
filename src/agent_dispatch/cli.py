@@ -266,7 +266,7 @@ def _parser() -> argparse.ArgumentParser:
 
     retry_parser = subparsers.add_parser("retry", help="Put a failed ticket back to running so it can be verified again.")
     retry_parser.add_argument("ticket_id")
-    retry_parser.add_argument("--reason", default="", help="Why the ticket is being retried (kept in the audit trail).")
+    retry_parser.add_argument("--reason", required=True, help="Why you are retrying; recorded on the run.")
     retry_parser.add_argument("--root", type=Path, default=Path("."))
     retry_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -614,8 +614,12 @@ def _load_and_lint(directory: Path, root: Path | None = None):
     project_root = Path(root) if root is not None else Path(directory).parent
     tickets = load_tickets(directory)
     issues = lint_tickets(tickets, project_root)
-    if issues:
-        for issue in issues:
+    warnings = [issue for issue in issues if issue.level == "warning"]
+    errors = [issue for issue in issues if issue.level != "warning"]
+    for issue in warnings:
+        print(issue.format(), file=sys.stderr)
+    if errors:
+        for issue in errors:
             print(issue.format(), file=sys.stderr)
         return None, 1
     return tickets, 0
@@ -633,7 +637,10 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     if args.as_json:
         print(json.dumps({"tickets": [ticket.id for ticket in tickets]}, indent=2))
     else:
-        print(f"{len(tickets)} ticket(s) valid")
+        warnings = [issue for issue in lint_tickets(tickets, getattr(args, "root", None))]
+        warnings = [issue for issue in warnings if issue.level == "warning"]
+        suffix = f" ({len(warnings)} warning(s))" if warnings else ""
+        print(f"{len(tickets)} ticket(s) valid{suffix}")
     return 0
 
 def _state_map(root: Path) -> dict[str, str]:

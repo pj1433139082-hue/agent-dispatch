@@ -26,7 +26,14 @@
 
 `verify` 每次失败写 `verify-history.jsonl`；同一组错误出现第 3 次时打印 `VERIFY repeated failure: … Re-running will not change it — fix the environment the command needs, or rewrite the criterion.` 并保持 exit 1（不自动重试、不自动改票）。
 
-## 3. 仍未定的问题（拷问中）
+## 3. 拷问后补的四条（2026-10-25 甲方「按推荐」）
+
+- **D4 lint 只警告不拦**：Verify 里出现 `ssh ` / `scp ` / `curl ` / `wget ` / `http(s)://` → `WARN network_verify`；`lint` 仍 exit 0。理由：本机 `curl localhost` 是合法的，error 会误杀。
+- **D5 票面加 `Requires:`**（`local` / `network` / `ssh` / `browser`，默认 `local`）：v1 只解析 + 警告（`environment_needed` / `invalid_requires`），不做硬门。
+- **D6 `retry --reason` 变必填**：事后要能看出"为什么又试一次"。
+- **D7 命令表自动生成**：`scripts/gen_command_table.py` → `docs/commands.md`，测试 `--check` 比对，漂移即红。
+
+## 4. 影响
 
 - 这四条要不要进 `lint`（error 还是 warning）？
 - 快照的新鲜度怎么判、谁负责刷新？

@@ -20,6 +20,7 @@ SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
 CHECKBOX_RE = re.compile(r"^\s*[-*]\s+\[[ xX]\]\s+(?P<text>.+?)\s*$")
 BOLD_RE = re.compile(r"^\s*(?:[-*]\s+)?\*\*(?P<key>[^*]+?):\*\*\s*(?P<value>.*)$")
 BULLET_RE = re.compile(r"^\s*[-*]\s+(?P<key>[A-Za-z][A-Za-z ]*?):\s*(?P<value>.*)$")
+REQUIRES = {"local", "network", "ssh", "browser"}
 RISKS = ("L0", "L1", "L2", "L3", "L4")
 
 _META_KEYS = {
@@ -46,6 +47,7 @@ class Ticket:
     depends_on: tuple[str, ...] = ()
     write_scope: tuple[str, ...] = ()
     read_scope: tuple[str, ...] = ()
+    requires: tuple[str, ...] = ()
     verify: tuple[str, ...] = ()
     acceptance: tuple[str, ...] = ()
     persona: str = ""
@@ -105,6 +107,7 @@ def parse_ticket(path: Path) -> Ticket:
     depends: list[str] = []
     write_scope: list[str] = []
     read_scope: list[str] = []
+    requires: list[str] = []
     verify: list[str] = []
     acceptance: list[str] = []
     persona_spec = ""
@@ -171,6 +174,8 @@ def parse_ticket(path: Path) -> Ticket:
                 capture_what = False
             elif key == "persona":
                 persona_spec = _clean_value(value)
+            elif key == "requires":
+                requires.extend(_split_list(value))
                 capture_what = False
             elif key in {"depends on", "blocked by"}:
                 depends.extend(_dependencies(value))
@@ -198,6 +203,8 @@ def parse_ticket(path: Path) -> Ticket:
                     risk = value.upper()
                 elif key == "persona":
                     persona_spec = _clean_value(value)
+                elif key == "requires":
+                    requires.extend(_split_list(value))
                 capture_what = False
                 continue
 
@@ -237,6 +244,7 @@ def parse_ticket(path: Path) -> Ticket:
         depends_on=tuple(dict.fromkeys(depends)),
         write_scope=tuple(dict.fromkeys(write_scope)),
         read_scope=tuple(dict.fromkeys(read_scope)),
+        requires=tuple(dict.fromkeys(item.lower() for item in requires)),
         verify=tuple(verify),
         acceptance=tuple(acceptance),
         persona=persona,
@@ -339,6 +347,16 @@ def lint_tickets(tickets: Iterable[Ticket], root: Path | None = None) -> list[Is
             issues.append(Issue("missing_write_scope", ticket.id, "at least one Write scope is required"))
         if not ticket.verify:
             issues.append(Issue("missing_verify", ticket.id, "at least one Verify command is required"))
+        if getattr(ticket, "requires", ()):
+            unknown = [item for item in ticket.requires if item not in REQUIRES]
+            if unknown:
+                issues.append(Issue("invalid_requires", ticket.id, "requires must be one of " + ", ".join(sorted(REQUIRES)) + f" (got {', '.join(unknown)})", level="warning"))
+            elif any(item in {"network", "ssh", "browser"} for item in ticket.requires):
+                issues.append(Issue("environment_needed", ticket.id, "this ticket declares Requires: " + ", ".join(ticket.requires) + "; make sure the executor can satisfy it", level="warning"))
+        for command in ticket.verify:
+            lowered = command.lower()
+            if any(marker in lowered for marker in ("ssh ", "scp ", "curl ", "wget ", "http://", "https://")):
+                issues.append(Issue("network_verify", ticket.id, "verify command looks network/remote dependent: " + command + " (prefer a local snapshot)", level="warning"))
         if not ticket.acceptance:
             issues.append(Issue("missing_acceptance", ticket.id, "at least one '- [ ]' acceptance item is required"))
         if ticket.persona and ticket.persona_error:

@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.90.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.91.0。
 
 ## 何时使用
 
@@ -335,6 +335,12 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 - `doctor`：报 `tickets edited after render: 01 (revert or dispatch retry)`，`wrap` 也会带出来
 - 处置：把票改回去（`git checkout -- tickets/01.md`）或 `retry` 重新开局；不要指望 verify 能过
 
+## 票面可选字段 Requires:（v0.91）
+
+`- Requires: local | network | ssh | browser`（默认 `local`）。当前只做解析 + lint 警告（`environment_needed` / `invalid_requires`），**不做硬门**——执行端能力清单还没定。
+
+命令表以 **`docs/commands.md`（自动生成）** 为准：`python scripts/gen_command_table.py` 重写，测试会比对该文件，漂移即红。
+
 ## Verify 必须"本机一次跑通"（v0.89，来自 ts-sweep-server 的教训）
 
 写票时的闸门——**不满足就别写进票面**：
@@ -374,7 +380,7 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 | `wrap [--json] [--fix]` | **会话收口一条命令**：状态计数 + doctor 全部问题 + **未 landing 的 run 数** + 下一步该跑什么；干净 exit 0，有事 exit 1 |
 | `doctor [--json] [--fix]` | 只读体检：票能否 lint、索引与磁盘是否一致、失败票、超期 run、活跃租约；`--fix` 只做安全修复（重建索引 + 删过期租约）；有问题 exit 1 |
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
-| `retry <id> [--reason …]` | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`，索引里留 history |
+| `retry <id> --reason "为什么再试一次"`（**必填**） | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`，索引里留 history |
 | `confirm <slug> --by <人> --via <dialog 或 card> [--note …]` | 把 S3「规格已核对」写进 `docs/specs/<slug>.md` 的 `## Confirmation`；`tickets` 未确认前拒绝拆票（`--force` 跳过） |
 | `sign <slug> --by <人> --via <dialog 或 card> [--hold 或 --reject] [--note "..."]` | 把甲方签字写回 `99-summary.md`（签字人 + 勾选 + 确认方式）；**`--via` 必填**，不写来源不许签 |
 | `stage <slug> [--json] [--prompt]` | S1–S5 一屏状态；`--prompt` 输出该阶段要人回答的问题（喂弹窗/决策卡）：问卷 / 选型 / 签字 / 规格 / 票；`next` 指下一步，未就绪 exit 1 |
