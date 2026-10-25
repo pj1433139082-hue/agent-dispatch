@@ -2005,6 +2005,31 @@ def _cmd_start(args: argparse.Namespace) -> int:
     print(f"Started {args.ticket_id} ({run.id})")
     return 0
 
+def _record_verify_failure(run: Run, errors: list[str]) -> int:
+    """把这次失败写进 verify-history.jsonl，返回"同样的失败之前出现过几次"。"""
+    history = run.directory / "verify-history.jsonl"
+    repeats = 0
+    if history.is_file():
+        try:
+            for line in history.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if [str(item) for item in entry.get("errors", [])] == errors:
+                    repeats += 1
+        except OSError:
+            repeats = 0
+    try:
+        with history.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"at": datetime.now(timezone.utc).isoformat(), "errors": errors}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return repeats
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     store = DispatchState(args.root)
     existing = store.ticket(args.ticket_id)
@@ -2035,8 +2060,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print(f"Verification passed for {args.ticket_id} ({run.id})")
         print(f"Record: {run.directory / 'verify.json'}")
         return 0
-    for error in record["errors"]:
+    errors = [str(item) for item in record["errors"]]
+    for error in errors:
         print(f"VERIFY {error}", file=sys.stderr)
+    repeats = _record_verify_failure(run, errors)
+    if repeats >= 2:
+        print(
+            f"VERIFY repeated failure: the same {len(errors)} error(s) have now failed {repeats + 1} times. "
+            "Re-running will not change it — fix the environment the command needs, or rewrite the criterion.",
+            file=sys.stderr,
+        )
     print(f"Verification failed for {args.ticket_id} ({run.id})", file=sys.stderr)
     return 1
 

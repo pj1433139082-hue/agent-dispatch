@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.88.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.89.0。
 
 ## 何时使用
 
@@ -330,6 +330,20 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 - `status`：该票那行会标 `-> 票在 render 后被改过（revert 或 retry 01）`
 - `doctor`：报 `tickets edited after render: 01 (revert or dispatch retry)`，`wrap` 也会带出来
 - 处置：把票改回去（`git checkout -- tickets/01.md`）或 `retry` 重新开局；不要指望 verify 能过
+
+## Verify 必须"本机一次跑通"（v0.89，来自 ts-sweep-server 的教训）
+
+写票时的闸门——**不满足就别写进票面**：
+
+1. **本机可跑**：不依赖 ssh / 远端机器 / 浏览器 / 需要登录的服务。
+2. **幂等**：连跑两次结果一样，不会因为"第一次改了状态"而第二次失败。
+3. **无网络**：不要在 Verify 里下载、打 API。
+4. **快**：单条 < 5 分钟；跑不完就拆成多条判据或落快照。
+
+需要远端事实时：**先跑一次把结果落成文件（带时间戳/主机名），Verify 只断言这个快照**。
+
+失败重复也会被点名：同一张票连续 3 次报同样的错误，`verify` 会打印
+`VERIFY repeated failure: … Re-running will not change it — fix the environment the command needs, or rewrite the criterion.`
 
 ## done ≠ landed（v0.79）
 

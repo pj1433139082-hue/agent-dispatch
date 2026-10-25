@@ -7,6 +7,12 @@ description: 把规格拆成可执行票据：一条 Delivery standard 一张票
 
 上一步：**to-spec-dispatch**　下一步：**implement-dispatch**
 
+## Verify 怎么写（硬要求）
+
+- **本机可跑**：不依赖 ssh / 远端 / 浏览器 / 登录态。
+- **幂等**：连跑两次结果一样。
+- **无网络、< 5 分钟**。
+- 需要远端事实 → 先落快照（带时间戳），Verify 只断言快照。
 ## 两条路
 
 **A 自动拆**（spec 里有 `## Delivery standard`）：
