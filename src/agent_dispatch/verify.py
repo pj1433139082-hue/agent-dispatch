@@ -397,7 +397,7 @@ def _evaluate_criteria(
     expected = set(range(1, len(ticket.acceptance) + 1))
     if seen != expected:
         errors.append(
-            f"criteria ids must be exactly 1..{len(ticket.acceptance)}, got {sorted(seen)}"
+            f"criteria ids must be exactly 1..{len(ticket.acceptance)} (one per Acceptance item), got {sorted(seen)}"
         )
     return records, evidence, errors, degraded
 
@@ -428,7 +428,7 @@ def verify_run(
         check(
             "ticket",
             actual_hash == expected_hash,
-            "ticket changed after render" if actual_hash != expected_hash else "unchanged",
+            "ticket changed after render (revert the ticket, or retry/render again)" if actual_hash != expected_hash else "unchanged",
         )
 
     receipt_path = run_dir / "receipt.json"

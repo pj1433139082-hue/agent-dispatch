@@ -101,6 +101,12 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py wrap    
 - **回来时**同一个命令也能用：exit 1 就还没收干净
 - 一次会话别超过 3–5 张票（ADR-0010 的实测来源：10 张 → 5.4M tokens → prompt_too_long）
 
+## 三条硬纪律（都来自真实会话）
+
+1. **render 之后不要改票**：改一个字 `verify` 就报 `ticket changed after render`；要改就 `retry` 或重新 `render`。
+2. **receipt.criteria 必须正好 1..N**（N = 票面 Acceptance 条数）：多一条少一条都判失败。
+3. **说"auto 模式"就用 `dispatch auto`**：不要用人工 brief/render 冒充自动推进；`auto` 会写 `auto.json`、checkpoint、feedback，人工跑是没有这些的。
+
 ## 纪律
 
 - **一票一停**：别把整波塞进一个上下文（实测 10 票会 prompt_too_long）
