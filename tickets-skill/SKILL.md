@@ -7,6 +7,19 @@ description: 把规格拆成可执行票据：一条 Delivery standard 一张票
 
 上一步：**to-spec-dispatch**　下一步：**implement-dispatch**
 
+## 建票时顺手绑人格（v0.95）
+
+```bash
+dispatch new 01 --title "runtime 侦察" --owner recon-runtime \
+  --what "读运行时并写报告" --write-scope reports/01.md \
+  --persona dispatcher.md
+```
+
+- `--persona` 收 `tickets/personas/` 下的文件名（或 `--search-root` 找得到的名字）。
+- 它会：复制人格文件 → 写 `- Persona:` 行 → 追加 `.dispatch/assignments.jsonl`。
+- 不写也不会报错，但 **L2+ 的票在 `render` 时会被人格门挡住（exit 6）**，所以高风险票请一开始就写。
+- L0/L1 可以留空（`(unassigned)`）；抢时间的小改别为了走流程硬造人格。
+
 ## 票面可选字段
 
 - `Requires: local | network | ssh | browser`（默认 `local`）：声明执行端需要什么；现在只做 lint 警告。
