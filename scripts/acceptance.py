@@ -110,15 +110,23 @@ def scenario_full_path(base: Path) -> dict[str, object]:
         auto = json.loads((run_dir / "auto.json").read_text(encoding="utf-8"))
     artifacts = sorted(p.name for p in run_dir.iterdir()) if run_dir else []
     sweep = run(workspace, "sweep", "--json")
+    wrap_result = run(workspace, "wrap", "--json")
+    try:
+        wrap_payload = json.loads(wrap_result.stdout or "{}")
+    except json.JSONDecodeError:
+        wrap_payload = {}
     return {
         "exit_code": result.returncode,
         "status": auto.get("status"),
+        "wrap_exit": wrap_result.returncode,
+        "wrap_issues": wrap_payload.get("issues", []),
         "artifacts": artifacts,
         "active_runs_after": len(json.loads(sweep.stdout or "[]")),
         "ok": result.returncode == 0
         and auto.get("status") == "landed"
         and {"context.md", "closeout.json", "review.json", "landing.json"} <= set(artifacts)
-        and len(json.loads(sweep.stdout or "[]")) == 0,
+        and len(json.loads(sweep.stdout or "[]")) == 0
+        and wrap_result.returncode == 0,
     }
 
 
