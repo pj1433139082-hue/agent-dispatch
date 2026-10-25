@@ -71,15 +71,15 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land --w
 2. **receipt 和 evidence 不会归档**：旧 `receipt.json` 还在 run 目录里，执行端必须为新的 attempt 重写，否则 verify 会复算旧证据。
 3. 归档的只有 `attempts/verify-01.json`、`review`、`closeout` 的快照；`logs/01.log` 会被覆盖。
 
-## 会话收口（每次收工前跑）
+## 会话收口（每次收工前一条命令）
 
 ```bash
-python C:\\Users\\14331\\.agents\\skills\\agent-dispatch\\scripts\\dispatch.py status   # 看末尾有没有 Session wrap-up
-python C:\\Users\\14331\\.agents\\skills\\agent-dispatch\\scripts\\dispatch.py doctor   # 看 failed / 超期 / 会挡 land 的脏文件
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py wrap        # 状态计数 + doctor 全部问题 + 下一步动作；干净 exit 0，有事 exit 1
 ```
 
-- failed → `retry <id>`；卡住 → `release` / `sweep`；已完结 → `gc --apply`
-- 一次会话别超过 3–5 张票（AD​R-0010 的实测来源：10 张 → 5.4M tokens → prompt_too_long）
+- 它会直接告诉你：`dispatch retry 03`、`dispatch sweep`、`git add/commit 或 .gitignore 掉 …`
+- **回来时**同一个命令也能用：exit 1 就还没收干净
+- 一次会话别超过 3–5 张票（ADR-0010 的实测来源：10 张 → 5.4M tokens → prompt_too_long）
 
 ## 纪律
 

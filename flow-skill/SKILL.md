@@ -61,6 +61,7 @@ description: 派单流程路由：判断手上的活该走「需求→票」「�
 
 | 症状 | 命令 |
 |---|---|
+| **收工前 / 回来先看** | **`dispatch wrap`**（一条命令：状态 + 问题 + 下一步；干净 exit 0） |
 | 不知道哪不对 | `dispatch doctor` |
 | 索引/磁盘不一致 | `dispatch doctor --fix` |
 | 票 failed | `dispatch retry <id> --reason …` |

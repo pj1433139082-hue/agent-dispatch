@@ -39,6 +39,8 @@ description: 我们的拷问阶段：问需求 + 三视角取证（开源借鉴/
 - 签字：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py sign <slug> --by <你> --via card`（写进 `99-summary.md`）
 - 然后进 **to-spec-dispatch**
 
+收工/换会话前：`dispatch wrap`（有问题 exit 1）
+
 ## 别硬走
 
 - 想法还没成形 → `grill-me`
