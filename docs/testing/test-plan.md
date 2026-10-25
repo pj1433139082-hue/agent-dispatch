@@ -75,6 +75,12 @@
 - 已有先例：`test_claim_concurrency.py`（并发）、`test_land_wave.py`（波次）、`test_review_identity.py`（身份门）。
 - 每轮结束跑四批测试（`pytest -q` 分四份文件列表），避免单次超时。
 
+## 决定：不为 wrap 单设 CI job
+
+- 决定：不新增独立的 wrap job。
+- 理由：本仓库自身没有 .dispatch/ 票，单独跑 wrap 永远 CLEAN，等于空转；真正的价值在"跑完真实链路之后"——那一步已经进了 acceptance 的 A 路径（wrap_exit == 0 且 issues == []）。
+- 重议条件：如果本仓库自己开始用 ticket 流程，再加独立 job，并用 paths 过滤只在 .dispatch/** 变化时触发。
+
 ## Out of Scope
 
 - 不做性能/压力测试（除了 claim 并发那条）。
