@@ -338,6 +338,10 @@ def _parser() -> argparse.ArgumentParser:
         help="Land every done, unlanded ticket in dependency order; stops at the first failure.",
     )
     land_parser.add_argument(
+        "--dry-run", action="store_true", dest="dry_run",
+        help="With --wave: preview which tickets would land / fail, without creating branches.",
+    )
+    land_parser.add_argument(
         "--continue-on-error", action="store_true", dest="continue_on_error",
         help="With --wave: keep landing independent tickets after a failure.",
     )
@@ -1259,6 +1263,7 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
         elif "no run on disk" in issue:
             actions.append("dispatch doctor --fix")
         elif "without landing.json" in issue:
+            actions.append("dispatch land --wave --dry-run   # 先看会落哪几张")
             actions.append("dispatch gc               # 看哪些 run 可 REMOVE / 需 HOLD")
         elif "repair check failed" in issue:
             actions.append("dispatch repair           # 先 dry-run 看看")
@@ -1930,6 +1935,7 @@ def _land_wave(args: argparse.Namespace) -> int:
             order.append(tid)
             pending.pop(tid)
     landed: list[dict[str, object]] = []
+    planned: list[dict[str, object]] = []
     skipped: list[dict[str, object]] = []
     failed: list[dict[str, object]] = []
     landed_ids: set[str] = set()
@@ -1964,6 +1970,10 @@ def _land_wave(args: argparse.Namespace) -> int:
                     break
                 continue
 
+        if getattr(args, "dry_run", False):
+            planned.append({"ticket_id": tid, "reason": "would land"})
+            landed_ids.add(tid)
+            continue
         try:
             record = land_run(args.root, tid, target_branch=args.into, integration_branch=args.branch)
         except LandingError as error:
@@ -1973,10 +1983,12 @@ def _land_wave(args: argparse.Namespace) -> int:
             continue
         landed_ids.add(tid)
         landed.append({"ticket_id": tid, "branch": record.get("integration_branch")})
-    payload = {"landed": landed, "skipped": skipped, "failed": failed}
+    payload = {"landed": landed, "planned": planned, "skipped": skipped, "failed": failed, "dry_run": bool(getattr(args, "dry_run", False))}
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
+        for item in planned:
+            print(f"WOULD  {item['ticket_id']}  {item['reason']}")
         for item in landed:
             print(f"LANDED {item['ticket_id']} -> {item['branch']}")
         for item in skipped:
