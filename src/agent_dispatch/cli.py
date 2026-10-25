@@ -226,6 +226,10 @@ def _parser() -> argparse.ArgumentParser:
     questions_parser.add_argument("--root", type=Path, default=Path("."))
     questions_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    roots_parser = subparsers.add_parser("roots", help="Find dispatch roots living in subdirectories of this repo.")
+    roots_parser.add_argument("--root", type=Path, default=Path("."))
+    roots_parser.add_argument("--json", action="store_true", dest="as_json")
+
     wrap_parser = subparsers.add_parser("wrap", help="One-shot session wrap-up: status counts + doctor + next actions.")
     wrap_parser.add_argument("--root", type=Path, default=Path("."))
     wrap_parser.add_argument("--tickets", type=Path, default=None)
@@ -1356,6 +1360,55 @@ def _wrap_fix(root: Path) -> dict[str, object]:
     return summary
 
 
+SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
+
+
+def _find_dispatch_roots(root: Path, max_depth: int = 4) -> list[dict[str, object]]:
+    """扫仓库里其它 dispatch 根（有 dispatch/config.json 或 .dispatch/state.json 或 tickets/）。"""
+    found: list[dict[str, object]] = []
+    root = Path(root).resolve()
+
+    def walk(directory: Path, depth: int) -> None:
+        if depth > max_depth:
+            return
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:
+            return
+        has_config = (directory / "config.json").is_file() and directory.name == "dispatch"
+        has_state = (directory / ".dispatch" / "state.json").is_file()
+        has_tickets = (directory / "tickets").is_dir() and directory.name == "dispatch"
+        if has_config or has_state or has_tickets:
+            tickets_dir = directory / "tickets"
+            count = 0
+            if tickets_dir.is_dir():
+                count = len([item for item in tickets_dir.glob("*.md")])
+            found.append({"root": str(directory), "tickets": count})
+            return
+        for entry in entries:
+            if entry.is_dir() and entry.name not in SKIP_DIRS:
+                walk(entry, depth + 1)
+
+    for entry in sorted(root.iterdir()) if root.is_dir() else []:
+        if entry.is_dir() and entry.name not in SKIP_DIRS:
+            walk(entry, 1)
+    return found
+
+
+def _cmd_roots(args: argparse.Namespace) -> int:
+    roots = _find_dispatch_roots(Path(args.root))
+    if args.as_json:
+        print(json.dumps({"roots": roots}, ensure_ascii=False, indent=2))
+        return 0
+    if not roots:
+        print("no dispatch roots found")
+        return 0
+    print(f"{len(roots)} dispatch root(s):")
+    for item in roots:
+        print(f"  {item['root']}  ({item['tickets']} ticket(s))")
+    return 0
+
+
 def _cmd_wrap(args: argparse.Namespace) -> int:
     root = Path(args.root)
     directory = _tickets_dir(args)
@@ -1367,6 +1420,10 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
     for row in document["tickets"]:
         counts[str(row["state"])] = counts.get(str(row["state"]), 0) + 1
     issues = list(report.get("issues", [])) + list(report.get("warnings", []))
+    if not directory.exists():
+        others = _find_dispatch_roots(root)
+        if others:
+            issues.append("other dispatch root(s) found: " + ", ".join(str(item["root"]) for item in others[:3]) + " (pass --root <path> to inspect them)")
     runs_dir = root / ".dispatch" / "runs"
     runs_total = runs_landed = 0
     runs_without_landing: list[str] = []
@@ -2676,8 +2733,11 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_repair(args)
     if args.command == "questions":
         return _cmd_questions(args)
+
     if args.command == "install-hooks":
         return _cmd_install_hooks(args)
+    if args.command == "roots":
+        return _cmd_roots(args)
     if args.command == "wrap":
         return _cmd_wrap(args)
     if args.command == "setup":

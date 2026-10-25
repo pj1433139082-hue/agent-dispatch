@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.91.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.92.0。
 
 ## 何时使用
 
@@ -335,6 +335,13 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 - `doctor`：报 `tickets edited after render: 01 (revert or dispatch retry)`，`wrap` 也会带出来
 - 处置：把票改回去（`git checkout -- tickets/01.md`）或 `retry` 重新开局；不要指望 verify 能过
 
+## 状态仓可以在子目录，但根上会看不见（v0.92）
+
+- 有人图干净，把状态放到 `.planning/<任务>/dispatch/`，用 `--root` 指过去跑。**这没问题**，但仓库根上 `dispatch status` 会显示 `Frontier: -`、`wrap` 会报 `tickets directory is missing`。
+- `dispatch roots` 会把这些根找出来（最长 4 层）：`roots → <path> (6 ticket(s))`。
+- `wrap` 在发现"没有本地票"时也会提示 `other dispatch root(s) found: …`。
+- 建议：**要么用默认根**（`tickets/` + `.dispatch/` 在仓库根），**要么**在根上放一个 README 指路。
+
 ## 票面可选字段 Requires:（v0.91）
 
 `- Requires: local | network | ssh | browser`（默认 `local`）。当前只做解析 + lint 警告（`environment_needed` / `invalid_requires`），**不做硬门**——执行端能力清单还没定。
@@ -377,6 +384,7 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 | `setup [--tickets 目录] [--executor-mode teammate\|dsh\|command] [--default-reviewer 名字]` | 写 `.dispatch/config.json` + `.gitignore(.dispatch/)`；`default_reviewer` 只在 `review` 没传 `--reviewer` 时生效；幂等 |
 | `handoff <id> [--to <agent>] [--json]` | 打印"该发给谁、发什么"的交接内容（工作单路径、执行根、分支、回执位置） |
 | `install-hooks [--force]` | 装 pre-commit 钩子：有 `.dispatch/` 就跑 `wrap`，不干净挡提交（`--no-verify` 可绕） |
+| `roots [--json]` | 扫仓库里**其它 dispatch 根**（`dispatch/config.json`、`.dispatch/state.json`、`dispatch/tickets`）——子目录里跑过的活，根上默认看不见 |
 | `wrap [--json] [--fix]` | **会话收口一条命令**：状态计数 + doctor 全部问题 + **未 landing 的 run 数** + 下一步该跑什么；干净 exit 0，有事 exit 1 |
 | `doctor [--json] [--fix]` | 只读体检：票能否 lint、索引与磁盘是否一致、失败票、超期 run、活跃租约；`--fix` 只做安全修复（重建索引 + 删过期租约）；有问题 exit 1 |
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
