@@ -615,9 +615,16 @@ def _cmd_status(args: argparse.Namespace) -> int:
     if args.as_json:
         print(json.dumps(document, indent=2, ensure_ascii=False))
         return 0
+    store = DispatchState(args.root)
+    runs_root = Path(args.root) / ".dispatch" / "runs"
     for row in document["tickets"]:
         suffix = f" (blocked by {', '.join(row['blocked_by'])})" if row["blocked_by"] else ""
         hint = f"   -> {row['hint']}" if str(row.get("hint", "")) else ""
+        if str(row["state"]) == "done":
+            entry = store.ticket(str(row["id"])) or {}
+            run_id = str(entry.get("run_id", ""))
+            if run_id and not (runs_root / run_id / "landing.json").is_file():
+                hint = f"   -> 未落地（dispatch land {row['id']}）"
         print(f"{row['id']}  {row['state']:<10} {row['title']}{suffix}{hint}")
     print(f"Frontier: {', '.join(document['frontier']) or '-'}")
     counts = {"failed": 0, "running": 0, "claimed": 0}

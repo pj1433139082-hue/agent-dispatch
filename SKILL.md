@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.77.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.78.0。
 
 ## 何时使用
 
@@ -216,7 +216,8 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 2. **verify 是命令门，Acceptance 是验收门**：命令只证明"能跑通"，不代表验收项成立。review 要对 Acceptance 逐条签字；票面写的 Verify 弱于 Acceptance 时，以 Acceptance 为准。
 3. **brief 门默认是开的**：`setup` 会写 `require_brief: true`，之后 `render` 自动校验审批；不想要就改配置。老项目没配置时行为不变（需显式 `--require-brief`）。
 4. **land 与 review-packet**：`review` 通过时会自动快照一份 packet，所以 `land` 通常直接过；`review-packet` 命令用于手动补/分享，`--no-require-packet` 只给老 run 迁移用。
-5. **票面的 `**Status:**` 只是作者标记**：真实状态看 `dispatch status` / `.dispatch/state.json`，工具不会回写票面。
+5. **done ≠ landed**：`review` 通过只是票 done，代码还在 worktree 分支；要进 integration branch 得 `land`。`status` 会标 `-> 未落地（dispatch land <id>）`，`wrap` 会报未落地 run 数。
+6. **票面的 `**Status:**` 只是作者标记**：真实状态看 `dispatch status` / `.dispatch/state.json`，工具不会回写票面。
 
 ### 身份：名字不等于执行者（有硬门，分三层）
 

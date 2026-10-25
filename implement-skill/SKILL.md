@@ -5,6 +5,10 @@ description: 按票执行：brief 审批 → render（一票一 worktree）→ �
 
 # 4/4 · Implement
 
+> **done ≠ landed**：`review` 通过只是"票做完了"，代码还在 **worktree 分支**（`dispatch/<run-id>`）上，主分支和 integration branch 都没有它。
+> 要进 integration branch 必须跑 `land <id>`（只建分支、不 push、不合并 main）。
+> `status` 会给"done 但没落地"的票标 `-> 未落地（dispatch land <id>）`；`dispatch wrap` 会报 `N ended run(s) without landing.json`。
+
 上一步：**to-tickets-dispatch**（或直接拿现成的票进来）
 
 ## 单票流程
