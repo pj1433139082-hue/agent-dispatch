@@ -94,6 +94,10 @@ def _parser() -> argparse.ArgumentParser:
         help="派单时限（分钟，默认 15）；sweep 用它判断 over_deadline。",
     )
     render_parser.add_argument(
+        "--seat-cap", type=int, default=0, dest="seat_cap",
+        help="With --claim: refuse when this agent already holds that many active tickets.",
+    )
+    render_parser.add_argument(
         "--claim", action="store_true",
         help="Also take file leases for the write scope (blocks a second run touching the same files).",
     )
@@ -191,6 +195,8 @@ def _parser() -> argparse.ArgumentParser:
     seat_parser.add_argument("--cap", type=int, default=DEFAULT_CAP)
     seat_parser.add_argument("--occupied", type=int, default=0)
     seat_parser.add_argument("--inactive", default="", help="逗号分隔的可回收成员")
+    seat_parser.add_argument("--agent", default="", help="Count this agent's active tickets instead of --occupied.")
+    seat_parser.add_argument("--root", type=Path, default=Path("."))
     seat_parser.add_argument("--json", action="store_true", dest="as_json")
 
     packet_parser = subparsers.add_parser(
@@ -952,6 +958,16 @@ def _cmd_render(args: argparse.Namespace) -> int:
         )
         return 1
 
+    if getattr(args, "seat_cap", 0):
+        agent_name = args.agent or "lead"
+        load = _agent_load(args.root, agent_name)
+        if load >= args.seat_cap:
+            print(
+                f"SEAT full: {agent_name} already holds {load}/{args.seat_cap} active ticket(s); "
+                "finish or release one first",
+                file=sys.stderr,
+            )
+            return 5
     run = Run.create(
             args.root,
             ticket,
@@ -1156,12 +1172,35 @@ def _cmd_tickets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _agent_load(root: Path, agent: str) -> int:
+    """这个 agent 目前占着几张活跃票（claimed / running / review）。"""
+    store = DispatchState(root)
+    runs_root = Path(root) / ".dispatch" / "runs"
+    load = 0
+    for ticket_id, entry in (store.load().get("tickets") or {}).items():
+        if str(entry.get("state", "")) not in {"claimed", "running", "review"}:
+            continue
+        run_file = runs_root / str(entry.get("run_id", "")) / "run.json"
+        if not run_file.is_file():
+            continue
+        try:
+            data = json.loads(run_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if str(data.get("claimed_by", "")) == agent:
+            load += 1
+    return load
+
+
 def _cmd_seat(args: argparse.Namespace) -> int:
     inactive = [part.strip() for part in args.inactive.split(",") if part.strip()]
+    occupied = args.occupied
+    if getattr(args, "agent", ""):
+        occupied = _agent_load(Path(getattr(args, "root", Path("."))), args.agent)
     try:
         report = check_seats(
             cap=args.cap,
-            occupied=args.occupied,
+            occupied=occupied,
             inactive=inactive,
         )
     except ValueError as error:
