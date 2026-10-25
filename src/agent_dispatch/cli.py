@@ -624,6 +624,18 @@ def _cmd_status(args: argparse.Namespace) -> int:
     for row in document["tickets"]:
         suffix = f" (blocked by {', '.join(row['blocked_by'])})" if row["blocked_by"] else ""
         hint = f"   -> {row['hint']}" if str(row.get("hint", "")) else ""
+        if str(row["state"]) in {"claimed", "running", "review"}:
+            entry = store.ticket(str(row["id"])) or {}
+            run_id = str(entry.get("run_id", ""))
+            run_file = runs_root / run_id / "run.json"
+            if run_file.is_file():
+                try:
+                    recorded = str(json.loads(run_file.read_text(encoding="utf-8")).get("ticket_hash", ""))
+                except (OSError, json.JSONDecodeError):
+                    recorded = ""
+                current = next((t for t in (tickets or []) if t.id == row["id"]), None)
+                if recorded and current is not None and current.content_hash != recorded:
+                    hint = f"   -> 票在 render 后被改过（revert 或 retry {row['id']}）"
         if str(row["state"]) == "done":
             entry = store.ticket(str(row["id"])) or {}
             run_id = str(entry.get("run_id", ""))
@@ -1438,6 +1450,27 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     )
     if ghosts:
         issues.append("index entries with no run on disk: " + ", ".join(ghosts) + " (run dispatch doctor --fix)")
+
+    edited: list[str] = []
+    store = DispatchState(root)
+    for ticket in tickets or []:
+        entry = store.ticket(ticket.id) or {}
+        state = str(entry.get("state", ""))
+        if state not in {"claimed", "running", "review"}:
+            continue
+        run_id = str(entry.get("run_id", ""))
+        run_file = runs_dir / run_id / "run.json"
+        if not run_file.is_file():
+            continue
+        try:
+            recorded = str(json.loads(run_file.read_text(encoding="utf-8")).get("ticket_hash", ""))
+        except (OSError, json.JSONDecodeError):
+            recorded = ""
+        if recorded and ticket.content_hash != recorded:
+            edited.append(ticket.id)
+    if edited:
+        issues.append("tickets edited after render: " + ", ".join(sorted(edited)) + " (revert or dispatch retry)")
+    checks.append({"name": "ticket-edits", "ok": not edited, "detail": ", ".join(sorted(edited)) or "none"})
 
     dirty = _dirty_paths(root)
     blockers = [path for path in dirty if _blocks_land(path)]

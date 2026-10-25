@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.80.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.81.0。
 
 ## 何时使用
 
@@ -300,6 +300,12 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 - `sign` 现在支持 `--note "<一句话>"`，写进 `99-summary.md` 的 `- 备注：` 行（老会话里出现过 `unrecognized arguments: --note`）。
 - `verify` 的「主仓脏」判定现在忽略 `.scratch/`（本地 issue tracker 的常用目录，老会话因为它整票 verify 失败）。
+
+## 票在 render 后被改：现在能提前看见（v0.81）
+
+- `status`：该票那行会标 `-> 票在 render 后被改过（revert 或 retry 01）`
+- `doctor`：报 `tickets edited after render: 01 (revert or dispatch retry)`，`wrap` 也会带出来
+- 处置：把票改回去（`git checkout -- tickets/01.md`）或 `retry` 重新开局；不要指望 verify 能过
 
 ## done ≠ landed（v0.79）
 
