@@ -21,7 +21,7 @@
 | `install-hooks` | `dispatch install-hooks [-h] [--root ROOT] [--force]` |
 | `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--json] [ticket_id]` |
 | `lint` | `dispatch lint [-h] [--tickets TICKETS] [--json]` |
-| `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--tickets TICKETS] ticket_id` |
+| `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--persona PERSONA] [--by BY] [--tickets TICKETS] ticket_id` |
 | `personas` | `dispatch personas [-h] {list,show} ...` |
 | `plan` | `dispatch plan [-h] [--tickets TICKETS] [--done ID] [--json]` |
 | `questions` | `dispatch questions [-h] [--root ROOT] [--json] slug` |

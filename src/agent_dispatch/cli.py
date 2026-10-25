@@ -584,6 +584,8 @@ def _parser() -> argparse.ArgumentParser:
     new_parser.add_argument("--write-scope", action="append", default=[])
     new_parser.add_argument("--verify", action="append", default=[])
     new_parser.add_argument("--depends-on", action="append", default=[])
+    new_parser.add_argument("--persona", default="", help="Assign this persona right after creating the ticket.")
+    new_parser.add_argument("--by", default="lead", help="Who assigns the persona.")
     new_parser.add_argument("--tickets", type=Path, default=None)
     return parser
 
@@ -777,6 +779,16 @@ def _cmd_new(args: argparse.Namespace) -> int:
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"Created {path}")
+    if getattr(args, "persona", ""):
+        assign_args = argparse.Namespace(
+            root=getattr(args, "root", Path(".")),
+            tickets=getattr(args, "tickets", None),
+            ticket_id=args.ticket_id,
+            persona=args.persona,
+            by=getattr(args, "by", "lead"),
+            as_json=False,
+        )
+        return _cmd_assign(assign_args)
     return 0
 
 def _persona_roots(args: argparse.Namespace) -> list[Path]:

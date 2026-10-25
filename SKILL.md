@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.93.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.94.0。
 
 ## 何时使用
 
@@ -334,6 +334,16 @@ python scripts/test_parallel.py -j 6   # 94 个文件约 150s（按测试函数�
 - `status`：该票那行会标 `-> 票在 render 后被改过（revert 或 retry 01）`
 - `doctor`：报 `tickets edited after render: 01 (revert or dispatch retry)`，`wrap` 也会带出来
 - 处置：把票改回去（`git checkout -- tickets/01.md`）或 `retry` 重新开局；不要指望 verify 能过
+
+## 写票时顺手绑人格（v0.94）
+
+```bash
+dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports/01.md --persona dispatcher.md
+# Created tickets/01-recon-runtime.md
+# Assigned 01 -> personas/dispatcher.md (派单员)
+```
+
+`--persona` 接受 `tickets/personas/` 下的文件名（或 `--search-root` 找得到的名字），会复制人格文件、写 `- Persona:` 行、追加 `assignments.jsonl`。
 
 ## 人格门：L2+ 必须有 Persona（v0.93）
 
