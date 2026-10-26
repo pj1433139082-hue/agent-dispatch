@@ -18,6 +18,10 @@ from .ticket import Ticket
 from .verify import changed_files, diff_digest
 
 
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -50,7 +54,7 @@ def build(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
         "legacy_diff": '"diff_scope"' not in verify_text,
         "changed_files": files,
         "hashes": {
-            "ticket": _sha256_text(ticket_text),
+            "ticket": _sha256_bytes(ticket.path.read_bytes()),
             "receipt": _sha256_text(receipt_text),
             "verify": _sha256_text(verify_text),
             "closeout": _sha256_text(closeout_text),

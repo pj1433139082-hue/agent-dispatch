@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.0.4。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.1.0。
 
 ## 何时使用
 
@@ -123,7 +123,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
 
 ## 主流程
 
-0. **brief 是模板，不是一次生成就能批**：`dispatch brief <id>` 产出五段（理解/计划/要改的文件/风险/疑问），**必须把五段 `<填写：…>` 改成正文**再 `brief <id> --approve <人>`；占位内容会被拒。
+0. **brief 是模板，不是一次生成就能批**（v1.1.0 起还查质量：每段 ≥8 字，五段不能完全相同；`无`/`none` 例外）：`dispatch brief <id>` 产出五段（理解/计划/要改的文件/风险/疑问），**必须把五段 `<填写：…>` 改成正文**再 `brief <id> --approve <人>`；占位内容会被拒。
 
 1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Owner`、`Risk`、`Persona`、`Write scope`、`Verify`、`Acceptance`。需要人设时先用 `personas list --search-root <目录>` 搜索，再用 `assign <id> --persona <文件或短名>` 写入；派单员只改 Persona，不改票据契约。
 2. **校验与分波**：`lint` 拒绝缺字段、自依赖、环、未知依赖；`plan` 输出拓扑波次、frontier 和同波写域冲突。

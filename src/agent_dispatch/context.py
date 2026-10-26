@@ -111,7 +111,7 @@ def _pitfalls(root: Path) -> list[str]:
     return found[:5]
 
 
-def build_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = None) -> str:
+def build_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = None, run_attempt: int | None = None) -> str:
     root = Path(root)
     parts: list[str] = [
         "# Context pack: " + ticket.id + ": " + ticket.title,
@@ -176,7 +176,15 @@ def build_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = 
                 line += "; error=" + str(item["error"])
             parts.append(line)
     else:
-        parts.append("- none (this is the first run)")
+        attempt = 0
+        try:
+            attempt = int(run_attempt)
+        except (TypeError, ValueError):
+            attempt = 0
+        if attempt and attempt > 1:
+            parts.append(f"- none (attempt {attempt} of the same run; see verify-history.jsonl)")
+        else:
+            parts.append("- none (this is the first run)")
 
     neighbours = _neighbours(root, ticket)
     parts.extend(["", "## Blocking neighbours", ""])
