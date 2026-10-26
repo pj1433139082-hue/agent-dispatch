@@ -72,7 +72,7 @@ teammate 只产出结论/证据/改动；票状态、`verify`、`review`、`land
 
 - 写入 `~/.dsh/profiles/desktop/cordis.patch.yml` 与 `~/.dsh/profiles/web/cordis.patch.yml`（两个 profile 都覆盖，避免猜错当前用的哪个）。
 - 备份：`cordis.patch.yml.bak-maxmembers-20261026`。
-- **需要重启 DSH 才生效**（TeamService 在启动时读 `maxMembers`）。
+- **实测：不用重启即生效**（2026-10-26 13:27，写入后第一次 `spawn_teammate` 就成功了；原以为要重启，错了）。
 - 注意：roster 仍是只增不减——16 只是"最多建 16 个名字"，不代表能删。
 
 ## 4. 未定
