@@ -177,37 +177,37 @@ def drive_to_done(tmp_path: Path, tid: str) -> Path:
     return run_dir
 
 
-def test_wave_continue_on_error_lands_the_other_ticket_when_closeout_fails(tmp_path: Path) -> None:
-    """--continue-on-error 的语义：一张票 closeout 不过，不能拖住同波其它票。"""
+def test_wave_continue_on_error_lands_later_tickets_after_a_closeout_failure(tmp_path: Path) -> None:
+    """--continue-on-error 的语义：失败票排在前，后面的好票仍要落地（否则这个 flag 等于没有）。"""
     make_repo(tmp_path, ["01", "02"])
-    # 02 的 brief 声明了 phantom.txt 却不会改它 → closeout 必报「声明了却没改」
-    write_brief(tmp_path, "02")
-    assert run_dispatch(tmp_path, "brief", "02", "--check").returncode == 0
-    assert run_dispatch(tmp_path, "brief", "02", "--approve", "tester").returncode == 0
+    # 01 的 brief 声明了 phantom.txt 却不会改它 → closeout 必报「声明了却没改」；02 是好票
+    write_brief(tmp_path, "01")
+    assert run_dispatch(tmp_path, "brief", "01", "--check").returncode == 0
+    assert run_dispatch(tmp_path, "brief", "01", "--approve", "tester").returncode == 0
 
-    first = drive_to_done(tmp_path, "01")
-    second = drive_to_done(tmp_path, "02")
+    bad_run = drive_to_done(tmp_path, "01")
+    good_run = drive_to_done(tmp_path, "02")
 
-    ok = run_dispatch(tmp_path, "closeout", "01", "--json")
-    assert ok.returncode == 0, ok.stdout + ok.stderr
-    assert json.loads(ok.stdout)["status"] == "pass"
+    bad = run_dispatch(tmp_path, "closeout", "01", "--json")
+    assert json.loads(bad.stdout)["status"] == "fail"
+    good = run_dispatch(tmp_path, "closeout", "02", "--json")
+    assert json.loads(good.stdout)["status"] == "pass", good.stdout
 
-    bad = run_dispatch(tmp_path, "closeout", "02", "--json")
-    bad_payload = json.loads(bad.stdout)
-    assert bad_payload["status"] == "fail", bad_payload
-    assert any("声明了却没改" in item and "phantom.txt" in item for item in bad_payload["findings"]), bad_payload
+    # 第一枪：不带 continue-on-error → 停在 01，02 不许落
+    stop = run_dispatch(tmp_path, "land", "--wave", "--require-closeout", "--json")
+    assert stop.returncode != 0, stop.stdout + stop.stderr
+    assert not (good_run / "landing.json").exists(), "不带 continue-on-error 时不应该继续落后面的票"
+    assert not (bad_run / "landing.json").exists()
 
+    # 第二枪：带 continue-on-error → 01 仍失败，但 02 必须落地
     result = run_dispatch(
         tmp_path, "land", "--wave", "--require-closeout", "--continue-on-error", "--json",
     )
-
     payload = json.loads(result.stdout)
     assert result.returncode != 0, "有票失败时 land --wave 必须返回非零"
-    assert [item["ticket_id"] for item in payload["landed"]] == ["01"], payload
-    assert any(item["ticket_id"] == "02" and "closeout" in str(item["reason"]) for item in payload["failed"]), payload
-    assert (first / "landing.json").is_file()
-    assert not (second / "landing.json").exists()
-
+    assert [item["ticket_id"] for item in payload["landed"]] == ["02"], payload
+    assert any(item["ticket_id"] == "01" and "closeout" in str(item["reason"]) for item in payload["failed"]), payload
+    assert (good_run / "landing.json").is_file()
 
 def test_auto_until_land_does_not_land_when_closeout_fails(tmp_path: Path) -> None:
     """--until land + --protocol full：closeout 不过必须停在 review 之前，不许落地。"""

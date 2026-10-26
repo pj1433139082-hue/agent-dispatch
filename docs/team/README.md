@@ -29,6 +29,21 @@ fixer  → 根因           scribe   → 交接
 2. **队友是手，dispatch 是账**：teammate 产出"结论/证据/改动"，票的状态、verify、land 一律由 Lead 用 `dispatch` 管。
 3. **派活要写"边界"**：每次派活明确"只准动哪些文件 / 只准读不准写 / 回复只给几行"，否则队友会顺手改别的。
 
+## 边界（谁不看什么）
+
+| 角色 | 只看 | 明确不看 |
+|---|---|---|
+| `auditor` | 执行前文本：spec / ADR / 票面 / 判据 | **不看 diff**（那是 reviewer） |
+| `reviewer` | `review-packet.md`（票 + diff + 回执 + verify） | 不看需求原文 |
+| `verifier` | 跑 Verify、抽查证据、临时副本里做变异检查 | **不写账**（receipt / verify / state） |
+| `fixer` | 票外/线上故障 | **不接票内 bug**（票内归 executor） |
+| `scribe` | 跨会话 handoff | 不重复写 `closeout` 已经生成的单票报告 |
+
+## 两个已知缺口（ADR-0013 §4）
+
+1. **没有集成者**：`land --wave` 每票各建一条 `dispatch/land/<run-id>` 分支，互相不包含；两张各自绿的票合进 main 才炸。需要"落地后在同一棵树上跑一次全量 Verify"。
+2. **没有判据评审**：`weak_verify` 只认 `echo ok / print(1)` 字面量。`Verify: test -f out/report.md` 这种"存在即通过"的判据能骗过 lint + verify + 变异检查。
+
 ## 与 dispatch persona 的关系
 
 | 队友 | 对应 persona（S2 选型角色 / 执行人设） |
