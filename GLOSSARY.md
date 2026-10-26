@@ -43,3 +43,7 @@
 ## 手账分离（hands vs ledger）
 - **定义**：teammate 是"手"（产出改动与证据），`dispatch` 是"账"（票状态、verify、review、land）。
 - **判据**：任何 teammate 都不写 `receipt.json`/`state.json`；写了的，一律判越界。
+
+## roster（成员表）
+- **定义**：一支团队里已创建的 teammate 名单；**只增不减**，名字永久占用（官方文档原文：创建失败的 teammate 也保留名字）。
+- **判据**：`list_agents` 返回的成员数 = roster 大小；`maxMembers` 是上限（官方 profile 配 8，基础包默认 16）。
