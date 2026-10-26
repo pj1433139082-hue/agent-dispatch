@@ -279,6 +279,7 @@ def _parser() -> argparse.ArgumentParser:
     confirm_parser.add_argument("--by", required=True)
     confirm_parser.add_argument("--via", required=True, choices=("dialog", "card"))
     confirm_parser.add_argument("--note", default="")
+    confirm_parser.add_argument("--force", action="store_true", help="Skip the skeleton-spec check (migration escape hatch).")
     confirm_parser.add_argument("--root", type=Path, default=Path("."))
 
     sign_parser = subparsers.add_parser("sign", help="Record the client signature on the S2 selection summary.")
@@ -1979,7 +1980,7 @@ def _cmd_retry(args: argparse.Namespace) -> int:
 
 def _cmd_confirm(args: argparse.Namespace) -> int:
     try:
-        path = confirm_spec(args.root, args.slug, args.by, args.via, args.note)
+        path = confirm_spec(args.root, args.slug, args.by, args.via, args.note, force=bool(getattr(args, "force", False)))
     except FileNotFoundError as error:
         print(str(error), file=sys.stderr)
         return 1

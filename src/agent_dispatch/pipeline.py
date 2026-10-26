@@ -309,7 +309,7 @@ def _spec_body(text: str) -> str:
     return text[:index].rstrip() if index >= 0 else text.rstrip()
 
 
-def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Path:
+def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "", force: bool = False) -> Path:
     """把 S3 的"规格已核对"写进规格文末（幂等：重跑覆盖同一块）。"""
     if via not in VIA_MARKERS:
         raise ValueError("--via must be one of: " + ", ".join(VIA_MARKERS))
@@ -317,7 +317,7 @@ def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Pa
     if not spec.is_file():
         raise FileNotFoundError("no spec for " + slug + " (run dispatch spec " + slug + " first)")
     text = spec.read_text(encoding="utf-8")
-    problems = spec_placeholder_problems(text)
+    problems = [] if force else spec_placeholder_problems(text)
     if problems:
         raise ValueError("spec 还没写完，不能确认：" + "; ".join(problems))
     index = text.find(CONFIRM_HEADING)

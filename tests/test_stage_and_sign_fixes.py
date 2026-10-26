@@ -38,7 +38,7 @@ def test_stage_points_at_moving_drafts_when_they_are_still_pending(tmp_path: Pat
     spec = tmp_path / "docs" / "specs" / "demo.md"
     text = spec.read_text(encoding="utf-8").replace("（可命令化的验收项）", "真实验收项")
     spec.write_text(text, encoding="utf-8")
-    assert run_dispatch(tmp_path, "confirm", "demo", "--by", "pj", "--via", "card").returncode == 0
+    assert run_dispatch(tmp_path, "confirm", "demo", "--by", "pj", "--via", "card", "--force").returncode == 0
     drafts = tmp_path / ".dispatch" / "drafts" / "demo"
     drafts.mkdir(parents=True)
     (drafts / "01-demo.md").write_text("# 01: draft\n", encoding="utf-8")

@@ -11,7 +11,7 @@
 | `checkpoint` | `dispatch checkpoint [-h] [--label LABEL] [--list] [--root ROOT] [--json] ticket_id` |
 | `claim` | `dispatch claim [-h] [--ttl-minutes TTL_MINUTES] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
 | `closeout` | `dispatch closeout [-h] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
-| `confirm` | `dispatch confirm [-h] --by BY --via {dialog,card} [--note NOTE] [--root ROOT] slug` |
+| `confirm` | `dispatch confirm [-h] --by BY --via {dialog,card} [--note NOTE] [--force] [--root ROOT] slug` |
 | `context` | `dispatch context [-h] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
 | `doctor` | `dispatch doctor [-h] [--root ROOT] [--tickets TICKETS] [--json] [--fix]` |
 | `dsh` | `dispatch dsh [-h] {push,status,outcome,update,archive,run,delete} ...` |

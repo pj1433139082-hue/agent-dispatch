@@ -10,17 +10,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SPEC = """# demo
 
-## Problem
+## Problem Statement
 
-x
+甲方要一个 greeting.txt，用来验证最小交付链路。
+
+## Solution
+
+写一个 greeting.txt，内容为 hello。
+
+## User Stories
+
+1. 作为甲方，我希望 greeting.txt 里就是 hello。
 
 ## Delivery standard
 
 - [ ] 写 greeting.txt <!-- verify: python -c "print(1)" -->
 
+## Implementation Decisions
+
+- 直接写文件，不引入依赖。
+
+## Testing Decisions
+
+- 用一条可复跑命令验收。
+
 ## Out of Scope
 
-- 
+- 不做多语言。
 """
 
 
