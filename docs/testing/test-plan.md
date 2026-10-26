@@ -31,6 +31,22 @@
 | 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots / **`gc` 对未 land worktree 判 HOLD** | — |
 | 人设/导出 | personas / assign / new --persona / context / export 四格式 | — |
 | 看板 | push / status / run / outcome / update / archive / mark-done 缺证据拒付 / **push 对 L3 以下票的警告** | — |
+## 文档改动必须由 fresh 会话复现（v1.0.2）
+
+改 `SKILL.md` / `docs/**` / 模板后，让一个**没有当前上下文**的执行者（`spawn_teammate({context:"fresh"})` 或看板新会话）照文档做一遍，报告必须含：
+
+1. 逐条判定表（步骤 | 现实是否吻合 | 证据）
+2. "外行会卡在哪"清单（≤5 条）
+3. 一句话结论：可直接照做 / 需要补 X
+
+**依据**：2026-10-26 的 `roster-setup.md` 复现审查抓出 4 条硬错（体积口径 158MB 实为 174/401/243MB；`patchReload` 键在 0.2.1-rc.3 不存在；`list_agents` 计数含 lead 导致门槛差一档；web profile 没装 Agent Teams 写进去静默无效）+ 4 个遗漏（回滚留毒、删除会中断运行中回合、`cleanup_team` 判据是"回合不在跑"、缺校验口径）。作者自己读三遍看不出来。
+
+## 跑全量期间不要改仓库（v0.99.5）
+
+- 实测：`-j 8` 跑到一半时改了 `pyproject.toml` / `__init__.py` 的版本号，`test_skill.py` 里"构建副本 → 比对 `__version__`"的两条断言当场变红，看起来像并发 bug，实际是**测试中途改了源**。
+- 纪律：跑全量期间只读；要改代码就等它跑完。
+- 并发实测（同机、107 文件、稳定树）：`-j 4` ≈ 295s，`-j 8` ≈ 180s；8 路时最后一批是长尾，再加收益递减。
+
 ## 每轮协议（固定动作）
 
 1. 建一张 **L3** 任务票 → `dsh push --workspace <id>` → `dsh run`。
