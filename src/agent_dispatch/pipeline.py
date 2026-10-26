@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -238,7 +240,73 @@ def spec_confirmation(root: Path, slug: str) -> dict[str, object] | None:
                 fields[key] = stripped[len(prefix):].strip()
     if not fields.get("核对人") or fields.get("确认方式") not in VIA_MARKERS:
         return None
+    recorded = ""
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- spec_sha256："):
+            recorded = stripped.split("：", 1)[1].strip()
+    if recorded:
+        current = hashlib.sha256(_spec_body(text).encode("utf-8")).hexdigest()
+        if recorded != current:
+            return None
     return fields
+
+
+SPEC_SECTIONS = (
+    "Problem Statement",
+    "Solution",
+    "User Stories",
+    "Delivery standard",
+    "Implementation Decisions",
+    "Testing Decisions",
+    "Out of Scope",
+)
+
+PLACEHOLDER_MARKS = (
+    "（从问卷来",
+    "（一句话说清",
+    "（可命令化的验收项）",
+    "（人工核对项）",
+    "（…）",
+    "As a ... I want ... so that ...",
+    "每一行一条可验收项",
+)
+
+
+def spec_placeholder_problems(text: str) -> list[str]:
+    """S3 门：确认之前，规格不能是空壳。返回问题清单（空 = 可以确认）。"""
+    problems: list[str] = []
+    bodies: dict[str, str] = {}
+    for name in SPEC_SECTIONS:
+        marker = "## " + name
+        start = text.find(marker)
+        if start < 0:
+            problems.append("缺少小节：" + name)
+            continue
+        body = text[start + len(marker):]
+        nxt = body.find("\n## ")
+        if nxt >= 0:
+            body = body[:nxt]
+        body = body.strip()
+        bodies[name] = body
+        if not body:
+            problems.append("小节为空：" + name)
+        elif any(mark in body for mark in PLACEHOLDER_MARKS):
+            problems.append("仍是占位内容：" + name)
+    delivery = bodies.get("Delivery standard", "")
+    real_items = [
+        line for line in delivery.splitlines()
+        if line.strip().startswith("- [") and not any(mark in line for mark in PLACEHOLDER_MARKS)
+    ]
+    if delivery and not real_items:
+        problems.append("Delivery standard 没有真实条目（只有占位 checkbox）")
+    return problems
+
+
+def _spec_body(text: str) -> str:
+    """确认块之前的部分（用于指纹）。"""
+    index = text.find(CONFIRM_HEADING)
+    return text[:index].rstrip() if index >= 0 else text.rstrip()
 
 
 def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Path:
@@ -249,6 +317,9 @@ def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Pa
     if not spec.is_file():
         raise FileNotFoundError("no spec for " + slug + " (run dispatch spec " + slug + " first)")
     text = spec.read_text(encoding="utf-8")
+    problems = spec_placeholder_problems(text)
+    if problems:
+        raise ValueError("spec 还没写完，不能确认：" + "; ".join(problems))
     index = text.find(CONFIRM_HEADING)
     if index >= 0:
         text = text[:index].rstrip() + "\n"
@@ -261,6 +332,7 @@ def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "") -> Pa
             "- 日期：" + stamp,
             "- 确认方式：" + via,
             "- 备注：" + (note.strip() or "（无）"),
+            "- spec_sha256：" + hashlib.sha256(_spec_body(text).encode("utf-8")).hexdigest(),
             "",
         ]
     )

@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.1.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.2.0。
 
 ## 何时使用
 
@@ -174,6 +174,11 @@ python scripts/acceptance.py --json   # 机读（CI）
 两条真机路径：**A** auto `--protocol full --until land` 全链路；**B** 老项目升级回归（无 `skill_version`/`deadline_seconds` 的旧 run 不许崩、不许迁移数据）。
 
 **A 里现在还查 `dispatch wrap`**：跑完必须 `wrap_exit == 0`、`issues == []`，否则 acceptance FAIL——"没收口"直接变成红灯。退出码 0 = 都过。
+
+## S3 规格门：空壳不能确认（v1.2.0）
+
+- `confirm` 现在先检查七个必需小节：缺小节 / 为空 / 仍是占位（`（从问卷来`、`As a ... I want ...`、`每一行一条可验收项`…）都拒，`Delivery standard` 还必须至少有一条真实 checkbox。
+- 确认块里写 `spec_sha256`：**确认后再改 spec，`tickets` 会要求重新 confirm**（改的是确认块之前的内容才算；在确认块后面追加不算改）。
 
 ## 门必须先问再签（v0.21.0）
 
