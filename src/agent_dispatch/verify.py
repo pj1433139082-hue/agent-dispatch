@@ -557,7 +557,13 @@ def verify_run(
                 elif allowed:
                     detail = "main checkout has uncommitted changes (allowed): " + ", ".join(main_files)
                 else:
-                    detail = "main checkout has uncommitted changes: " + ", ".join(main_files)
+                    detail = (
+                        "main checkout has uncommitted changes: "
+                        + ", ".join(main_files)
+                        + " (commit them first; dispatch setup writes .gitignore, so run: "
+                        "git add .gitignore && git commit -m 'chore: ignore .dispatch'"
+                        + ")"
+                    )
                 check("main checkout", not main_files or allow_main_drift, detail)
                 files = sorted(set(files) | set(main_files))
 

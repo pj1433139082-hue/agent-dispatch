@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.0.3。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.0.4。
 
 ## 何时使用
 
@@ -312,12 +312,12 @@ dispatch install-hooks --force  # 覆盖已有的
 
 ## 团队名册：名额与删除（v1.0.0）
 
-- **名额**：官方 profile 写死 `maxMembers: 8`；要更多就在 `~/.dsh/profiles/<desktop|web>/cordis.patch.yml` 覆盖 `agent-team` 行（实测**不用重启**）。
+- **名额**：官方 profile 写死 `maxMembers: 8`；建人时报 `Team member limit 8 reached` 就是这个。要更多就在**真正启用了 Agent Teams 的那个 profile**（本机是 `desktop`；`web` 没装，写进去静默无效）的 `cordis.patch.yml` 覆盖 `agent-team` 行（实测**不用重启**）。
 - **删除**：官方 roster 只增不减（`TeamRoster` 无 remove）。要删装 `dsh-agent-team-roster`（`delete_teammate` / `rename_teammate` / `cleanup_team`）。
 - ⚠️ `cleanup_team { scope: "teammates" }` 的判据是"当前没有回合在跑"——**空闲的职能队友也在射程内**（`scope:"all"` 还会删已完成任务）；要留队就逐个 `delete_teammate`。
 - **重启范围**：改 `maxMembers` 不用重启；**新增插件行（insert）需要重启**。`patchReload` 这个键在 0.2.1-rc.3 不存在。
 - `delete_teammate` 会**中断正在跑的回合**并丢弃未投递消息。
-- 完整步骤（Windows 下解 asar、junction 必须叫 `node_modules`、必须真退进程）：`docs/team/roster-setup.md`。
+- 完整步骤（Windows 下解 asar、junction 必须叫 `node_modules`、新增 insert 行后要**完全退出进程**再打开）：`docs/team/roster-setup.md`。
 
 ## 团队
 
