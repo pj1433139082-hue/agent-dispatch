@@ -91,6 +91,26 @@ auditor 给出 7 条，结论"建议改道 8→6"。我们采纳了其中 4 条�
 
 **不采纳"删 scribe / verifier 降级"**：两者都仍在跨会话交接与高风险管理票上有独立价值；先靠边界约束，不够再删。
 
+### 5.2 名册删除：实测可行（2026-10-26，重启后验证）
+
+**插件**：`yezitotempeace/dsh-agent-team-roster` v0.2.0（`delete_teammate` / `rename_teammate` / `cleanup_team`）。
+
+**Windows 安装要点（踩过）**：
+
+1. 插件 `import "@deepseek-ai/dsh-experimental-agent-team"` 与 `"@deepseek-ai/dsh-tools"`，而 Windows 版 DSH 的依赖全在 `app.asar` 里 → 必须先从 asar 解出 `dsh/node_modules` 到真实目录（本次解到 `E:\beikong-code\dsh-harness-root\node_modules`，194 个包 / 158MB + 1583 个 unpacked 文件）。
+2. 解出来的目录必须**本身叫 `node_modules`**（放在 `<root>\node_modules`），否则从真实路径解析不到（junction 会被 Node 解析成 realpath）。
+3. 插件目录建 `node_modules` junction → 那个真实目录；profile 的 `node_modules` 建 junction → 插件目录。
+4. `cordis.patch.yml` 加 `- insert: [{ id: agent-team-roster, name: dsh-agent-team-roster }]`；`patchReload: startup`，**必须完全退出进程**才生效（关窗口只是进托盘）。
+
+**实测结果（重启后）**：
+
+- 工具 46 → **49**（多 `delete_teammate` / `rename_teammate` / `cleanup_team`）。
+- `delete_teammate` 逐个删掉 8 个遗留成员：返回 `{previousStatus:"inactive", releasedTasks:[], discardedMessages:[]}`，成员数 17 → 9。
+- **名字真的释放**：删掉 `adversary` 后可以用同名重新 `spawn_teammate`，成功。
+- `rename_teammate` 可用：`probe-temp` → `probe-renamed`，状态保持 `running`。
+
+**坑**：`cleanup_team { scope: "teammates" }` 会删掉**所有** inactive/failed 成员——包括闲置的职能队友。要留着职能队时，只能逐个 `delete_teammate`。
+
 ## 4. 未定
 
 - 常驻成员上下文清理：DSH 没有"清空成员上下文"的接口，只能靠 fresh 实例；常驻成员的长会话风险未量化。

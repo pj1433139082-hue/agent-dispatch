@@ -47,3 +47,4 @@
 ## roster（成员表）
 - **定义**：一支团队里已创建的 teammate 名单；**只增不减**，名字永久占用（官方文档原文：创建失败的 teammate 也保留名字）。
 - **判据**：`list_agents` 返回的成员数 = roster 大小；`maxMembers` 是上限（官方 profile 配 8，基础包默认 16）。
+- **可删**：官方无删除能力；装 `dsh-agent-team-roster` 插件后有 `delete_teammate`（删记录 + 释放名字）与 `rename_teammate`（改名保历史）。
