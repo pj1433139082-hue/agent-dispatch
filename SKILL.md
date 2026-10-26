@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 0.99.6。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.0.0。
 
 ## 何时使用
 
@@ -41,16 +41,19 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 3. 没票但有 spec → `dispatch tickets <slug>`，或让对方先跑 `to-tickets`
 4. 只有想法 → 建议先去 `grill-with-docs`，别在 dispatch 里想需求
 
-### 没有 teammate 怎么办（三条路，选一条，别装）
+### 没有 teammate 怎么办（四条路，选一条，别装）
 
 | 你有的 | 怎么走 | 代价 |
 |---|---|---|
-| 会话里有第二个 agent（`list_agents` 看得到） | `render` → `handoff` → `send_message` | 真隔离，reviewer 能真换人 |
+| 会话里有 teammate（`list_agents` 看得到） | `render` → `handoff` → `send_message` | 真隔离，reviewer 能真换人 |
+| 什么都没有，但能 `spawn_teammate` | **先建职能队友**（见 `docs/team/README.md` 八个角色），再派活 | 名字永久占用，一个会话最多 `maxMembers` 个 |
+| 名额满了 / 要删旧成员 | `docs/team/roster-setup.md`：调 `maxMembers` 或装 `dsh-agent-team-roster` | 装插件要解 asar + 重启 |
 | DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` | 慢（十几分钟），要先有 workspace |
 | 都没有 | `render` → 自己在 worktree 干 → `verify` → `review --reviewer <名字>` | **主代理自执行**；review 只是换名字，不是真异体——交付说明里必须写清 |
 
 最后一条**不是错误用法**，是单 agent 环境的正常用法，只要如实标注。dispatch 的价值（写域、证据、验收、可回溯的 landing）在只有一个 agent 时同样成立。
 
+> 判据：**能调 `list_agents` 才算有队友**。用 `globalThis.tools` 探测会得到 undefined（工具是词法注入的），别据此得出"没有团队"的结论。
 ## 自带框架
 
 技能根目录就是框架根。调用入口是：
@@ -306,6 +309,13 @@ dispatch install-hooks --force  # 覆盖已有的
 - 钩子内容只有一层：`[ -d .dispatch ] || exit 0` → `python <skill>/scripts/dispatch.py wrap --root .`，非 0 就挡提交。
 - 仓库里没有 `.dispatch/` 时钩子直接放行（不会拦住无关仓库）。
 - 绕法：`git commit --no-verify`。
+
+## 团队名册：名额与删除（v1.0.0）
+
+- **名额**：官方 profile 写死 `maxMembers: 8`；要更多就在 `~/.dsh/profiles/<desktop|web>/cordis.patch.yml` 覆盖 `agent-team` 行（实测**不用重启**）。
+- **删除**：官方 roster 只增不减（`TeamRoster` 无 remove）。要删装 `dsh-agent-team-roster`（`delete_teammate` / `rename_teammate` / `cleanup_team`）。
+- ⚠️ `cleanup_team { scope: "teammates" }` 会删掉**所有** inactive 成员，包括空闲的职能队友——要留队就逐个 `delete_teammate`。
+- 完整步骤（Windows 下解 asar、junction 必须叫 `node_modules`、必须真退进程）：`docs/team/roster-setup.md`。
 
 ## 团队
 

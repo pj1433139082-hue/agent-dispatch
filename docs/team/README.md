@@ -54,6 +54,12 @@ fixer  → 根因           scribe   → 交接
 | `reviewer` | 无（评审人由 `dispatch review --reviewer` 指定） |
 | `executor` / `verifier` / `fixer` / `scribe` | `domain-owner` / `cost-keeper` 按领域挑 |
 
+## 名额与删除
+
+- 名额默认 8（官方 profile）→ 要更多改 `maxMembers`（实测不用重启）
+- 旧成员删不掉 → 装 `dsh-agent-team-roster`，用 `delete_teammate` 逐个删
+- 全部步骤与回滚：`docs/team/roster-setup.md`
+
 ## 派活模板
 
 ```text
