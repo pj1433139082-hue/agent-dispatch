@@ -59,6 +59,22 @@ teammate 只产出结论/证据/改动；票状态、`verify`、`review`、`land
 
 1. 自建 8 职能（本 ADR），并把 `maxMembers` 调到 ≥16（装 optimizer 或改 profile）；
 2. 直接采用 `dsh-dispatch-agent-team` 的 12 角色，把我们的角色卡当它的“角色补充说明”。
+### 5.1 我们的选择（2026-10-26）
+
+走 **A 路**：不动插件，直接在 profile 补丁层覆盖 `agent-team` 行：
+
+```yaml
+- id: agent-team
+  name: "@deepseek-ai/dsh-experimental-agent-team"
+  config:
+    maxMembers: 16   # bundle 默认 8
+```
+
+- 写入 `~/.dsh/profiles/desktop/cordis.patch.yml` 与 `~/.dsh/profiles/web/cordis.patch.yml`（两个 profile 都覆盖，避免猜错当前用的哪个）。
+- 备份：`cordis.patch.yml.bak-maxmembers-20261026`。
+- **需要重启 DSH 才生效**（TeamService 在启动时读 `maxMembers`）。
+- 注意：roster 仍是只增不减——16 只是"最多建 16 个名字"，不代表能删。
+
 ## 4. 未定
 
 - 常驻成员上下文清理：DSH 没有"清空成员上下文"的接口，只能靠 fresh 实例；常驻成员的长会话风险未量化。
