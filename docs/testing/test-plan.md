@@ -31,6 +31,17 @@
 | 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots / **`gc` 对未 land worktree 判 HOLD** | — |
 | 人设/导出 | personas / assign / new --persona / context / export 四格式 | — |
 | 看板 | push / status / run / outcome / update / archive / mark-done 缺证据拒付 / **push 对 L3 以下票的警告** | — |
+## 写测试前先问"这条断言在 Linux 上也成立吗"（v1.7.2，CI 教的）
+
+**事实**：本地 117 个测试在 Windows 上全绿三年也发现不了的问题，第一次 CI 就抓到了——`test_absolute_scope_outside_the_project_says_so` 用 `D:/somewhere/else/x.parquet` 当"项目外绝对路径"，而 POSIX 上 `Path("D:/x").resolve()` 会把它当成**仓库内的相对路径**，于是报错文案不同、断言失败。
+
+**规则**：
+
+1. 测试里不要用盘符路径模拟"绝对路径"——跨平台请用 `tmp_path` 之外的**真实的**绝对路径（POSIX 用 `/etc/...`，或干脆用 `Path(tmp_path).parent`）。
+2. 断言文案要抓**稳定前缀**（`absolute paths are not allowed`），不要抓整句；整句里的"use the relative path"只在一个分支出现。
+3. 涉及路径解析的**产品代码**要自己保证跨平台一致（`D:/x` 在任何平台都算绝对路径），别把差异留给 `pathlib` 的平台语义。
+4. 判据：`python scripts/test_parallel.py -j 8` 在本地绿 **且** CI 的 `test` 绿，才算过——只有一条不算。
+
 ## D 路径演练记录（2026-10-27，dispatch-a-smoke）
 
 故意造脏：1 张 failed 票、1 个超期 claimed run（带租约）、1 张 done 未落地、主仓脏文件。
