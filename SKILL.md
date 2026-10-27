@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.3.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.4.0。
 
 ## 何时使用
 
@@ -418,6 +418,18 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 
 失败重复也会被点名：同一张票连续 3 次报同样的错误，`verify` 会打印
 `VERIFY repeated failure: … Re-running will not change it — fix the environment the command needs, or rewrite the criterion.`
+
+## 波次落地：`land --append` 累积到同一条分支（v1.4.0）
+
+```bash
+dispatch land 01 --branch wave/all
+dispatch land 02 --branch wave/all --append   # 合进同一条分支，而不是新建
+dispatch land --wave --branch wave/all --append   # 整波一条分支
+```
+
+- 默认行为不变：每张票一条 `dispatch/land/<run-id>`，互不包含（安全，但需要人工合并）。
+- `--append` 把 run commit **merge 进已存在的 integration 分支**；不加它而分支已存在 → 报错并提示两条路。
+- 仍需人工 push / 开 PR；land 始终不碰目标分支。
 
 ## retry 会重写 context.md（v1.3.0）
 

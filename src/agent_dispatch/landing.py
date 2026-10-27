@@ -126,6 +126,7 @@ def land_run(
     *,
     target_branch: str | None = None,
     integration_branch: str | None = None,
+    append: bool = False,
 ) -> dict[str, object]:
     """Create an integration branch containing a reviewed run.
 
@@ -186,29 +187,26 @@ def land_run(
     target_commit = _run_git(root, "rev-parse", f"refs/heads/{target}")
 
     integration = integration_branch or f"dispatch/land/{run.id}"
-    if _branch_exists(root, integration):
-        raise LandingError(f"integration branch already exists: {integration}")
+    appending = bool(append) and _branch_exists(root, integration)
+    if _branch_exists(root, integration) and not appending:
+        raise LandingError(
+            f"integration branch already exists: {integration} "
+            "(drop --branch for one branch per run, or add --append to merge into it)"
+        )
 
     _assert_reviewed_worktree(run)
     run_commit = _commit_worktree(run)
-    if _branch_exists(root, integration):
-        raise LandingError(f"integration branch already exists: {integration}")
-
     landing_root = (
         root / ".dispatch" / "landings" / f"{run.id}-{uuid.uuid4().hex[:6]}"
     )
     landing_root.parent.mkdir(parents=True, exist_ok=True)
     created = False
     try:
-        added = _git(
-            root,
-            "worktree",
-            "add",
-            "-b",
-            integration,
-            str(landing_root),
-            target_commit,
-        )
+        add_args = ["worktree", "add"]
+        if not appending:
+            add_args += ["-b", integration]
+        add_args += [str(landing_root), integration if appending else target_commit]
+        added = _git(root, *add_args)
         if added.returncode != 0:
             raise LandingError("cannot create the integration worktree: " + _detail(added))
         created = True
@@ -233,7 +231,7 @@ def land_run(
         if created:
             _git(landing_root, "merge", "--abort")
             _git(root, "worktree", "remove", "--force", str(landing_root))
-        if _branch_exists(root, integration):
+        if not appending and _branch_exists(root, integration):
             _git(root, "branch", "-D", integration)
         shutil.rmtree(landing_root, ignore_errors=True)
         _git(root, "worktree", "prune")

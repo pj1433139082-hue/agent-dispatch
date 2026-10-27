@@ -395,6 +395,11 @@ def _parser() -> argparse.ArgumentParser:
         default=True,
         help="Skip the L2+ requirement that review-packet.md exists with a matching hash.",
     )
+    land_parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Merge into an existing integration branch instead of failing (use with --branch for one cumulative wave branch).",
+    )
     land_parser.add_argument("--json", action="store_true", dest="as_json")
 
     auto_parser = subparsers.add_parser(
@@ -2356,7 +2361,10 @@ def _land_wave(args: argparse.Namespace) -> int:
             landed_ids.add(tid)
             continue
         try:
-            record = land_run(args.root, tid, target_branch=args.into, integration_branch=args.branch)
+            record = land_run(
+                args.root, tid, target_branch=args.into,
+                integration_branch=args.branch, append=bool(getattr(args, "append", False)),
+            )
         except LandingError as error:
             failed.append({"ticket_id": tid, "reason": str(error)})
             if not args.continue_on_error:
@@ -2457,6 +2465,7 @@ def _cmd_land(args: argparse.Namespace) -> int:
             args.ticket_id,
             target_branch=args.into,
             integration_branch=args.branch,
+            append=bool(getattr(args, "append", False)),
         )
     except LandingError as exc:
         print(f"LAND {exc}", file=sys.stderr)

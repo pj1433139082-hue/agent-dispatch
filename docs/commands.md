@@ -19,7 +19,7 @@
 | `gc` | `dispatch gc [-h] [--apply] [--root ROOT] [--json]` |
 | `handoff` | `dispatch handoff [-h] [--to TO] [--root ROOT] [--tickets TICKETS] [--json] ticket_id` |
 | `install-hooks` | `dispatch install-hooks [-h] [--root ROOT] [--force]` |
-| `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--json] [ticket_id]` |
+| `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--append] [--json] [ticket_id]` |
 | `lint` | `dispatch lint [-h] [--tickets TICKETS] [--json]` |
 | `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--persona PERSONA] [--by BY] [--tickets TICKETS] ticket_id` |
 | `personas` | `dispatch personas [-h] {list,show} ...` |
