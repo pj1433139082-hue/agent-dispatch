@@ -1946,6 +1946,22 @@ def _cmd_retry(args: argparse.Namespace) -> int:
     run.data["attempt"] = int(run.data.get("attempt", 1)) + 1
     run.set_state("running")
     run.write()
+    context_file = run.directory / "context.md"
+    if context_file.is_file():
+        try:
+            from .context import build_context_pack
+            from .ticket import load_tickets
+            ticket = next((item for item in load_tickets(_tickets_dir(args)) if item.id == args.ticket_id), None)
+            if ticket is not None:
+                context_file.write_text(
+                    build_context_pack(
+                        args.root, ticket, exclude_run_id=run.id,
+                        run_attempt=int(run.data.get("attempt", 1)),
+                    ),
+                    encoding="utf-8",
+                )
+        except Exception:
+            pass
     data = state.load()
     ticket_entry = data.setdefault("tickets", {}).setdefault(args.ticket_id, {})
     history = ticket_entry.setdefault("history", [])

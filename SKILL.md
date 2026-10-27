@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.2.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.3.0。
 
 ## 何时使用
 
@@ -418,6 +418,11 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 
 失败重复也会被点名：同一张票连续 3 次报同样的错误，`verify` 会打印
 `VERIFY repeated failure: … Re-running will not change it — fix the environment the command needs, or rewrite the criterion.`
+
+## retry 会重写 context.md（v1.3.0）
+
+- 若 `render --with-context` 生成过 `context.md`，`retry` 会把它重写成 `attempt N of the same run`，执行端能看到"这不是第一次"。
+- `review-packet` 的 `ticket` / `receipt` / `verify` / `closeout` 哈希全部按**原始字节**算，可直接用 `sha256sum` 核对。
 
 ## done ≠ landed（v0.79）
 

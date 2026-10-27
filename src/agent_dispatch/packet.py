@@ -26,6 +26,13 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _read_bytes(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
+
+
 def _read(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
@@ -55,9 +62,9 @@ def build(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
         "changed_files": files,
         "hashes": {
             "ticket": _sha256_bytes(ticket.path.read_bytes()),
-            "receipt": _sha256_text(receipt_text),
-            "verify": _sha256_text(verify_text),
-            "closeout": _sha256_text(closeout_text),
+            "receipt": _sha256_bytes(_read_bytes(run.directory / "receipt.json")),
+            "verify": _sha256_bytes(_read_bytes(run.directory / "verify.json")),
+            "closeout": _sha256_bytes(_read_bytes(run.directory / "closeout.json")),
             "diff": digest,
         },
         "ticket_text": ticket_text,
