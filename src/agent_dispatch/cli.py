@@ -396,6 +396,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Skip the L2+ requirement that review-packet.md exists with a matching hash.",
     )
     land_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="After landing, re-run the ticket Verify commands on the integration branch.",
+    )
+    land_parser.add_argument(
         "--append",
         action="store_true",
         help="Merge into an existing integration branch instead of failing (use with --branch for one cumulative wave branch).",
@@ -2466,10 +2471,20 @@ def _cmd_land(args: argparse.Namespace) -> int:
             target_branch=args.into,
             integration_branch=args.branch,
             append=bool(getattr(args, "append", False)),
+            verify_after=bool(getattr(args, "verify", False)),
         )
     except LandingError as exc:
         print(f"LAND {exc}", file=sys.stderr)
         return 1
+    verify_after = record.get("verify_after") if isinstance(record, dict) else None
+    if isinstance(verify_after, dict):
+        status = str(verify_after.get("status", "fail"))
+        print(f"VERIFY-AFTER {args.ticket_id}: {status} on {record.get('integration_branch')}")
+        if status != "pass":
+            for item in verify_after.get("commands", []):
+                if int(item.get("exit_code", 1)) != 0:
+                    print(f"  $ {item.get('command')} -> exit {item.get('exit_code')}", file=sys.stderr)
+            return 1
     # land 之后释放这个 run 的文件租约：票已经合入，写域不再被占用
     released = release_claims(args.root, str(record.get("run_id", "")))
     if args.as_json:

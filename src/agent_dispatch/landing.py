@@ -127,6 +127,7 @@ def land_run(
     target_branch: str | None = None,
     integration_branch: str | None = None,
     append: bool = False,
+    verify_after: bool = False,
 ) -> dict[str, object]:
     """Create an integration branch containing a reviewed run.
 
@@ -268,4 +269,30 @@ def land_run(
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
     run.data["landing"] = record
     run.write()
+    if verify_after:
+        outcome = _verify_after_landing(root, integration, ticket)
+        record["verify_after"] = outcome
+        record["verify_after_status"] = str(outcome.get("status", "fail"))
     return record
+
+
+def _verify_after_landing(root: Path, branch: str, ticket: Ticket) -> dict[str, object]:
+    """在 integration 分支上复跑票面 Verify：证明"合进去之后还能跑通"。"""
+    from .verify import _run_command
+
+    directory = root / ".dispatch" / "landings" / f"verify-{uuid.uuid4().hex[:6]}"
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    added = _git(root, "worktree", "add", "--detach", str(directory), branch)
+    if added.returncode != 0:
+        return {"status": "fail", "reason": "cannot create a verify worktree: " + _detail(added), "commands": []}
+    results: list[dict[str, object]] = []
+    try:
+        log = directory / ".dispatch-verify.log"
+        for command in ticket.verify:
+            results.append(_run_command(command, directory, log, 300))
+    finally:
+        _git(root, "worktree", "remove", "--force", str(directory))
+        _git(root, "worktree", "prune")
+        shutil.rmtree(directory, ignore_errors=True)
+    failed = [item for item in results if int(item.get("exit_code", 1)) != 0]
+    return {"status": "fail" if failed else "pass", "commands": results}
