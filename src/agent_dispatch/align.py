@@ -159,9 +159,32 @@ def delivery_items(spec_text: str) -> list[str]:
     return items
 
 
+def delivery_diagnosis(spec_text: str) -> tuple[list[str], str]:
+    """返回 (items, reason)：reason 说明为什么没有可拆的交付项。"""
+    section: list[str] = []
+    inside = False
+    for line in spec_text.splitlines():
+        if line.startswith("## "):
+            inside = line.strip().lower().startswith("## delivery standard")
+            continue
+        if inside:
+            section.append(line)
+    if not section:
+        return [], "the '## Delivery standard' section is missing"
+    items = delivery_items(spec_text)
+    if items:
+        return items, ""
+    has_checkbox = any(DELIVERY_RE.match(line) for line in section)
+    if has_checkbox:
+        return [], "the section only has placeholder checkboxes; replace （…） with real items"
+    if any(line.strip().startswith(("-", "*")) for line in section):
+        return [], "the section has bullets but no checkbox items; write each item as '- [ ] <text>'"
+    return [], "the section is empty; write each item as '- [ ] <text>'"
+
+
 def render_draft_ticket(number: int, slug: str, item: str) -> str:
     return "\n".join([
-        "# " + slug + "-" + str(number).zfill(2) + ": " + item,
+        "# " + str(number).zfill(2) + ": " + item,
         "",
         "## What to build",
         "",

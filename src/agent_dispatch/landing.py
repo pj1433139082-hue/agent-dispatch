@@ -126,6 +126,8 @@ def land_run(
     *,
     target_branch: str | None = None,
     integration_branch: str | None = None,
+    append: bool = False,
+    verify_after: bool = False,
 ) -> dict[str, object]:
     """Create an integration branch containing a reviewed run.
 
@@ -156,7 +158,25 @@ def land_run(
     if (run.directory / "landing.json").exists():
         raise LandingError(f"run {run.id} already has a landing record")
     if not _checkout_is_clean(root):
-        raise LandingError("main checkout is dirty; land will not modify a dirty checkout")
+        dirty = sorted(
+            {
+                line[3:].strip()
+                for line in subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                ).stdout.splitlines()
+                if line.strip()
+            }
+        )
+        raise LandingError(
+            "main checkout is dirty; land will not modify a dirty checkout"
+            + (": " + ", ".join(dirty[:8]) if dirty else "")
+            + ("" if len(dirty) <= 8 else f" (+{len(dirty) - 8} more)")
+            + " — commit or ignore these first (tickets/ and .dispatch/ usually belong in .gitignore)"
+        )
 
     run_branch = str(run.data["worktree_branch"])
     if not _branch_exists(root, run_branch):
@@ -168,29 +188,26 @@ def land_run(
     target_commit = _run_git(root, "rev-parse", f"refs/heads/{target}")
 
     integration = integration_branch or f"dispatch/land/{run.id}"
-    if _branch_exists(root, integration):
-        raise LandingError(f"integration branch already exists: {integration}")
+    appending = bool(append) and _branch_exists(root, integration)
+    if _branch_exists(root, integration) and not appending:
+        raise LandingError(
+            f"integration branch already exists: {integration} "
+            "(drop --branch for one branch per run, or add --append to merge into it)"
+        )
 
     _assert_reviewed_worktree(run)
     run_commit = _commit_worktree(run)
-    if _branch_exists(root, integration):
-        raise LandingError(f"integration branch already exists: {integration}")
-
     landing_root = (
         root / ".dispatch" / "landings" / f"{run.id}-{uuid.uuid4().hex[:6]}"
     )
     landing_root.parent.mkdir(parents=True, exist_ok=True)
     created = False
     try:
-        added = _git(
-            root,
-            "worktree",
-            "add",
-            "-b",
-            integration,
-            str(landing_root),
-            target_commit,
-        )
+        add_args = ["worktree", "add"]
+        if not appending:
+            add_args += ["-b", integration]
+        add_args += [str(landing_root), integration if appending else target_commit]
+        added = _git(root, *add_args)
         if added.returncode != 0:
             raise LandingError("cannot create the integration worktree: " + _detail(added))
         created = True
@@ -215,7 +232,7 @@ def land_run(
         if created:
             _git(landing_root, "merge", "--abort")
             _git(root, "worktree", "remove", "--force", str(landing_root))
-        if _branch_exists(root, integration):
+        if not appending and _branch_exists(root, integration):
             _git(root, "branch", "-D", integration)
         shutil.rmtree(landing_root, ignore_errors=True)
         _git(root, "worktree", "prune")
@@ -240,6 +257,13 @@ def land_run(
         "pushed": False,
         "pr_url": None,
     }
+    if verify_after:
+        outcome = _verify_after_landing(root, integration, ticket)
+        record["verify_after"] = outcome
+        record["verify_after_status"] = str(outcome.get("status", "fail"))
+        if record["verify_after_status"] != "pass":
+            record["status"] = "landed-unverified"
+
     landing_path = run.directory / "landing.json"
     landing_path.write_text(
         json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -253,3 +277,47 @@ def land_run(
     run.data["landing"] = record
     run.write()
     return record
+
+
+def _verify_after_landing(root: Path, branch: str, ticket: Ticket) -> dict[str, object]:
+    """在 integration 分支上复跑票面 Verify：证明"合进去之后还能跑通"。"""
+    from .verify import _run_command
+
+    directory = root / ".dispatch" / "landings" / f"verify-{uuid.uuid4().hex[:6]}"
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    added = _git(root, "worktree", "add", "--detach", str(directory), branch)
+    if added.returncode != 0:
+        return {"status": "fail", "reason": "cannot create a verify worktree: " + _detail(added), "commands": []}
+    results: list[dict[str, object]] = []
+    try:
+        log = directory / ".dispatch-verify.log"
+        for command in ticket.verify:
+            results.append(_run_command(command, directory, log, 300))
+    finally:
+        _git(root, "worktree", "remove", "--force", str(directory))
+        _git(root, "worktree", "prune")
+        shutil.rmtree(directory, ignore_errors=True)
+    failed = [item for item in results if int(item.get("exit_code", 1)) != 0]
+    return {"status": "fail" if failed else "pass", "commands": results}
+
+
+def run_commands_on_branch(root: Path, branch: str, commands: list[str]) -> dict[str, object]:
+    """在 integration 分支上跑一组命令（去重由调用方做）。"""
+    from .verify import _run_command
+
+    directory = root / ".dispatch" / "landings" / f"verify-{uuid.uuid4().hex[:6]}"
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    added = _git(root, "worktree", "add", "--detach", str(directory), branch)
+    if added.returncode != 0:
+        return {"status": "fail", "reason": "cannot create a verify worktree: " + _detail(added), "commands": []}
+    results: list[dict[str, object]] = []
+    try:
+        log = directory / ".dispatch-verify.log"
+        for command in commands:
+            results.append(_run_command(command, directory, log, 300))
+    finally:
+        _git(root, "worktree", "remove", "--force", str(directory))
+        _git(root, "worktree", "prune")
+        shutil.rmtree(directory, ignore_errors=True)
+    failed = [item for item in results if int(item.get("exit_code", 1)) != 0]
+    return {"status": "fail" if failed else "pass", "commands": results}

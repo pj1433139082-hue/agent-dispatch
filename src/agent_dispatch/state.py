@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import __version__ as _skill_version
 from .ticket import Ticket
 from .workorder import render_work_order
 
@@ -115,6 +116,7 @@ class Run:
         ticket: Ticket,
         claimed_by: str = "",
         use_worktree: bool = True,
+        deadline_seconds: int = 900,
     ) -> "Run":
         root = Path(root).resolve()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -126,6 +128,16 @@ class Run:
         except ValueError:
             ticket_path = str(ticket.path.resolve())
         base_commit = current_commit(root)
+        if base_commit:
+            toplevel = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"], cwd=root, capture_output=True, text=True, check=False
+            ).stdout.strip()
+            if toplevel and Path(toplevel).resolve() != root.resolve():
+                shutil.rmtree(directory, ignore_errors=True)
+                raise ValueError(
+                    "root is inside another git repository (toplevel=" + toplevel + "); "
+                    "run dispatch from that repository or git init this directory first"
+                )
         data: dict[str, object] = {
             "run_id": run_id,
             "ticket_id": ticket.id,
@@ -137,9 +149,19 @@ class Run:
             "risk": ticket.risk,
             "claimed_by": claimed_by or ticket.owner,
             "created_at": _now(),
+            "skill_version": _skill_version,
+            "deadline_seconds": deadline_seconds,
             "use_worktree": False,
             "execution_root": "",
         }
+        if use_worktree and not base_commit:
+            shutil.rmtree(directory, ignore_errors=True)
+            raise ValueError(
+                "cannot determine the base commit: git is not usable in "
+                + str(root)
+                + " (try: git rev-parse HEAD); render inside a healthy git repository"
+                + " or pass --no-worktree deliberately"
+            )
         if use_worktree and base_commit:
             worktree_path = root / ".dispatch" / "worktrees" / run_id
             branch = f"dispatch/{run_id}"

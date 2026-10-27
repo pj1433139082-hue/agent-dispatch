@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import re
 import subprocess
 from datetime import datetime, timezone
@@ -14,6 +16,8 @@ from .ticket import Ticket
 
 IGNORED_PREFIXES = (
     ".dispatch/",
+    ".scratch/",
+    ".dsh-hooks/",
     ".git/",
     "__pycache__/",
     ".pytest_cache/",
@@ -37,6 +41,11 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
         char = pattern[index]
         if char == "*":
             if index + 1 < len(pattern) and pattern[index + 1] == "*":
+                # **/ 要能匹配"零层目录"（gitignore 语义）：src/**/*.py 也得命中 src/a.py
+                if index + 2 < len(pattern) and pattern[index + 2] == "/":
+                    out.append("(?:.*/)?")
+                    index += 3
+                    continue
                 out.append(".*")
                 index += 2
                 continue
@@ -70,6 +79,59 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
 
 
+HOUSEKEEPING_PATHS = (".gitignore", ".gitattributes")
+
+
+def housekeeping(path: str) -> bool:
+    return path in HOUSEKEEPING_PATHS
+
+
+HOST_OWNED_PREFIXES = (".agents/", ".claude/", ".codex/", ".cursor/", ".gemini/")
+
+
+def host_owned(path: str) -> bool:
+    return path.startswith(HOST_OWNED_PREFIXES)
+
+
+PIPELINE_DOC_PREFIXES = (
+    ".dispatch/",
+    "docs/questions/",
+    "docs/selection/",
+    "docs/specs/",
+    "tickets/",
+)
+
+
+def _pipeline_doc(path: str) -> bool:
+    return path.startswith(PIPELINE_DOC_PREFIXES)
+
+
+def _reparse_point(path: Path) -> bool:
+    """符号链接 / Windows junction / 其它 reparse point。"""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode):
+        return True
+    attributes = getattr(info, "st_file_attributes", 0)
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+def link_in_path(root: Path, relative: str) -> str | None:
+    """返回路径上第一个 reparse point（相对 root），没有则 None。"""
+    root = Path(root)
+    current = root
+    for part in Path(relative).parts:
+        current = current / part
+        if _reparse_point(current):
+            try:
+                return str(current.relative_to(root)).replace("\\", "/")
+            except ValueError:
+                return str(current)
+    return None
+
+
 def changed_files(root: Path, base_commit: str) -> list[str]:
     if not base_commit:
         raise ValueError("run has no base commit; render inside a git repository")
@@ -86,6 +148,42 @@ def changed_files(root: Path, base_commit: str) -> list[str]:
         if path
     }
     return sorted(path for path in paths if not _ignored(path))
+
+
+def diff_digest(root: Path, base_commit: str) -> tuple[str, str]:
+    """一次算出 (哈希, 可读文本)。哈希是唯一口径：tracked 二进制 diff + 未跟踪文件内容。"""
+    if not base_commit:
+        raise ValueError("run has no base commit; render inside a git repository")
+    binary = _git(root, "diff", "--binary", "--no-color", base_commit)
+    if binary.returncode != 0:
+        raise ValueError(binary.stderr.decode("utf-8", errors="replace").strip())
+    untracked = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if untracked.returncode != 0:
+        raise ValueError(untracked.stderr.decode("utf-8", errors="replace").strip())
+    paths = [
+        _normalize(raw)
+        for raw in untracked.stdout.decode("utf-8", errors="replace").split("\0")
+        if raw
+    ]
+    digest = hashlib.sha256()
+    digest.update(binary.stdout)
+    for path in sorted(path for path in paths if not _ignored(path)):
+        candidate = root / path
+        if candidate.is_file():
+            digest.update(path.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(candidate.read_bytes())
+            digest.update(b"\0")
+    text = _git(root, "diff", "--no-color", base_commit).stdout.decode("utf-8", errors="replace")
+    for path in sorted(path for path in paths if not _ignored(path)):
+        candidate = root / path
+        if not candidate.is_file():
+            continue
+        body = candidate.read_text(encoding="utf-8", errors="replace").splitlines()
+        hunk = ["diff --git a/" + path + " b/" + path, "new file mode 100644", "--- /dev/null", "+++ b/" + path]
+        hunk.extend("+" + line for line in body)
+        text += "\n".join(hunk) + "\n"
+    return digest.hexdigest(), text
 
 
 def worktree_diff_hash(root: Path, base_commit: str) -> str:
@@ -165,7 +263,7 @@ def _evidence_path(value: object) -> str | None:
 
 
 def _evaluate_evidence(
-    item: object, *, run_dir: Path, prefix: str
+    item: object, *, run_dir: Path, prefix: str, execution_root: Path | None = None
 ) -> tuple[dict[str, object] | None, str | None, bool]:
     """Return (record, error, attested) for one evidence item."""
     if not isinstance(item, dict):
@@ -176,6 +274,10 @@ def _evaluate_evidence(
         if value is None:
             return None, f"{prefix}.path must be a non-empty relative path", False
         path = run_dir / value
+        if not path.is_file() and execution_root is not None:
+            candidate = Path(execution_root) / value
+            if candidate.is_file():
+                path = candidate
         if not path.is_file():
             return None, f"{prefix}: evidence file is missing: {value}", False
         digest = _sha256(path)
@@ -210,12 +312,18 @@ def _evaluate_evidence(
     if kind == "command":
         command = item.get("command")
         exit_code = item.get("exit_code")
+        expect_exit = item.get("expect_exit", 0)
         if not isinstance(command, str) or not command:
             return None, f"{prefix}.command must be a non-empty string", False
         if not isinstance(exit_code, int) or isinstance(exit_code, bool):
             return None, f"{prefix}.exit_code must be an integer", False
-        if exit_code != 0:
-            return None, f"{prefix}: command evidence reports exit code {exit_code}", False
+        if not isinstance(expect_exit, int) or isinstance(expect_exit, bool):
+            return None, f"{prefix}.expect_exit must be an integer", False
+        if exit_code != expect_exit:
+            return None, (
+                f"{prefix}: command evidence reports exit code {exit_code}, "
+                f"expected {expect_exit}"
+            ), False
         return (
             {"kind": "command", "command": command, "exit_code": exit_code, "attested": False},
             None,
@@ -230,7 +338,7 @@ def _evaluate_evidence(
 
 
 def _evaluate_criteria(
-    receipt: dict[str, object], ticket: Ticket, run_dir: Path
+    receipt: dict[str, object], ticket: Ticket, run_dir: Path, execution_root: Path | None = None
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str], bool]:
     errors: list[str] = []
     records: list[dict[str, object]] = []
@@ -269,6 +377,7 @@ def _evaluate_criteria(
                 evidence_item,
                 run_dir=run_dir,
                 prefix=f"{prefix}.evidence[{evidence_index}]",
+                execution_root=execution_root,
             )
             if error:
                 errors.append(error)
@@ -288,12 +397,18 @@ def _evaluate_criteria(
     expected = set(range(1, len(ticket.acceptance) + 1))
     if seen != expected:
         errors.append(
-            f"criteria ids must be exactly 1..{len(ticket.acceptance)}, got {sorted(seen)}"
+            f"criteria ids must be exactly 1..{len(ticket.acceptance)} (one per Acceptance item), got {sorted(seen)}"
         )
     return records, evidence, errors, degraded
 
 
-def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tuple[dict[str, object], bool]:
+def verify_run(
+    root: Path,
+    ticket: Ticket,
+    run: Run,
+    timeout: int = 300,
+    allow_main_drift: bool = False,
+) -> tuple[dict[str, object], bool]:
     root = Path(root)
     run_dir = run.directory
     checks: list[dict[str, object]] = []
@@ -313,14 +428,20 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
         check(
             "ticket",
             actual_hash == expected_hash,
-            "ticket changed after render" if actual_hash != expected_hash else "unchanged",
+            "ticket changed after render (revert the ticket, or retry/render again)" if actual_hash != expected_hash else "unchanged",
         )
 
     receipt_path = run_dir / "receipt.json"
     receipt: dict[str, object] | None = None
     receipt_kind = ""
     if not receipt_path.is_file():
-        check("receipt", False, "receipt.json is missing")
+        check(
+            "receipt",
+            False,
+            "receipt.json is missing (the executor must write it into the run directory; "
+            "if the executor script lives inside the worktree, it has to be committed BEFORE render, "
+            "otherwise the run only sees the older snapshot — pass an absolute path instead)",
+        )
     else:
         try:
             payload = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -382,24 +503,74 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
             for path in files
             if not any(path_matches_scope(scope, path) for scope in ticket.write_scope)
         ]
+        house_only = [path for path in out_of_scope if housekeeping(path)]
+        if house_only:
+            out_of_scope = [path for path in out_of_scope if path not in house_only]
+            checks.append(
+                {
+                    "name": "housekeeping (ignored)",
+                    "ok": True,
+                    "detail": "not ticket output: " + ", ".join(house_only),
+                }
+            )
+        scope_detail = "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope"
+        host_paths = [path for path in out_of_scope if host_owned(path)]
+        if host_paths:
+            scope_detail += (
+                " | these look like host-installed packages, not this ticket's output: "
+                + ", ".join(host_paths)
+                + " (add them to the write scope only if the ticket really ships them)"
+            )
+        check("write scope", not out_of_scope, scope_detail)
+        links = sorted(
+            {
+                found
+                for path in files
+                if (found := link_in_path(execution_root, path)) is not None
+            }
+        )
         check(
-            "write scope",
-            not out_of_scope,
-            "out of scope: " + ", ".join(out_of_scope) if out_of_scope else "all changes in scope",
+            "symlink",
+            not links,
+            "write path goes through a symlink/junction, which can escape the repository: "
+            + ", ".join(links)
+            if links
+            else "no symlink/junction in the changed paths",
         )
         if execution_root.resolve() != root.resolve():
             try:
-                main_files = changed_files(root, str(run.data.get("base_commit", "")))
+                # 与**当前 HEAD**比较，而不是 run 的 base commit：主仓在 run 期间
+                # 的正常提交不算作弊，只有当前仍脏的改动才说明有人在主仓上动手。
+                main_files = changed_files(root, "HEAD")
+                # 流水线自产文档（S1 问卷 / S2 选型 / S3 规格 / S4 票）不改执行根，
+                # 它们留在主仓里属于正常，不该把 verify 判死；其它脏文件仍照拦。
+                skipped_main = [path for path in main_files if _pipeline_doc(path)]
+                main_files = [path for path in main_files if not _pipeline_doc(path)]
+                if skipped_main:
+                    checks.append(
+                        {
+                            "name": "main checkout (ignored)",
+                            "ok": True,
+                            "detail": "outside the write scope: " + ", ".join(skipped_main),
+                        }
+                    )
             except ValueError as error:
                 check("main checkout", False, str(error))
             else:
-                check(
-                    "main checkout",
-                    not main_files,
-                    "main checkout has changes: " + ", ".join(main_files)
-                    if main_files
-                    else "clean",
-                )
+                allowed = bool(main_files) and allow_main_drift
+                if not main_files:
+                    detail = "clean"
+                elif allowed:
+                    detail = "main checkout has uncommitted changes (allowed): " + ", ".join(main_files)
+                else:
+                    detail = (
+                        "main checkout has uncommitted changes: "
+                        + ", ".join(main_files)
+                        + " (commit them first; dispatch setup writes .gitignore, so run: "
+                        "git add .gitignore && git commit -m 'chore: ignore .dispatch'"
+                        + ")"
+                    )
+                check("main checkout", not main_files or allow_main_drift, detail)
                 files = sorted(set(files) | set(main_files))
 
     evidence: list[dict[str, object]] = []
@@ -409,7 +580,7 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
     if receipt is not None:
         if receipt_kind == "criteria":
             criteria, evidence, criteria_errors, degraded = _evaluate_criteria(
-                receipt, ticket, run_dir
+                receipt, ticket, run_dir, run.execution_root
             )
         elif receipt_kind == "legacy":
             for item in receipt.get("evidence", []):
@@ -438,6 +609,7 @@ def verify_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> tupl
         "checks": checks,
         "changed_files": files,
         "diff_hash": diff_hash,
+        "diff_scope": "tracked+untracked",
         "commands": commands,
         "criteria": criteria,
         "evidence": evidence,

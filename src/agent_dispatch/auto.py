@@ -9,8 +9,10 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .auto_protocol import ProtocolError, checkpoint as protocol_checkpoint, closeout as protocol_closeout, prepare as protocol_prepare
 from .feedback import write_feedback
 from .landing import LandingError, land_run
+from .packet import write as write_review_packet
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run, current_commit
 from .ticket import Ticket
@@ -137,7 +139,8 @@ def _read_review_result(path: Path) -> dict[str, object]:
     if verdict not in {"pass", "fail"}:
         raise AutoError(f"{path.name} verdict must be 'pass' or 'fail'")
     notes = value.get("notes", "")
-    return {"verdict": verdict, "notes": str(notes) if notes is not None else ""}
+    packet_hash = str(value.get("packet_hash", "") or "")
+    return {"verdict": verdict, "packet_hash": packet_hash, "notes": str(notes) if notes is not None else ""}
 
 
 def _review_and_land(
@@ -155,6 +158,21 @@ def _review_and_land(
     review_result_path = run.directory / "review-result.json"
     if review_result_path.exists():
         review_result_path.unlink()
+    packet_path = run.directory / "review-packet.md"
+    try:
+        write_review_packet(root, ticket, run)
+    except Exception as error:  # noqa: BLE001 - 生成失败必须 fail-closed
+        result["status"] = "review-invalid"
+        result["error"] = "cannot build the review packet: " + str(error)
+        _write_result(run, result)
+        return
+    try:
+        packet_digest = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+    except OSError as error:
+        result["status"] = "review-invalid"
+        result["error"] = "cannot hash the review packet: " + str(error)
+        _write_result(run, result)
+        return
     try:
         execution = _execute(
             command=reviewer_command,
@@ -165,6 +183,7 @@ def _review_and_land(
                 "DISPATCH_REVIEWER": reviewer,
                 "DISPATCH_VERIFY_JSON": str(run.directory / "verify.json"),
                 "DISPATCH_REVIEW_RESULT": str(review_result_path),
+                "DISPATCH_REVIEW_PACKET": str(packet_path),
             },
             log_name="reviewer.log",
         )
@@ -176,6 +195,23 @@ def _review_and_land(
         result["error"] = str(error)
         _write_result(run, result)
         return
+
+    attested = str(review.get("packet_hash", ""))
+    if attested and attested != packet_digest:
+        result["status"] = "review-invalid"
+        result["error"] = (
+            "reviewer attested a different review packet (packet_hash mismatch); no review recorded"
+        )
+        _write_result(run, result)
+        return
+    if ticket.risk in {"L2", "L3", "L4"} and not attested:
+        result["status"] = "review-invalid"
+        result["error"] = (
+            "L2+ review needs the reviewer to echo packet_hash; the reviewer did not attest the packet"
+        )
+        _write_result(run, result)
+        return
+    result["packet_attested"] = bool(attested)
 
     if review["verdict"] == "pass" and execution["exit_code"] != 0:
         result["status"] = "review-invalid"
@@ -194,6 +230,7 @@ def _review_and_land(
         notes=str(review.get("notes", "")),
         human=human,
         accept_degraded=accept_degraded,
+        packet_attested=bool(result.get("packet_attested", False)),
     )
     if errors:
         result["status"] = "review-invalid"
@@ -232,6 +269,10 @@ def auto_run(
     reviewer_command: str = "",
     accept_degraded: bool = False,
     human: bool = False,
+    protocol: str = "none",
+    env_hint: str = "",
+    require_brief: bool = False,
+    resume: bool = False,
 ) -> dict[str, object]:
     """Run a ticket through an external executor and the dispatch gates.
 
@@ -254,6 +295,8 @@ def auto_run(
         raise AutoError("until must be 'review' or 'land'")
     if max_attempts < 1:
         raise AutoError("max-attempts must be at least 1")
+    if protocol not in {"none", "full"}:
+        raise AutoError("protocol must be 'none' or 'full'")
     if timeout <= 0 or verify_timeout <= 0:
         raise AutoError("timeouts must be positive")
     if until == "land":
@@ -266,28 +309,41 @@ def auto_run(
 
     store = DispatchState(root)
     existing = store.ticket(ticket.id)
+    run = None
     if existing:
         state = str(existing.get("state", ""))
         if state == "done":
             raise AutoError(f"ticket {ticket.id} is already done")
         if state in ACTIVE_STATES:
-            raise AutoError(f"ticket {ticket.id} already has an active run")
+            if not resume or state not in {"running", "claimed"}:
+                raise AutoError(
+                    f"ticket {ticket.id} already has an active run (pass --resume to continue it)"
+                )
+            try:
+                run = Run.load(root, str(existing.get("run_id", "")))
+            except Exception as error:  # noqa: BLE001
+                raise AutoError(f"cannot resume run: {error}") from error
+            run.set_state("running")
+            store.set_ticket(ticket.id, run.id, "running")
     missing = sorted(dep for dep in ticket.depends_on if dep not in store.done_ids())
     if missing:
         raise AutoError(
             f"ticket {ticket.id} is blocked by unfinished tickets: {', '.join(missing)}"
         )
 
-    try:
-        run = Run.create(root, ticket, claimed_by=agent, use_worktree=True)
-    except ValueError as error:
-        raise AutoError(str(error)) from error
-    if not run.data.get("use_worktree"):
-        raise AutoError("auto requires a worktree run; render inside a git repository")
-    store.set_ticket(ticket.id, run.id, "claimed")
-    run.set_state("running")
-    store.set_ticket(ticket.id, run.id, "running")
+    if run is None:
+        try:
+            run = Run.create(root, ticket, claimed_by=agent, use_worktree=True)
+        except ValueError as error:
+            raise AutoError(str(error)) from error
+        if not run.data.get("use_worktree"):
+            raise AutoError("auto requires a worktree run; render inside a git repository")
+        store.set_ticket(ticket.id, run.id, "claimed")
+        run.set_state("running")
+        store.set_ticket(ticket.id, run.id, "running")
 
+
+    protocol_info: dict[str, object] = {"enabled": protocol == "full"}
     result: dict[str, object] = {
         "version": 1,
         "ticket_id": ticket.id,
@@ -300,9 +356,24 @@ def auto_run(
         "attempts": [],
         "review": None,
         "landing": None,
+        "protocol": protocol_info,
         "run_directory": str(run.directory),
         "created_at": _now(),
     }
+    if protocol == "full":
+        try:
+            protocol_info.update(
+                protocol_prepare(
+                    root, ticket, run, env_hint=env_hint, require_brief=require_brief
+                )
+            )
+        except ProtocolError as error:
+            run.set_state("failed")
+            store.set_ticket(ticket.id, run.id, "failed")
+            # 协议门失败也要留一份机读结果，否则只剩一句 stderr，事后无法复盘
+            result.update({"status": "protocol-failed", "error": str(error), "protocol": protocol_info})
+            _write_result(run, result)
+            raise AutoError(str(error)) from error
     _write_result(run, result)
 
     attempts = result["attempts"]
@@ -331,6 +402,11 @@ def auto_run(
             extra_env={"DISPATCH_FEEDBACK": feedback_path} if feedback_path else None,
         )
         record, passed = verify_run(root, ticket, run, timeout=verify_timeout)
+        if protocol == "full":
+            try:
+                protocol_info["last_checkpoint"] = str(protocol_checkpoint(run, attempt_number))
+            except (OSError, FileExistsError) as error:
+                protocol_info["checkpoint_error"] = str(error)
         verify_status = str(record.get("status", "failed"))
         errors = [str(error) for error in record.get("errors", [])]
         attempts.append(
@@ -359,6 +435,20 @@ def auto_run(
         result["last_errors"] = last_errors
         _write_result(run, result)
         return result
+
+    if protocol == "full":
+        report = protocol_closeout(root, ticket, run)
+        protocol_info["closeout"] = str(report.get("status", "failed"))
+        if str(report.get("status", "")) != "pass":
+            findings = [str(item) for item in report.get("findings", [])]
+            result["status"] = "closeout-failed"
+            result["closeout_findings"] = findings
+            try:
+                write_feedback(run.directory, len(attempts), findings, log_name="closeout")
+            except OSError:
+                pass
+            _write_result(run, result)
+            return result
 
     if until == "review":
         result["status"] = "review"

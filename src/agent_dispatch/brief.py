@@ -80,9 +80,13 @@ def parse_sections(text: str) -> dict[str, str]:
     return sections
 
 
+MIN_SECTION_CHARS = 8
+
+
 def check_brief_text(text: str) -> tuple[bool, list[str]]:
     sections = parse_sections(text)
     problems: list[str] = []
+    bodies: dict[str, str] = {}
     for section in SECTIONS:
         body = sections.get(section, "").strip()
         if not body:
@@ -90,6 +94,16 @@ def check_brief_text(text: str) -> tuple[bool, list[str]]:
             continue
         if body.startswith(PLACEHOLDER_PREFIXES):
             problems.append("仍是占位内容：" + section)
+            continue
+        if body.lower().rstrip("。.") in {"无", "none", "n/a", "na"}:
+            bodies[section] = body
+            continue
+        if len(body) < MIN_SECTION_CHARS:
+            problems.append(f"太短（至少 {MIN_SECTION_CHARS} 字）：" + section)
+            continue
+        bodies[section] = body
+    if len(bodies) == len(SECTIONS) and len(set(bodies.values())) == 1:
+        problems.append("五段内容完全相同，像是占位填充")
     return (not problems, problems)
 
 

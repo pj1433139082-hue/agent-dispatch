@@ -108,9 +108,35 @@
 - 项目启动的 `plan-acceptance` 已由用户潘杰于 2026-10-21 亲签；`agent_workflow status` 显示 `plan-acceptance.passed=true`、`pending_decisions=[]`、`evidence_valid=true`。
 - 文档曾长期停在 v0.6：v0.7–v0.9 的实现提交只改 `SKILL.md` 与代码，`README.md` / `docs/project/` / `docs/verification/` 由接管会话于 2026-10-22 补齐。
 
-## 下一步候选
+## 2026-10-23 — v0.11 → v0.39（本段进展，细节见 git log）
 
-- 增加 `land --wave` 批量按依赖顺序合入，以及恢复点/回退的显式命令。
-- 增加 `auto --wave` 或 DSH 执行器适配层，但保持“外部执行器 + 本地门禁”的边界。
-- 增加 `dsh push --update` / 归档同步，或接入 Agent Teams 的团队运行结果回读。
-- 增加 Windows symlink 写域测试与发布流程。
+- **协议化 auto**：`--protocol full` 串起 context / 环境前置 / brief 门 / checkpoint / closeout；失败语义写进 `auto.json`。
+- **生命周期**：`sweep`（只读判活）与 `repair`（索引重建）；`claim` 文件租约（O_EXCL 原子化）与 `gc` worktree 回收。
+- **流水线门**：`stage` 一屏 S1–S5；`spec` 要 S2 签字、`tickets` 要 S3 确认；`stage --prompt` 供弹窗；`sign` / `confirm` 留痕（含 `--via`）。
+- **评审对象**：ADR-0011 统一 diff 口径（`verify.diff_hash == packet.hashes.diff`）；`auto --until land` 先生成 review-packet 并校验 `packet_hash`；`land` 默认要求 packet，新增 `--require-attestation`。
+- **测试**：从 61 例涨到 250 例；覆盖 31 个命令、四个门（正/反）、状态机全链、环境异常（git 坏 / 嵌套仓 / 主仓脏 / 占位符）、真并发、dsh 假板。
+- **批量合入（v0.29.0）**：`land --wave` 按**拓扑序**（不是完成先后、不是 id 顺序）一次合完，跳过未完成/已落地并说明原因，`--continue-on-error` 可越过失败。
+- **越界加固（v0.30.0）**：写路径穿过 symlink/junction 时 `verify` 直接判死（实测能借 junction 把文件写到仓库外，v0.30.0 修复）。
+- **真板验证**：DSH 看板（`127.0.0.1:62407`）实测 `dsh push / status / archive / delete` 全通；探针卡已删。注意直接 urllib 会 403，`dispatch` 自带 `sec-fetch-site: same-origin` 才过。
+- **发布前验收**：`python scripts/acceptance.py`（A 全链路 / B 老项目升级回归），CI 也会跑。
+- **CI**：push/PR 跑全量测试 + 验收；每日 03:00 UTC 另跑 `concurrency` job（claim 竞态 × 3 轮、wave/packet 门 × 2 轮）。
+- **失败可回头（v0.31–v0.34）**：`retry` 把 `failed` 拉回 `running`（旧证据归档 `attempts/`）；`release` 放掉卡住的租约；状态不匹配时报错直接给下一步命令。
+- **诊断友好（v0.32–v0.37）**：写域用绝对路径时给出应写的相对写法；`.dsh-hooks/` 等宿主产物不算越界；越界命中 `.agents/skills` 会说明"这是宿主装的包"；`doctor` 一条命令体检（票/索引/失败/超期/租约），`stage` 附带 health 摘要。
+- **自动修复与前置（v0.38–v0.39）**：`doctor --fix` 只做安全修复（重建索引、删过期租约、清幽灵条目）；`auto` 开跑前体检，索引与磁盘不一致就拒绝（`--force` 跳过）。
+
+## 待办
+
+当前**无已知待办**（2026-10-23 清理）。原候选三条已全部落地：
+
+- ~~dsh 真板验证~~ → 已对真实看板（127.0.0.1:62407）验证 push / status / archive / delete。
+- ~~并发用例进 CI~~ → 已进 `concurrency` job，每天 03:00 UTC 跑 3 轮。
+- ~~Windows symlink 越界写域~~ → 已用 `mklink /J` 实测并修复（v0.30.0）。
+
+新工作需要走**票**进来，不要直接往这一节追加愿望清单：
+
+1. `dispatch align <slug>` → 答问卷；2. `dispatch select` → 签字；3. `dispatch spec` → `dispatch confirm`；4. `dispatch tickets` 拆票；5. `dispatch land --wave` 收口。
+
+已知边界（不是待办，是当前设计）：
+
+- `dsh run` 会真的在看板上起 agent 跑票，属于人工动作，不做自动化测试。
+- `verify` 只拦"改动路径"，不阻止执行器先写坏——它是门禁不是沙箱。

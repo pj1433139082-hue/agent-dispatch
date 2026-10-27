@@ -116,6 +116,27 @@ def publish(run: Run, label: str) -> Path:
         entries.append(entry)
     status_text = _git(root, "status", "--porcelain")
     diff_text = _git(root, "diff", base, "--", *files) if (base and files) else ""
+    untracked = {
+        line[3:].strip()
+        for line in status_text.splitlines()
+        if line.startswith("??")
+    }
+    for relative in files:
+        if relative not in untracked:
+            continue
+        path = root / relative
+        if not path.is_file():
+            continue
+        try:
+            body = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        added = body.splitlines()
+        diff_text += (
+            "\n--- /dev/null\n+++ b/" + relative + "\n"
+            + "@@ -0,0 +1," + str(len(added)) + " @@\n"
+            + "".join("+" + line + "\n" for line in added)
+        )
     head = _git(root, "rev-parse", "HEAD").strip()
 
     directory = checkpoints_dir(run)

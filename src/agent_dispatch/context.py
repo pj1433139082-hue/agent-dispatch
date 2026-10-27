@@ -38,7 +38,7 @@ def _read_head(path: Path, max_lines: int = MAX_DOC_LINES) -> str:
     return head[:MAX_DOC_CHARS]
 
 
-def _prior_runs(root: Path, ticket_id: str) -> list[dict[str, object]]:
+def _prior_runs(root: Path, ticket_id: str, exclude_run_id: str | None = None) -> list[dict[str, object]]:
     runs_root = Path(root) / ".dispatch" / "runs"
     if not runs_root.is_dir():
         return []
@@ -52,6 +52,8 @@ def _prior_runs(root: Path, ticket_id: str) -> list[dict[str, object]]:
         except (OSError, json.JSONDecodeError):
             continue
         if str(data.get("ticket_id", "")) != ticket_id:
+            continue
+        if exclude_run_id and str(data.get("run_id", "")) == exclude_run_id:
             continue
         verify_status = ""
         verify_file = directory / "verify.json"
@@ -109,7 +111,7 @@ def _pitfalls(root: Path) -> list[str]:
     return found[:5]
 
 
-def build_context_pack(root: Path, ticket: Ticket) -> str:
+def build_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = None, run_attempt: int | None = None) -> str:
     root = Path(root)
     parts: list[str] = [
         "# Context pack: " + ticket.id + ": " + ticket.title,
@@ -163,7 +165,7 @@ def build_context_pack(root: Path, ticket: Ticket) -> str:
     if not included:
         parts.append("- (no AGENTS.md / CLAUDE.md / CONTEXT.md at the repository root)")
 
-    prior = _prior_runs(root, ticket.id)
+    prior = _prior_runs(root, ticket.id, exclude_run_id)
     parts.extend(["", "## Earlier runs of this ticket", ""])
     if prior:
         for item in prior:
@@ -174,7 +176,15 @@ def build_context_pack(root: Path, ticket: Ticket) -> str:
                 line += "; error=" + str(item["error"])
             parts.append(line)
     else:
-        parts.append("- none (this is the first run)")
+        attempt = 0
+        try:
+            attempt = int(run_attempt)
+        except (TypeError, ValueError):
+            attempt = 0
+        if attempt and attempt > 1:
+            parts.append(f"- none (attempt {attempt} of the same run; see verify-history.jsonl)")
+        else:
+            parts.append("- none (this is the first run)")
 
     neighbours = _neighbours(root, ticket)
     parts.extend(["", "## Blocking neighbours", ""])
@@ -187,8 +197,8 @@ def build_context_pack(root: Path, ticket: Ticket) -> str:
     return "\n".join(parts)
 
 
-def write_context_pack(root: Path, ticket: Ticket) -> Path:
+def write_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = None) -> Path:
     target = context_path(root, ticket.id)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(build_context_pack(root, ticket), encoding="utf-8")
+    target.write_text(build_context_pack(root, ticket, exclude_run_id), encoding="utf-8")
     return target

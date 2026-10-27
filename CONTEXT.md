@@ -17,8 +17,12 @@ _Avoid_: 执行、job、session
 _Avoid_: 运行、job、session
 
 **Auto run（自动推进）**:
-一次 `dispatch auto` 在同一个 Run 内调用外部执行器、跑 verify，并可按配置继续独立评审与 land；执行器退出码不是验收结论。
-_Avoid_: 全自动交付、自动验收
+一次 `dispatch auto` 在同一个 Run 内调用外部执行器、跑 verify，并可按配置继续独立评审与 land；可带协议门禁（`--protocol full`：context / brief / checkpoint / closeout），但**不做多票编排**。执行器退出码不是验收结论。
+_Avoid_: 全自动交付、自动验收、流水线
+
+**Pipeline（多票编排）**:
+按 `blocked-by` 拓扑把多张票排成波次并连续执行的能力。当前**不存在**，只是先占词；不要拿 Auto run 冒充 Pipeline。
+_Avoid_: auto、批量派单
 
 **Executor（执行器）**:
 用户提供给 `dispatch auto` 的 shell 命令，在 Run 的 worktree 中写业务文件与回执；不是 dispatch 内置的模型运行时。
@@ -45,12 +49,42 @@ _Avoid_: 测试、检查、CI
 _Avoid_: 审批、code review（可指具体活动）
 
 **Review packet（评审包）**:
-一次 Review 的不可变输入集合：票据快照、diff、改动文件、回执、验收证据、基线 review guide 与哈希清单。
+一次 Review 的不可变输入集合：票据快照、diff、改动文件、回执、验收证据、基线 review guide 与哈希清单；评审者只读包，不读活动 worktree。
 _Avoid_: 评审报告、review 结果
 
 **Review guide（评审指南）**:
 固定在 base commit 的评审标准文本；评审者以它为准，不读取被审 change 中可能被改写的规则文件。
 _Avoid_: AGENTS.md、规范（泛称）
+
+## 派单生命周期
+
+**Seat（名额占位）**:
+一条 active Run 占用一个执行端名额；inactive 成员在宿主侧仍占位，所以"派不出去"是名额问题，不是票据问题。
+_Avoid_: 槽位、并发数、worker 数
+
+**Deadline（派单时限）**:
+派单方给一次执行约定的最长时限（默认 15 分钟）；到点先 `sweep` 看活动，再决定是否收回。
+_Avoid_: 超时、timeout（那是命令级参数）
+
+**Sweep（只读巡检）**:
+对 active Run 报"存活时长 / 最后产物距现在多久 / 是否已有回执"的只读报告；不自动 kill。
+_Avoid_: 监控、watchdog（本项不做自动处置）
+
+**Repair（索引重建）**:
+从 `.dispatch/runs/*/run.json` 反向重建 `state.json` 的幂等操作；默认 dry-run，冲突要人裁决。
+_Avoid_: 修复、恢复（易与回滚混淆）
+
+**Self-reviewed（自评标记）**:
+L1 票据允许 lead 自评通过时留下的痕迹，land 记录里必须可见；L2 及以上不得使用。
+_Avoid_: 免评审、跳过评审
+
+**Diff digest（diff 口径）**:
+一次 Run 的改动摘要的唯一哈希：`git diff --binary <base>` 的全部 tracked 改动 + 未跟踪文件内容，对字节流取 sha256；`verify.json.diff_hash` 与 `review-packet` 的 `hashes.diff` 必须是同一个值。
+_Avoid_: 哈希值、checksum（那指文件哈希）
+
+**Legacy diff（旧口径）**:
+没有 `diff_scope` 字段的历史 `verify.json`；packet 只在展示时标 `legacy_diff`，不重算、不改写。
+_Avoid_: 老版本、兼容模式
 
 ## 框架边界
 

@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .packet import write as write_packet
 from .state import DispatchState, Run
 from .ticket import Ticket
 
@@ -23,6 +24,9 @@ def _append_ledger(root: Path, record: dict[str, object], review_hash: str) -> N
         "notes": record["notes"],
         "verify_status": record["verify_status"],
         "accepted_degraded": record["accepted_degraded"],
+        "self_reviewed": record["self_reviewed"],
+        "packet_attested": record["packet_attested"],
+        "human": bool(record.get("human")),
         "review_hash": review_hash,
     }
     with ledger.open("a", encoding="utf-8") as handle:
@@ -38,6 +42,8 @@ def submit_review(
     notes: str = "",
     human: bool = False,
     accept_degraded: bool = False,
+    self_reviewed: bool = False,
+    packet_attested: bool | None = None,
 ) -> tuple[dict[str, object] | None, list[str]]:
     reviewer = reviewer.strip()
     verdict = verdict.strip().lower()
@@ -68,7 +74,13 @@ def submit_review(
             )
 
     if reviewer and (reviewer == ticket.owner or reviewer == str(run.data.get("claimed_by", ""))):
-        errors.append("self-review is not allowed: reviewer equals the ticket owner or claiming agent")
+        # ADR-0008 D5：L0/L1 允许自评，但必须显式 --self-reviewed 留痕；L2+ 一律不许。
+        if self_reviewed and ticket.risk in {"L0", "L1"}:
+            pass
+        elif self_reviewed:
+            errors.append("self-review is only allowed for L0/L1 tickets")
+        else:
+            errors.append("self-review is not allowed: reviewer equals the ticket owner or claiming agent (L0/L1 may pass --self-reviewed)")
     if ticket.risk == "L4" and not human:
         errors.append("L4 work requires an explicit human reviewer (--human)")
 
@@ -85,11 +97,18 @@ def submit_review(
         "status": "passed" if verdict == "pass" else "failed",
         "verify_status": verify_status,
         "accepted_degraded": bool(accept_degraded and verify_status == "degraded"),
+        "self_reviewed": bool(self_reviewed),
+        "human": bool(human),
+        "packet_attested": bool(packet_attested),
     }
     review_path = run.directory / "review.json"
     review_path.write_text(
         json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+    try:
+        write_packet(root, ticket, run)
+    except Exception:  # noqa: BLE001 - packet 生成失败不阻断评审，但要留痕
+        record["packet_error"] = True
     review_hash = hashlib.sha256(review_path.read_bytes()).hexdigest()
     _append_ledger(root, record, review_hash)
     next_state = "done" if verdict == "pass" else "failed"

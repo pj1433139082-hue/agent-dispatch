@@ -17,7 +17,7 @@ from .state import Run
 from .ticket import Ticket
 from .verify import changed_files, path_matches_scope
 
-PATHLIKE = ("/", "\\", ".py", ".js", ".ts", ".md", ".json", ".css", ".html", ".yml", ".yaml", ".toml", ".mjs")
+PATHLIKE = ("/", "\\", ".txt", ".py", ".js", ".ts", ".md", ".json", ".css", ".html", ".yml", ".yaml", ".toml", ".mjs")
 
 
 def _now() -> str:
@@ -71,6 +71,11 @@ def collect(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
         if brief_declared and not any(path == item or path.startswith(item.rstrip("/") + "/") for item in brief_declared)
     ]
 
+    declared_not_changed = [
+        item for item in brief_declared
+        if not any(path == item or path.startswith(item.rstrip("/") + "/") for path in changed)
+    ]
+
     findings: list[str] = []
     verify_status = str(verify.get("status", ""))
     if not verify:
@@ -85,6 +90,8 @@ def collect(root: Path, ticket: Ticket, run: Run) -> dict[str, object]:
         findings.append("改动越出写域：" + ", ".join(out_of_scope))
     if changed_not_declared:
         findings.append("brief 没声明却改了：" + ", ".join(changed_not_declared))
+    if brief_declared and declared_not_changed:
+        findings.append("brief 声明了却没改：" + ", ".join(declared_not_changed))
 
     return {
         "ticket_id": ticket.id,

@@ -36,11 +36,44 @@ def build(output: Path) -> Path:
         copy_file(ROOT / name, output / name)
 
     copy_file(ROOT / "scripts" / "dispatch.py", output / "scripts" / "dispatch.py")
+    copy_file(ROOT / "scripts" / "acceptance.py", output / "scripts" / "acceptance.py")
+    copy_file(ROOT / "scripts" / "test_parallel.py", output / "scripts" / "test_parallel.py")
+    copy_file(ROOT / "scripts" / "gen_command_table.py", output / "scripts" / "gen_command_table.py")
+    copy_file(ROOT / "docs" / "commands.md", output / "docs" / "commands.md")
     copy_tree(ROOT / "src" / "agent_dispatch", output / "src" / "agent_dispatch")
+    copy_file(ROOT / "docs" / "flows.md", output / "docs" / "flows.md")
+    team = ROOT / "docs" / "team"
+    if team.is_dir():
+        copy_tree(team, output / "docs" / "team")
+    adr = ROOT / "docs" / "adr"
+    if adr.is_dir():
+        copy_tree(adr, output / "docs" / "adr")
+    glossary = ROOT / "GLOSSARY.md"
+    if glossary.is_file():
+        copy_file(glossary, output / "GLOSSARY.md")
+    testing = ROOT / "docs" / "testing"
+    if testing.is_dir():
+        copy_tree(testing, output / "docs" / "testing")
     copy_tree(ROOT / "references", output / "references")
     copy_tree(ROOT / "templates", output / "templates")
     if (ROOT / "agents").is_dir():
         copy_tree(ROOT / "agents", output / "agents")
+
+    companions = {
+        "grill-skill": "grill-dispatch",
+        "spec-skill": "to-spec-dispatch",
+        "tickets-skill": "to-tickets-dispatch",
+        "implement-skill": "implement-dispatch",
+        "implement-spec-skill": "implement-spec-dispatch",
+        "flow-skill": "dispatch-flow",
+        "setup-skill": "setup-agent-dispatch",
+    }
+    for source, name in companions.items():
+        target = output.parent / name
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True)
+        copy_file(ROOT / source / "SKILL.md", target / "SKILL.md")
 
     print(output)
     return output

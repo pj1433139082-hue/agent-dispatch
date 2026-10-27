@@ -6,6 +6,8 @@ lives in the dispatch state store so that an executor cannot rewrite the brief.
 
 from __future__ import annotations
 
+import os
+
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -20,6 +22,7 @@ SECTION_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
 CHECKBOX_RE = re.compile(r"^\s*[-*]\s+\[[ xX]\]\s+(?P<text>.+?)\s*$")
 BOLD_RE = re.compile(r"^\s*(?:[-*]\s+)?\*\*(?P<key>[^*]+?):\*\*\s*(?P<value>.*)$")
 BULLET_RE = re.compile(r"^\s*[-*]\s+(?P<key>[A-Za-z][A-Za-z ]*?):\s*(?P<value>.*)$")
+REQUIRES = {"local", "network", "ssh", "browser"}
 RISKS = ("L0", "L1", "L2", "L3", "L4")
 
 _META_KEYS = {
@@ -46,6 +49,7 @@ class Ticket:
     depends_on: tuple[str, ...] = ()
     write_scope: tuple[str, ...] = ()
     read_scope: tuple[str, ...] = ()
+    requires: tuple[str, ...] = ()
     verify: tuple[str, ...] = ()
     acceptance: tuple[str, ...] = ()
     persona: str = ""
@@ -105,6 +109,7 @@ def parse_ticket(path: Path) -> Ticket:
     depends: list[str] = []
     write_scope: list[str] = []
     read_scope: list[str] = []
+    requires: list[str] = []
     verify: list[str] = []
     acceptance: list[str] = []
     persona_spec = ""
@@ -171,6 +176,8 @@ def parse_ticket(path: Path) -> Ticket:
                 capture_what = False
             elif key == "persona":
                 persona_spec = _clean_value(value)
+            elif key == "requires":
+                requires.extend(_split_list(value))
                 capture_what = False
             elif key in {"depends on", "blocked by"}:
                 depends.extend(_dependencies(value))
@@ -198,6 +205,8 @@ def parse_ticket(path: Path) -> Ticket:
                     risk = value.upper()
                 elif key == "persona":
                     persona_spec = _clean_value(value)
+                elif key == "requires":
+                    requires.extend(_split_list(value))
                 capture_what = False
                 continue
 
@@ -237,6 +246,7 @@ def parse_ticket(path: Path) -> Ticket:
         depends_on=tuple(dict.fromkeys(depends)),
         write_scope=tuple(dict.fromkeys(write_scope)),
         read_scope=tuple(dict.fromkeys(read_scope)),
+        requires=tuple(dict.fromkeys(item.lower() for item in requires)),
         verify=tuple(verify),
         acceptance=tuple(acceptance),
         persona=persona,
@@ -252,11 +262,31 @@ def load_tickets(directory: Path) -> list[Ticket]:
     return [parse_ticket(path) for path in sorted(directory.glob("*.md"))]
 
 
-def _scope_error(scope: str) -> str | None:
+def _scope_error(scope: str, root: Path | None = None) -> str | None:
     if not scope:
         return "empty scope"
+    drive_path = bool(re.match(r"^[A-Za-z]:[\\/]", scope))
     if scope.startswith("/") or re.match(r"^[A-Za-z]:", scope):
-        return "absolute paths are not allowed"
+        if drive_path and os.name != "nt":
+            # 在 POSIX 上 Path("D:/x").resolve() 会被当成仓库内的相对路径，
+            # 导致同一个票在不同平台得到不同结论。统一按"绝对路径且在项目外"处理。
+            return (
+                "absolute paths are not allowed, and this one is outside the project root; "
+                "write scopes must stay inside the repository"
+            )
+        if root is not None:
+            try:
+                relative = Path(scope).resolve().relative_to(Path(root).resolve())
+            except (OSError, ValueError):
+                return (
+                    "absolute paths are not allowed, and this one is outside the project root; "
+                    "write scopes must stay inside the repository"
+                )
+            return (
+                "absolute paths are not allowed; use the relative path "
+                + repr(relative.as_posix())
+            )
+        return "absolute paths are not allowed; use a path relative to the project root"
     normalized = scope.replace("\\", "/")
     if ".." in normalized.split("/"):
         return "parent-directory segments are not allowed"
@@ -294,7 +324,17 @@ def _find_cycle(edges: dict[str, list[str]]) -> list[str]:
     return []
 
 
-def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
+PLACEHOLDER_MARKERS = ("待填", "TODO", "TBD", "FIXME")
+
+
+def _placeholder(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return True
+    return any(marker in text for marker in PLACEHOLDER_MARKERS)
+
+
+def lint_tickets(tickets: Iterable[Ticket], root: Path | None = None) -> list[Issue]:
     tickets = list(tickets)
     issues: list[Issue] = []
     by_id: dict[str, Ticket] = {}
@@ -317,12 +357,37 @@ def lint_tickets(tickets: Iterable[Ticket]) -> list[Issue]:
             issues.append(Issue("missing_write_scope", ticket.id, "at least one Write scope is required"))
         if not ticket.verify:
             issues.append(Issue("missing_verify", ticket.id, "at least one Verify command is required"))
+        if getattr(ticket, "requires", ()):
+            unknown = [item for item in ticket.requires if item not in REQUIRES]
+            if unknown:
+                issues.append(Issue("invalid_requires", ticket.id, "requires must be one of " + ", ".join(sorted(REQUIRES)) + f" (got {', '.join(unknown)})", level="warning"))
+            elif any(item in {"network", "ssh", "browser"} for item in ticket.requires):
+                issues.append(Issue("environment_needed", ticket.id, "this ticket declares Requires: " + ", ".join(ticket.requires) + "; make sure the executor can satisfy it", level="warning"))
+        for command in ticket.verify:
+            lowered = command.lower()
+            trivial = (
+                lowered.strip() in {"true", "echo ok", "exit 0"}
+                or "print(1)" in lowered
+                or "print('ok')" in lowered
+                or 'print("ok")' in lowered
+                or lowered.strip().startswith("echo ")
+            )
+            if trivial:
+                issues.append(Issue("weak_verify", ticket.id, "verify command looks trivially true (it cannot fail): " + command, level="warning"))
+            if any(marker in lowered for marker in ("ssh ", "scp ", "curl ", "wget ", "http://", "https://")):
+                issues.append(Issue("network_verify", ticket.id, "verify command looks network/remote dependent: " + command + " (prefer a local snapshot)", level="warning"))
         if not ticket.acceptance:
             issues.append(Issue("missing_acceptance", ticket.id, "at least one '- [ ]' acceptance item is required"))
         if ticket.persona and ticket.persona_error:
             issues.append(Issue("invalid_persona", ticket.id, ticket.persona_error))
+        for scope in ticket.write_scope:
+            if _placeholder(scope):
+                issues.append(Issue("placeholder_value", ticket.id, f"write scope {scope!r} is still a placeholder"))
+        for command in ticket.verify:
+            if _placeholder(command):
+                issues.append(Issue("placeholder_value", ticket.id, f"verify {command!r} is still a placeholder"))
         for scope in (*ticket.write_scope, *ticket.read_scope):
-            error = _scope_error(scope)
+            error = _scope_error(scope, root)
             if error:
                 issues.append(Issue("invalid_scope", ticket.id, f"{scope!r}: {error}"))
         if ticket.id in by_id:

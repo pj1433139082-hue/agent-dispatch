@@ -184,6 +184,7 @@ def render_summary(slug: str, title: str, roles: list[Role]) -> str:
         "- 签字人：",
         "- 日期：",
         "- 备注：",
+        "- 选择：☐ 通过　☐ 有保留通过　☐ 打回",
         "",
     ])
     return "\n".join(lines)
