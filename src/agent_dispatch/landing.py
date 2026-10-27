@@ -299,3 +299,25 @@ def _verify_after_landing(root: Path, branch: str, ticket: Ticket) -> dict[str, 
         shutil.rmtree(directory, ignore_errors=True)
     failed = [item for item in results if int(item.get("exit_code", 1)) != 0]
     return {"status": "fail" if failed else "pass", "commands": results}
+
+
+def run_commands_on_branch(root: Path, branch: str, commands: list[str]) -> dict[str, object]:
+    """在 integration 分支上跑一组命令（去重由调用方做）。"""
+    from .verify import _run_command
+
+    directory = root / ".dispatch" / "landings" / f"verify-{uuid.uuid4().hex[:6]}"
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    added = _git(root, "worktree", "add", "--detach", str(directory), branch)
+    if added.returncode != 0:
+        return {"status": "fail", "reason": "cannot create a verify worktree: " + _detail(added), "commands": []}
+    results: list[dict[str, object]] = []
+    try:
+        log = directory / ".dispatch-verify.log"
+        for command in commands:
+            results.append(_run_command(command, directory, log, 300))
+    finally:
+        _git(root, "worktree", "remove", "--force", str(directory))
+        _git(root, "worktree", "prune")
+        shutil.rmtree(directory, ignore_errors=True)
+    failed = [item for item in results if int(item.get("exit_code", 1)) != 0]
+    return {"status": "fail" if failed else "pass", "commands": results}

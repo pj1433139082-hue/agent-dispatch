@@ -2377,7 +2377,27 @@ def _land_wave(args: argparse.Namespace) -> int:
             continue
         landed_ids.add(tid)
         landed.append({"ticket_id": tid, "branch": record.get("integration_branch")})
+    verify_wave: dict[str, object] | None = None
+    if getattr(args, "verify", False) and getattr(args, "branch", None) and landed and not getattr(args, "dry_run", False):
+        from .landing import run_commands_on_branch
+
+        commands: list[str] = []
+        for item in landed:
+            ticket = next((entry for entry in tickets if entry.id == item["ticket_id"]), None)
+            if ticket is not None:
+                for command in ticket.verify:
+                    if command not in commands:
+                        commands.append(command)
+        verify_wave = run_commands_on_branch(args.root, str(args.branch), commands)
+        print(f"VERIFY-AFTER wave {args.branch}: {verify_wave.get('status')} ({len(commands)} unique command(s))")
+        if verify_wave.get("status") != "pass":
+            for entry in verify_wave.get("commands", []):
+                if int(entry.get("exit_code", 1)) != 0:
+                    print(f"  $ {entry.get('command')} -> exit {entry.get('exit_code')}", file=sys.stderr)
+
     payload = {"landed": landed, "planned": planned, "skipped": skipped, "failed": failed, "dry_run": bool(getattr(args, "dry_run", False))}
+    if verify_wave is not None:
+        payload["verify_wave"] = verify_wave
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -2389,7 +2409,9 @@ def _land_wave(args: argparse.Namespace) -> int:
             print(f"SKIP   {item['ticket_id']}  {item['reason']}")
         for item in failed:
             print(f"FAILED {item['ticket_id']}  {item['reason']}", file=sys.stderr)
-    return 1 if failed else 0
+    if failed or (verify_wave is not None and verify_wave.get("status") != "pass"):
+        return 1
+    return 0
 
 
 def _cmd_land(args: argparse.Namespace) -> int:

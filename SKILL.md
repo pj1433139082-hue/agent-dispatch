@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.5.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.6.0。
 
 ## 何时使用
 
@@ -431,6 +431,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 - `--append` 把 run commit **merge 进已存在的 integration 分支**；不加它而分支已存在 → 报错并提示两条路。
 - 仍需人工 push / 开 PR；land 始终不碰目标分支。
 - **`--verify`（v1.5.0）**：落地后在 integration 分支上复跑票面 Verify，打印 `VERIFY-AFTER <id>: pass|fail`；失败退出码 1，逐条列出失败命令，并把 `landing.json` 的 `status` 记成 **`landed-unverified`**（分支已建，但没通过合后验证）。用途：抓"worktree 里能过、合进分支就挂"的票（典型：判据依赖被 gitignore 的产物）。
+- **整波一次验（v1.6.0）**：`land --wave --branch X --append --verify` 会在合完之后，把**所有落地票的 Verify 去重后在同一条分支上跑一次**，打印 `VERIFY-AFTER wave X: pass|fail (N unique command(s))`；失败退出码 1。不带 `--branch` 时仍逐票各验一次。
 
 ## retry 会重写 context.md（v1.3.0）
 
