@@ -31,6 +31,22 @@
 | 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots / **`gc` 对未 land worktree 判 HOLD** | — |
 | 人设/导出 | personas / assign / new --persona / context / export 四格式 | — |
 | 看板 | push / status / run / outcome / update / archive / mark-done 缺证据拒付 / **push 对 L3 以下票的警告** | — |
+## D 路径演练记录（2026-10-27，dispatch-a-smoke）
+
+故意造脏：1 张 failed 票、1 个超期 claimed run（带租约）、1 张 done 未落地、主仓脏文件。
+
+| 步骤 | 结果 |
+|---|---|
+| `wrap` | exit 1，报 3 类问题 + Next 四步 |
+| `doctor` | `failed 10` / `deadline 1 overdue` / `leases 1 active` / `checkout scratch-note.txt` |
+| `sweep --json` | `over_deadline: true, age_seconds: 80, deadline_seconds: 60` |
+| `doctor --fix` | **清不掉超期 run**（文档已写），`auto` preflight 仍报 `runs past their deadline: 11` |
+| `auto --resume` | 必须加 `--force` 才能跳过全局 preflight |
+| 恢复 | `release 11` → `retry 10/11` → `auto --resume --force` → `review` → `land --wave --branch wave/drill --append --verify` |
+| 收口 | `gc`（预览 12 条 REMOVE）、`doctor` OK、`wrap` **CLEAN / done 12** |
+
+**演练抓到的真问题（v1.6.1 修）**：`auto --executor "python tools/exec_x.py"` 用的是 **run worktree 里的旧快照**——脚本在 render 之后才提交，worktree 里没有它/是旧版 → 执行器静默失败 → 只看到 `receipt.json is missing`。现在这条报错会直接说清：脚本必须在 render **之前**提交，或改用绝对路径。
+
 ## 文档改动必须由 fresh 会话复现（v1.0.2）
 
 改 `SKILL.md` / `docs/**` / 模板后，让一个**没有当前上下文**的执行者（`spawn_teammate({context:"fresh"})` 或看板新会话）照文档做一遍，报告必须含：

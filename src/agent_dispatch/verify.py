@@ -435,7 +435,13 @@ def verify_run(
     receipt: dict[str, object] | None = None
     receipt_kind = ""
     if not receipt_path.is_file():
-        check("receipt", False, "receipt.json is missing")
+        check(
+            "receipt",
+            False,
+            "receipt.json is missing (the executor must write it into the run directory; "
+            "if the executor script lives inside the worktree, it has to be committed BEFORE render, "
+            "otherwise the run only sees the older snapshot — pass an absolute path instead)",
+        )
     else:
         try:
             payload = json.loads(receipt_path.read_text(encoding="utf-8"))
