@@ -6,6 +6,8 @@ lives in the dispatch state store so that an executor cannot rewrite the brief.
 
 from __future__ import annotations
 
+import os
+
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -263,7 +265,15 @@ def load_tickets(directory: Path) -> list[Ticket]:
 def _scope_error(scope: str, root: Path | None = None) -> str | None:
     if not scope:
         return "empty scope"
+    drive_path = bool(re.match(r"^[A-Za-z]:[\\/]", scope))
     if scope.startswith("/") or re.match(r"^[A-Za-z]:", scope):
+        if drive_path and os.name != "nt":
+            # 在 POSIX 上 Path("D:/x").resolve() 会被当成仓库内的相对路径，
+            # 导致同一个票在不同平台得到不同结论。统一按"绝对路径且在项目外"处理。
+            return (
+                "absolute paths are not allowed, and this one is outside the project root; "
+                "write scopes must stay inside the repository"
+            )
         if root is not None:
             try:
                 relative = Path(scope).resolve().relative_to(Path(root).resolve())
