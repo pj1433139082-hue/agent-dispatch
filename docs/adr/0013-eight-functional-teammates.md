@@ -132,7 +132,9 @@ main                → 一个都没有
 
 每张票各自绿、合起来没有任何一条分支同时包含三者；`main` 也始终不动（land 不合并目标分支，这是设计）。
 
-**下一步该补的**（未做）：`land --wave --into-branch <name>` —— 按波次顺序把每张票合进**同一条** integration 分支，合完在该分支跑一次受影响目录的全量 Verify；现在只能人工依次 merge 三条分支。
+**已补（v1.4.0）**：`land <id> --branch <name> --append` 把 run commit **merge 进已存在的 integration 分支**，`land --wave --branch <name> --append` 可整波落一条分支。实测：`wave/demo` 里同时有 `docs/four.txt` 与 `docs/five.txt`；不加 `--append` 而分支已存在 → 报错并提示两条路。
+
+**仍未做**：合完在该分支跑一次受影响目录的全量 Verify（现在仍需人工跑）。
 
 ## 4. 未定
 
