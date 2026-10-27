@@ -111,6 +111,29 @@ auditor 给出 7 条，结论"建议改道 8→6"。我们采纳了其中 4 条�
 
 **坑**：`cleanup_team { scope: "teammates" }` 会删掉**所有** inactive/failed 成员——包括闲置的职能队友。要留着职能队时，只能逐个 `delete_teammate`。
 
+### 6.2 `land --wave` 实测（2026-10-27，dispatch-a-smoke 仓库）
+
+三张票（01 已落、02 依赖 01、03 独立）实测：
+
+```
+land --wave --dry-run   →  WOULD 03 / WOULD 02 / SKIP 01
+land --wave             →  LANDED 03 / LANDED 02 / SKIP 01
+wrap                    →  done 3, Frontier: -, CLEAN
+```
+
+**确认了 auditor 说的"没有集成者"**：落地后得到的是三条**互不包含**的分支——
+
+```
+dispatch/land/01-…  → 只有 docs/hello.txt
+dispatch/land/02-…  → 只有 docs/bye.txt
+dispatch/land/03-…  → 只有 docs/hi.txt
+main                → 一个都没有
+```
+
+每张票各自绿、合起来没有任何一条分支同时包含三者；`main` 也始终不动（land 不合并目标分支，这是设计）。
+
+**下一步该补的**（未做）：`land --wave --into-branch <name>` —— 按波次顺序把每张票合进**同一条** integration 分支，合完在该分支跑一次受影响目录的全量 Verify；现在只能人工依次 merge 三条分支。
+
 ## 4. 未定
 
 - 常驻成员上下文清理：DSH 没有"清空成员上下文"的接口，只能靠 fresh 实例；常驻成员的长会话风险未量化。
