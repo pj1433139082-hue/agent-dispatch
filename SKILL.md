@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.6.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.7.0。
 
 ## 何时使用
 
@@ -401,7 +401,7 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 
 `- Requires: local | network | ssh | browser`（默认 `local`）。当前只做解析 + lint 警告（`environment_needed` / `invalid_requires`），**不做硬门**——执行端能力清单还没定。
 
-命令表以 **`docs/commands.md`（随包分发的自动生成版）** 为准；在仓库里跑 `python scripts/gen_command_table.py` 重写，测试 `--check` 比对，漂移即红。（`scripts/build_skill.py` 是仓库打包脚本，不随包分发。）
+命令表以 **`docs/commands.md`（随包分发的自动生成版）** 为准；在仓库里跑 `python scripts/gen_command_table.py` 重写，测试 `--check` 比对，漂移即红。（`scripts/build_skill.py`（打包到 `dist/`）与 `scripts/install_skill.py`（镜像到 `~/.agents/skills`，会删掉陈旧文件与 `__pycache__`）都是仓库脚本，不随包分发。）
 
 ## Verify 必须"本机一次跑通"（v0.89，来自 ts-sweep-server 的教训）
 
