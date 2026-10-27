@@ -84,3 +84,5 @@ def test_land_verify_fails_when_the_branch_cannot_satisfy_the_commands(tmp_path:
     combined = result.stdout + result.stderr
     assert "VERIFY-AFTER" in combined
     assert "fail" in combined.lower()
+    landing = json.loads(next((tmp_path / ".dispatch" / "runs").glob("*/landing.json")).read_text(encoding="utf-8"))
+    assert landing["status"] == "landed-unverified"

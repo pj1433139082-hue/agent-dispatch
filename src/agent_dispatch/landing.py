@@ -257,6 +257,13 @@ def land_run(
         "pushed": False,
         "pr_url": None,
     }
+    if verify_after:
+        outcome = _verify_after_landing(root, integration, ticket)
+        record["verify_after"] = outcome
+        record["verify_after_status"] = str(outcome.get("status", "fail"))
+        if record["verify_after_status"] != "pass":
+            record["status"] = "landed-unverified"
+
     landing_path = run.directory / "landing.json"
     landing_path.write_text(
         json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -269,10 +276,6 @@ def land_run(
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
     run.data["landing"] = record
     run.write()
-    if verify_after:
-        outcome = _verify_after_landing(root, integration, ticket)
-        record["verify_after"] = outcome
-        record["verify_after_status"] = str(outcome.get("status", "fail"))
     return record
 
 
