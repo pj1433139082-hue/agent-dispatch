@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.7.2。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.7.3。
 
 ## 何时使用
 
@@ -328,6 +328,10 @@ dispatch install-hooks --force  # 覆盖已有的
 ## 团队
 
 八个职能队友（scout/planner/executor/verifier/reviewer/auditor/fixer/scribe）、派活模板与三条硬规矩：`docs/team/README.md`（ADR-0013）。
+
+## 这个月发生了什么
+
+0.1 → 1.7.2 的主线、四条流程实战结论、三次"看起来绿其实是假的"：`docs/CHANGELOG-2026-10.md`。
 
 ## 术语
 
