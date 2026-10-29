@@ -80,9 +80,16 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-29 · v1.8.0：land 之后的整分支全量回归
+
+- 新增 `land --verify-all "<命令>"`（可重复，重复命令只跑一次）：落地后在 integration branch 的临时 worktree 里跑**你给的回归命令**；失败把 `landing.json` 记成 `landed-unverified`、`verify_all_status: fail`，退出码 1。
+- `land --wave --branch X --append --verify-all` 只在整波落完之后跑一次；不带 `--branch` 在落地前报错。
+- 与 `--verify` 的分工：`--verify` 复跑票面 Verify（这张票能不能跑），`--verify-all` 跑整套回归（这条分支还能不能用）。
+- `--verify-all-timeout` 默认 1800 秒/条。
+
 ## 明确没做
 
-- `land` 之后的"在累积分支跑全量 Verify"只做到"逐票命令去重跑一次"，不是整套回归。
+- ~~`land` 之后的"在累积分支跑全量 Verify"只做到"逐票命令去重跑一次"，不是整套回归。~~ **v1.8.0 已补**：`--verify-all` 把整套回归接进 land；仍未自动推导"受影响目录"，回归命令要人给。
 - 没有集成者角色：多条 land 分支仍需人工 merge 或 `--append` 累积。
 - 跨平台只在 Windows（开发）与 ubuntu-latest（CI）两处验证，macOS 未跑过。
 - 判据强度的唯一硬证据仍是"把实现改坏它会红"（变异检查），没有自动化门禁。

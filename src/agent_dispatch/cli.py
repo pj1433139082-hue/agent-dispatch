@@ -45,7 +45,7 @@ from .seats import DEFAULT_CAP, check as check_seats
 from .select import DEFAULT_ROLES, all_roles, pack_dir, panel, write_pack as write_selection_pack
 from .context import build_context_pack, write_context_pack
 from .graph import build_plan
-from .landing import LandingError, land_run
+from .landing import LandingError, land_run, run_commands_on_branch
 from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
 from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
 from .pipeline import (
@@ -399,6 +399,22 @@ def _parser() -> argparse.ArgumentParser:
         "--verify",
         action="store_true",
         help="After landing, re-run the ticket Verify commands on the integration branch.",
+    )
+    land_parser.add_argument(
+        "--verify-all",
+        action="append",
+        dest="verify_all",
+        metavar="COMMAND",
+        default=None,
+        help="After landing, run COMMAND on the integration branch (repeatable); use it for a full-branch regression such as the repo's test suite.",
+    )
+    land_parser.add_argument(
+        "--verify-all-timeout",
+        type=int,
+        default=1800,
+        dest="verify_all_timeout",
+        metavar="SECONDS",
+        help="Timeout for each --verify-all command (default: 1800).",
     )
     land_parser.add_argument(
         "--append",
@@ -2300,6 +2316,13 @@ def _current_run(root: Path, ticket_id: str):
 
 
 def _land_wave(args: argparse.Namespace) -> int:
+    verify_all_commands = list(dict.fromkeys(getattr(args, "verify_all", None) or []))
+    if verify_all_commands and not getattr(args, "branch", None):
+        print(
+            "land --wave --verify-all needs --branch: the full regression runs once on the wave branch",
+            file=sys.stderr,
+        )
+        return 1
     directory = Path(getattr(args, "tickets", None) or (Path(args.root) / "tickets"))
     tickets, issues = _load_and_lint(directory)
     if issues:
@@ -2379,8 +2402,6 @@ def _land_wave(args: argparse.Namespace) -> int:
         landed.append({"ticket_id": tid, "branch": record.get("integration_branch")})
     verify_wave: dict[str, object] | None = None
     if getattr(args, "verify", False) and getattr(args, "branch", None) and landed and not getattr(args, "dry_run", False):
-        from .landing import run_commands_on_branch
-
         commands: list[str] = []
         for item in landed:
             ticket = next((entry for entry in tickets if entry.id == item["ticket_id"]), None)
@@ -2395,9 +2416,23 @@ def _land_wave(args: argparse.Namespace) -> int:
                 if int(entry.get("exit_code", 1)) != 0:
                     print(f"  $ {entry.get('command')} -> exit {entry.get('exit_code')}", file=sys.stderr)
 
+    verify_all_wave: dict[str, object] | None = None
+    if verify_all_commands and landed and not getattr(args, "dry_run", False):
+        verify_all_wave = run_commands_on_branch(
+            args.root, str(args.branch), verify_all_commands,
+            timeout=int(getattr(args, "verify_all_timeout", 1800)),
+        )
+        print(f"VERIFY-ALL wave {args.branch}: {verify_all_wave.get('status')} ({len(verify_all_commands)} command(s))")
+        if verify_all_wave.get("status") != "pass":
+            for entry in verify_all_wave.get("commands", []):
+                if int(entry.get("exit_code", 1)) != 0:
+                    print(f"  $ {entry.get('command')} -> exit {entry.get('exit_code')}", file=sys.stderr)
+
     payload = {"landed": landed, "planned": planned, "skipped": skipped, "failed": failed, "dry_run": bool(getattr(args, "dry_run", False))}
     if verify_wave is not None:
         payload["verify_wave"] = verify_wave
+    if verify_all_wave is not None:
+        payload["verify_all_wave"] = verify_all_wave
     if args.as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -2410,6 +2445,8 @@ def _land_wave(args: argparse.Namespace) -> int:
         for item in failed:
             print(f"FAILED {item['ticket_id']}  {item['reason']}", file=sys.stderr)
     if failed or (verify_wave is not None and verify_wave.get("status") != "pass"):
+        return 1
+    if verify_all_wave is not None and verify_all_wave.get("status") != "pass":
         return 1
     return 0
 
@@ -2494,10 +2531,13 @@ def _cmd_land(args: argparse.Namespace) -> int:
             integration_branch=args.branch,
             append=bool(getattr(args, "append", False)),
             verify_after=bool(getattr(args, "verify", False)),
+            verify_all=getattr(args, "verify_all", None),
+            verify_all_timeout=int(getattr(args, "verify_all_timeout", 1800)),
         )
     except LandingError as exc:
         print(f"LAND {exc}", file=sys.stderr)
         return 1
+    verification_failed = False
     verify_after = record.get("verify_after") if isinstance(record, dict) else None
     if isinstance(verify_after, dict):
         status = str(verify_after.get("status", "fail"))
@@ -2506,7 +2546,18 @@ def _cmd_land(args: argparse.Namespace) -> int:
             for item in verify_after.get("commands", []):
                 if int(item.get("exit_code", 1)) != 0:
                     print(f"  $ {item.get('command')} -> exit {item.get('exit_code')}", file=sys.stderr)
-            return 1
+            verification_failed = True
+    verify_all_result = record.get("verify_all") if isinstance(record, dict) else None
+    if isinstance(verify_all_result, dict):
+        all_status = str(verify_all_result.get("status", "fail"))
+        print(f"VERIFY-ALL {args.ticket_id}: {all_status} on {record.get('integration_branch')}")
+        if all_status != "pass":
+            for item in verify_all_result.get("commands", []):
+                if int(item.get("exit_code", 1)) != 0:
+                    print(f"  $ {item.get('command')} -> exit {item.get('exit_code')}", file=sys.stderr)
+            verification_failed = True
+    if verification_failed:
+        return 1
     # land 之后释放这个 run 的文件租约：票已经合入，写域不再被占用
     released = release_claims(args.root, str(record.get("run_id", "")))
     if args.as_json:
