@@ -70,7 +70,7 @@ ready -> claimed -> running -> review -> done
 - 证据路径相对 Run 目录，不能是绝对路径。
 - `file`：文件必须存在；带 `sha256` 就核对，不带则记录实际哈希。
 - `inline`：字面内容；带 `sha256` 就核对。
-- `absent`：该路径必须不存在。
+- `absent`：该路径必须不存在（**相对 Run 目录**判存在，不是相对 execution root；worktree 里有同名文件不影响判定）。
 - `command`：执行者报告的命令与退出码；verify 不复跑，但 `exit_code` 必须为 0。
 - `note`：只有陈述，没有可复算物证。一个 criterion 如果只有 note 证据，会把该 criterion 记为 attested。
 

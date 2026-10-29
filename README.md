@@ -182,7 +182,7 @@ dispatch render 01 --agent worker-a
 
 - **file**：文件存在；带 sha256 就核对，不带则记录实际哈希。
 - **inline**：字面内容；带 sha256 就核对。
-- **absent**：该相对路径必须不存在。
+- **absent**：该相对路径必须不存在（**相对 Run 目录**判存在，不是 execution root）。
 - **command**：执行者报告的命令与退出码；verify 不复跑，但 exit_code 必须为 0。
 - **note**：只有人工/agent 陈述；一个 criterion 如果只有 note 证据，会把整体结论降为 degraded。
 
