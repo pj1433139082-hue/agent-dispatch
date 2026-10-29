@@ -120,6 +120,7 @@ class Run:
         use_worktree: bool = True,
         deadline_seconds: int = 900,
         persona_waiver_source: str = "",
+        persona_required: bool = False,
     ) -> "Run":
         root = Path(root).resolve()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -157,6 +158,7 @@ class Run:
             "use_worktree": False,
             "execution_root": "",
         }
+        data["persona_required"] = bool(persona_required) and not persona_waiver_source
         fingerprint = persona_fingerprint(ticket, root)
         if fingerprint:
             data["persona"] = fingerprint

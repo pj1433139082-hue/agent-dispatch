@@ -765,6 +765,14 @@ def _cmd_status(args: argparse.Namespace) -> int:
                 current = next((t for t in (tickets or []) if t.id == row["id"]), None)
                 if recorded and current is not None and current.content_hash != recorded:
                     hint = f"   -> 票在 render 后被改过（revert 或 retry {row['id']}）"
+                verify_file = runs_root / run_id / "verify.json"
+                if verify_file.is_file():
+                    try:
+                        verdict = str(json.loads(verify_file.read_text(encoding="utf-8")).get("status", ""))
+                    except (OSError, json.JSONDecodeError):
+                        verdict = ""
+                    if verdict == "degraded":
+                        hint = "   -> degraded 验收（review 需 --accept-degraded）"
         if str(row["state"]) == "done":
             entry = store.ticket(str(row["id"])) or {}
             run_id = str(entry.get("run_id", ""))
@@ -1118,6 +1126,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             use_worktree=not args.no_worktree,
             deadline_seconds=max(1, args.deadline_minutes) * 60,
             persona_waiver_source=waiver_source,
+            persona_required=persona_required(ticket.risk, policy),
         )
     except ValueError as error:
         print(f"RENDER {error}", file=sys.stderr)
@@ -2692,6 +2701,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             ticket,
             executor=args.executor,
             allow_unassigned_persona=bool(getattr(args, "allow_unassigned_persona", False)),
+            persona_required=persona_required(ticket.risk, auto_policy),
             agent=args.agent,
             max_attempts=args.max_attempts,
             timeout=args.timeout,
