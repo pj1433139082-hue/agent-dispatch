@@ -427,11 +427,15 @@ def _persona_state(root: Path, ticket: Ticket, run: Run, receipt: dict | None) -
             legacy = tuple(int(p) for p in parts[:3]) < (1, 8, 3)
         except ValueError:
             legacy = False
-    required = (
-        not legacy
-        and persona_required(ticket.risk, policy)
-        and not run.data.get("persona_waiver")
-    )
+    frozen = run.data.get("persona_required")
+    if isinstance(frozen, bool):
+        required = frozen and not legacy
+    else:
+        required = (
+            not legacy
+            and persona_required(ticket.risk, policy)
+            and not run.data.get("persona_waiver")
+        )
     record["required"] = required
     record["legacy"] = legacy
     if bound:
@@ -448,6 +452,8 @@ def _persona_state(root: Path, ticket: Ticket, run: Run, receipt: dict | None) -
             record["receipt"] = reported
             if bound and str(reported.get("sha256", "")) != str(bound.get("sha256", "")):
                 issues.append("receipt persona does not match the run binding")
+            if bound and str(reported.get("source", "")) != str(bound.get("source", "")):
+                issues.append("receipt persona source does not match the run binding")
             if not bound:
                 issues.append("receipt reports a persona but the run has none")
         elif required:

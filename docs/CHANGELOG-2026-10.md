@@ -80,6 +80,14 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.8.4：人格验收反馈补齐
+
+- 回执 persona 现在**同时比对 source 与 sha256**（此前只比 sha，source 写错也能过）。
+- `persona_required` 在 render 时冻结进 run：verify 不再重读 config，render 后改 `persona_policy` 不会改变这张 run 的判定。
+- 工单的回执契约里写明 persona 字段（顶层 `{"persona": {"source","sha256"}}`），不再只靠 ADR。
+- `status` 对 `review` 状态的 run 显示 `degraded 验收（review 需 --accept-degraded）`。
+- 测试：`tests/test_persona_binding.py` 增至 9 条（新增 source 不匹配、required 冻结）。
+
 ## 2026-10-30 · v1.8.3：人格绑定与审计（ADR 0014）
 
 - `render` 把角色卡的 `sha256` / 来源 / 名字写进 `run.json.persona`；票面 `Persona:` 只算意图。

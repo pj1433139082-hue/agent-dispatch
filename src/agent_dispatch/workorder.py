@@ -130,6 +130,10 @@ Every criterion needs at least one evidence item. Evidence kinds:
 - `command`: a command and exit_code the executor observed (not rerun by verify).
 - `note`: an attested human/agent statement; a criterion supported only by notes is degraded.
 
+If the ticket has a persona, copy `persona` from `run.json` into the receipt
+(top-level, not inside criteria): `{{"persona": {{"source": "...", "sha256": "..."}}}}`.
+A missing or mismatching persona turns the verification into `degraded`.
+
 The verifier reruns the verification commands from the execution root, checks the
 real git diff against the write scope, and rejects a polluted main checkout.
 Do not edit the ticket, do not change its status, and do not claim done yourself.

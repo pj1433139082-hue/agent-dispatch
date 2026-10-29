@@ -194,3 +194,30 @@ def test_legacy_runs_without_persona_binding_are_not_degraded(tmp_path: Path) ->
     assert result.returncode == 0, result.stdout + result.stderr
     record = json.loads((run_dir / "verify.json").read_text(encoding="utf-8"))
     assert record["persona"]["legacy"] is True
+
+
+def test_receipt_with_the_right_hash_but_wrong_source_is_degraded(tmp_path: Path) -> None:
+    run_dir = prepare(tmp_path)
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    write_receipt(run_dir, run, {"source": "personas/someone-else.md", "sha256": run["persona"]["sha256"]})
+
+    result = run_dispatch(tmp_path, "verify", "01")
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    record = json.loads((run_dir / "verify.json").read_text(encoding="utf-8"))
+    assert "receipt persona source does not match the run binding" in record["persona"]["issues"]
+
+
+def test_persona_requirement_is_frozen_at_render(tmp_path: Path) -> None:
+    run_dir = prepare(tmp_path)
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    (tmp_path / ".dispatch" / "config.json").write_text(
+        json.dumps({"persona_policy": "off", "require_brief": False}), encoding="utf-8"
+    )
+    write_receipt(run_dir, run)
+
+    result = run_dispatch(tmp_path, "verify", "01")
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    record = json.loads((run_dir / "verify.json").read_text(encoding="utf-8"))
+    assert record["persona"]["required"] is True

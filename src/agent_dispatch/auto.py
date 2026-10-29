@@ -266,6 +266,7 @@ def auto_run(
     timeout: int = 1800,
     verify_timeout: int = 300,
     allow_unassigned_persona: bool = False,
+    persona_required: bool = False,
     until: str = "review",
     reviewer: str = "",
     reviewer_command: str = "",
@@ -345,6 +346,7 @@ def auto_run(
             run = Run.create(
                 root, ticket, claimed_by=agent, use_worktree=True,
                 persona_waiver_source=waiver_source,
+                persona_required=persona_required,
             )
         except ValueError as error:
             raise AutoError(str(error)) from error
