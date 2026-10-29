@@ -80,6 +80,12 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-29 · v1.8.1：三个下游技能改成「原技能底座 + 差异层」
+
+- `grill-dispatch` / `to-spec-dispatch` / `to-tickets-dispatch` 不再各自重写删减版：开头显式 `Skill("grilling" / "to-spec" / "to-tickets")`，正文只留 dispatch 产物与门禁，并写冲突裁定与「上游锚点」。
+- 补齐被删掉的原技能协议：设计树/前沿/分轮追问/每题推荐答案；测试接缝并与人确认、User Stories 要长、Implementation Decisions 写法约束；tracer-bullet 垂直切片、预重构、宽改 expand–contract、拆完人审三问。
+- 按 2026-10-29 看板无人值守实测（自评 20/24）修正文档与工具不一致：`sign` 实际改 4 行、`questions` 拒绝 exit 2、`select` 必写 `00-panel.json`、`--with` 多写 04/05、`tickets` 草稿在写域外、新票撞历史票写域的处理。
+
 ## 2026-10-29 · v1.8.0：land 之后的整分支全量回归
 
 - 新增 `land --verify-all "<命令>"`（可重复，重复命令只跑一次）：落地后在 integration branch 的临时 worktree 里跑**你给的回归命令**；失败把 `landing.json` 记成 `landed-unverified`、`verify_all_status: fail`，退出码 1。
