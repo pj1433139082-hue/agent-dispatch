@@ -47,7 +47,16 @@ from .context import build_context_pack, write_context_pack
 from .graph import build_plan
 from .landing import LandingError, land_run, run_commands_on_branch
 from .lifecycle import ScopeError, claim as claim_paths, expand_scope, gc as gc_worktrees, release as release_claims, evidence_state, repair as repair_state, sweep as sweep_runs
-from .persona import BUILTIN_PERSONA_DIR, Persona, PersonaError, discover_personas, load_persona
+from .persona import (
+    BUILTIN_PERSONA_DIR,
+    Persona,
+    PersonaError,
+    PERSONA_POLICY_OFF,
+    discover_personas,
+    load_persona,
+    persona_policy,
+    persona_required,
+)
 from .pipeline import (
     grill_questions,
     confirm_spec,
@@ -83,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--tickets", type=Path, default=None)
     render_parser.add_argument("--root", type=Path, default=Path("."))
     render_parser.add_argument("--agent", default="", help="Agent claiming the run.")
+    render_parser.add_argument(
+        "--allow-unassigned-persona",
+        action="store_true",
+        dest="allow_unassigned_persona",
+        help="Render without a persona even when persona_policy would require one (recorded as a waiver on the run).",
+    )
     render_parser.add_argument(
         "--no-worktree",
         action="store_true",
@@ -483,6 +498,12 @@ def _parser() -> argparse.ArgumentParser:
         "--force", action="store_true",
         help="Skip the preflight health check (index vs disk).",
     )
+    auto_parser.add_argument(
+        "--allow-unassigned-persona",
+        action="store_true",
+        dest="allow_unassigned_persona",
+        help="Run without a persona even when persona_policy would require one (recorded as a waiver on the run).",
+    )
 
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
     status_parser.add_argument("--tickets", type=Path, default=None)
@@ -731,9 +752,16 @@ def _cmd_status(args: argparse.Namespace) -> int:
             run_file = runs_root / run_id / "run.json"
             if run_file.is_file():
                 try:
-                    recorded = str(json.loads(run_file.read_text(encoding="utf-8")).get("ticket_hash", ""))
+                    info = json.loads(run_file.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
-                    recorded = ""
+                    info = {}
+                recorded = str(info.get("ticket_hash", ""))
+                waiver = info.get("persona_waiver") if isinstance(info.get("persona_waiver"), dict) else {}
+                bound = info.get("persona") if isinstance(info.get("persona"), dict) else {}
+                if waiver:
+                    hint = f"   -> persona waived ({waiver.get('source', 'policy')})"
+                elif bound.get("name"):
+                    hint = f"   -> persona {bound.get('name')}"
                 current = next((t for t in (tickets or []) if t.id == row["id"]), None)
                 if recorded and current is not None and current.content_hash != recorded:
                     hint = f"   -> 票在 render 后被改过（revert 或 retry {row['id']}）"
@@ -1023,16 +1051,21 @@ def _cmd_render(args: argparse.Namespace) -> int:
         return 1
 
     policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
-    if policy in {"off", "none", "optional"}:
-        pass
-    else:
-        threshold = {"l2": {"L2", "L3", "L4"}, "l3": {"L3", "L4"}, "l4": {"L4"}}.get(policy, {"L2", "L3", "L4"})
-        if ticket.risk in threshold and not ticket.persona:
+    allow_unassigned = bool(getattr(args, "allow_unassigned_persona", False))
+    if not allow_unassigned:
+        if persona_required(ticket.risk, policy) and not ticket.persona:
             print(
                 f"ticket {ticket.id}: risk {ticket.risk} needs a persona; run dispatch assign {ticket.id} --persona <name> (or set persona_policy=off in .dispatch/config.json)",
                 file=sys.stderr,
             )
             return 6
+
+    waiver_source = ""
+    if not ticket.persona:
+        if policy in PERSONA_POLICY_OFF:
+            waiver_source = "policy=off"
+        elif allow_unassigned:
+            waiver_source = "flag"
 
     require_brief = getattr(args, "require_brief", False) or bool(load_config(Path(args.root)).get("require_brief", False))
     if require_brief:
@@ -1084,6 +1117,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             claimed_by=args.agent,
             use_worktree=not args.no_worktree,
             deadline_seconds=max(1, args.deadline_minutes) * 60,
+            persona_waiver_source=waiver_source,
         )
     except ValueError as error:
         print(f"RENDER {error}", file=sys.stderr)
@@ -1533,6 +1567,43 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
         if ticket_id:
             unlanded.add(ticket_id)
     unlanded_tickets = sorted(unlanded)
+    from .persona import persona_policy as _persona_policy, persona_required as _persona_required
+
+    policy_name = _persona_policy(root)
+    risks = {ticket.id: ticket.risk for ticket in (tickets or [])}
+    unbound_persona: list[str] = []
+    if runs_dir.is_dir():
+        for entry in sorted(runs_dir.iterdir()):
+            if not entry.is_dir() or not (entry / "run.json").is_file():
+                continue
+            if (entry / "landing.json").is_file():
+                continue
+            try:
+                info = json.loads((entry / "run.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            ticket_id = str(info.get("ticket_id", ""))
+            risk = risks.get(ticket_id, "")
+            if not ticket_id or not risk:
+                continue
+            skill = str(info.get("skill_version", ""))
+            try:
+                legacy = tuple(int(part) for part in skill.split(".")[:3]) < (1, 8, 3)
+            except ValueError:
+                legacy = False
+            if legacy:
+                continue
+            if (
+                _persona_required(risk, policy_name)
+                and not info.get("persona")
+                and not info.get("persona_waiver")
+            ):
+                unbound_persona.append(ticket_id)
+    if unbound_persona:
+        issues.append(
+            f"{len(unbound_persona)} run(s) without a persona binding and without a waiver — "
+            f"tickets: {', '.join(sorted(set(unbound_persona)))}"
+        )
     if runs_without_landing:
         detail = f" — tickets: {', '.join(unlanded_tickets)}" if unlanded_tickets else ""
         issues.append(
@@ -1553,6 +1624,8 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
         elif "without landing.json" in issue:
             actions.append("dispatch land --wave --dry-run   # 先看会落哪几张")
             actions.append("dispatch gc               # 看哪些 run 可 REMOVE / 需 HOLD")
+        elif "without a persona binding" in issue:
+            actions.append("dispatch assign <id> --persona <name>，或 render 时 --allow-unassigned-persona")
         elif "repair check failed" in issue:
             actions.append("dispatch repair           # 先 dry-run 看看")
     payload = {
@@ -2599,8 +2672,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
         print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
         return 1
     auto_policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
-    auto_threshold = {"l2": {"L2", "L3", "L4"}, "l3": {"L3", "L4"}, "l4": {"L4"}}.get(auto_policy, {"L2", "L3", "L4"})
-    if auto_policy not in {"off", "none", "optional"} and ticket.risk in auto_threshold and not ticket.persona:
+    if not getattr(args, "allow_unassigned_persona", False) and persona_required(ticket.risk, auto_policy) and not ticket.persona:
         print(
             f"ticket {ticket.id}: risk {ticket.risk} needs a persona; run dispatch assign {ticket.id} --persona <name>",
             file=sys.stderr,
@@ -2619,6 +2691,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             args.root,
             ticket,
             executor=args.executor,
+            allow_unassigned_persona=bool(getattr(args, "allow_unassigned_persona", False)),
             agent=args.agent,
             max_attempts=args.max_attempts,
             timeout=args.timeout,

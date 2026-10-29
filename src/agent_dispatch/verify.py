@@ -404,6 +404,60 @@ def _evaluate_criteria(
     return records, evidence, errors, degraded
 
 
+def _persona_state(root: Path, ticket: Ticket, run: Run, receipt: dict | None) -> tuple[dict[str, object], list[str]]:
+    """人格绑定与回执核对：只影响 degraded，不让 verify 直接 failed。"""
+    from .persona import persona_policy, persona_required, persona_source_path
+
+    record: dict[str, object] = {
+        "required": False,
+        "bound": run.data.get("persona"),
+        "waiver": run.data.get("persona_waiver"),
+        "receipt": None,
+        "issues": [],
+    }
+    issues: list[str] = []
+    policy = persona_policy(root)
+    bound = run.data.get("persona") if isinstance(run.data.get("persona"), dict) else None
+    waiver = run.data.get("persona_waiver") if isinstance(run.data.get("persona_waiver"), dict) else None
+    legacy = False
+    if not bound and not waiver:
+        skill = str(run.data.get("skill_version", ""))
+        parts = skill.split(".")
+        try:
+            legacy = tuple(int(p) for p in parts[:3]) < (1, 8, 3)
+        except ValueError:
+            legacy = False
+    required = (
+        not legacy
+        and persona_required(ticket.risk, policy)
+        and not run.data.get("persona_waiver")
+    )
+    record["required"] = required
+    record["legacy"] = legacy
+    if bound:
+        path = persona_source_path(root, str(bound.get("source", "")))
+        if path is None or not Path(path).is_file():
+            issues.append("persona source file is missing")
+        else:
+            actual = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            if actual != str(bound.get("sha256", "")):
+                issues.append("persona file changed after render")
+    if isinstance(receipt, dict):
+        reported = receipt.get("persona")
+        if isinstance(reported, dict):
+            record["receipt"] = reported
+            if bound and str(reported.get("sha256", "")) != str(bound.get("sha256", "")):
+                issues.append("receipt persona does not match the run binding")
+            if not bound:
+                issues.append("receipt reports a persona but the run has none")
+        elif required:
+            issues.append("receipt does not report the persona")
+    elif required:
+        issues.append("no receipt to attest the persona")
+    record["issues"] = issues
+    return record, issues
+
+
 def verify_run(
     root: Path,
     ticket: Ticket,
@@ -601,6 +655,10 @@ def verify_run(
     if criteria_errors:
         check("criteria", False, "; ".join(criteria_errors))
 
+    persona_record, persona_issues = _persona_state(root, ticket, run, receipt)
+    if persona_issues:
+        degraded = True
+
     status = "failed" if errors else ("degraded" if degraded else "passed")
     record: dict[str, object] = {
         "run_id": run.id,
@@ -616,6 +674,7 @@ def verify_run(
         "criteria": criteria,
         "evidence": evidence,
         "degraded": degraded,
+        "persona": persona_record,
         "errors": errors,
     }
     (run_dir / "verify.json").write_text(

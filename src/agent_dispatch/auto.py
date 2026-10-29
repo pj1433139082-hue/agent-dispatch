@@ -13,6 +13,7 @@ from .auto_protocol import ProtocolError, checkpoint as protocol_checkpoint, clo
 from .feedback import write_feedback
 from .landing import LandingError, land_run
 from .packet import write as write_review_packet
+from .persona import PERSONA_POLICY_OFF, persona_policy
 from .review import submit_review
 from .state import ACTIVE_STATES, DispatchState, Run, current_commit
 from .ticket import Ticket
@@ -264,6 +265,7 @@ def auto_run(
     max_attempts: int = 1,
     timeout: int = 1800,
     verify_timeout: int = 300,
+    allow_unassigned_persona: bool = False,
     until: str = "review",
     reviewer: str = "",
     reviewer_command: str = "",
@@ -332,8 +334,18 @@ def auto_run(
         )
 
     if run is None:
+        waiver_source = ""
+        if not ticket.persona:
+            policy = persona_policy(root)
+            if policy in PERSONA_POLICY_OFF:
+                waiver_source = "policy=off"
+            elif allow_unassigned_persona:
+                waiver_source = "flag"
         try:
-            run = Run.create(root, ticket, claimed_by=agent, use_worktree=True)
+            run = Run.create(
+                root, ticket, claimed_by=agent, use_worktree=True,
+                persona_waiver_source=waiver_source,
+            )
         except ValueError as error:
             raise AutoError(str(error)) from error
         if not run.data.get("use_worktree"):

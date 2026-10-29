@@ -33,6 +33,11 @@
 - **不算**：票面 `Verify`（那只证明这一张票的命令能跑）、`--append` 累积本身。
 - **判据**：`landing.json.verify_all_status == "pass"`；失败时 `status` 是 `landed-unverified`，退出码 1。
 
+## 人格（persona）
+- **定义**：一张角色卡（`agents/personas/*.md`：role / domain / capabilities / forbidden_actions），是**执行端的输入**，不是执行者本身。
+- **不算**：被 spawn 的 teammate（那是执行者）、票面 Owner（那是责任人）、票面 `- Persona:` 字符串（那只是指向角色卡的指针）。
+- **判据**：说得出这次执行用的是哪张角色卡，并能核对它没有在事后被改过。
+
 ## 收口（wrap-up）
 - **定义**：`dispatch wrap` 一次性给出"这轮活干完没有"：失败票、超期 run、未落地 run、会挡 land 的脏文件、过期租约。
 - **判据**：`wrap` exit 0 才算收工；exit 1 表示还有事没处理。

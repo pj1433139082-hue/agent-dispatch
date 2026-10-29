@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import __version__ as _skill_version
 from .ticket import Ticket
+from .persona import persona_fingerprint
 from .workorder import render_work_order
 
 ACTIVE_STATES = {"claimed", "running", "review"}
@@ -114,9 +115,11 @@ class Run:
         cls,
         root: Path,
         ticket: Ticket,
+        *,
         claimed_by: str = "",
         use_worktree: bool = True,
         deadline_seconds: int = 900,
+        persona_waiver_source: str = "",
     ) -> "Run":
         root = Path(root).resolve()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -154,6 +157,15 @@ class Run:
             "use_worktree": False,
             "execution_root": "",
         }
+        fingerprint = persona_fingerprint(ticket, root)
+        if fingerprint:
+            data["persona"] = fingerprint
+        elif persona_waiver_source:
+            data["persona_waiver"] = {
+                "source": persona_waiver_source,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+
         if use_worktree and not base_commit:
             shutil.rmtree(directory, ignore_errors=True)
             raise ValueError(
