@@ -9,6 +9,8 @@ leading YAML blocks).  Only the standard library is used.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -302,6 +304,65 @@ def discover_personas(roots: Iterable[Path]) -> list[Persona]:
                 continue
             found.setdefault(path.resolve(), persona)
     return sorted(found.values(), key=lambda persona: (persona.name.lower(), str(persona.path)))
+
+
+PERSONA_POLICY_OFF = {"off", "none", "optional"}
+PERSONA_POLICY_THRESHOLDS = {
+    "l2": {"L2", "L3", "L4"},
+    "l3": {"L3", "L4"},
+    "l4": {"L4"},
+}
+
+
+def persona_policy(root) -> str:
+    """读 .dispatch/config.json 的 persona_policy（缺省 l2）。"""
+    path = Path(str(root)) / ".dispatch" / "config.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "l2"
+    return str(payload.get("persona_policy", "l2")).lower()
+
+
+def persona_required(risk: str, policy: str) -> bool:
+    """L2+ (默认) 是否强制要求人格：policy=off 一律不强制。"""
+    if policy in PERSONA_POLICY_OFF:
+        return False
+    return risk in PERSONA_POLICY_THRESHOLDS.get(policy, {"L2", "L3", "L4"})
+
+
+def persona_source_path(root, source: str):
+    """把票面的 Persona 字符串解析成角色卡文件（builtin: 走技能内置目录）。"""
+    if not source:
+        return None
+    if source.startswith("builtin:"):
+        return BUILTIN_PERSONA_DIR / (source.split(":", 1)[1] + ".md")
+    candidate = Path(source)
+    if candidate.is_absolute():
+        return candidate
+    direct = Path(str(root)) / candidate
+    if direct.is_file():
+        return direct
+    return Path(str(root)) / "tickets" / candidate
+
+
+def persona_fingerprint(ticket, root=None) -> dict[str, str] | None:
+    """Bind the persona bytes at render time: source, name, sha256."""
+    source = str(getattr(ticket, "persona", "") or "")
+    profile = getattr(ticket, "persona_profile", None)
+    if not source or profile is None:
+        return None
+    try:
+        digest = hashlib.sha256(profile.path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+    recorded = source
+    if root is not None:
+        try:
+            recorded = profile.path.resolve().relative_to(Path(str(root)).resolve()).as_posix()
+        except (OSError, ValueError):
+            recorded = str(profile.path.resolve())
+    return {"source": recorded, "name": profile.name, "sha256": digest}
 
 
 def persona_section(ticket: "Ticket", heading: str = "###") -> str:

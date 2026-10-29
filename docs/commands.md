@@ -6,7 +6,7 @@
 |---|---|
 | `align` | `dispatch align [-h] [--title TITLE] [--level LEVEL] [--root ROOT] [--json] slug` |
 | `assign` | `dispatch assign [-h] --persona PERSONA [--tickets TICKETS] [--root ROOT] [--by BY] [--json] ticket_id` |
-| `auto` | `dispatch auto [-h] --executor EXECUTOR [--agent AGENT] [--resume] [--max-attempts MAX_ATTEMPTS] [--timeout TIMEOUT] [--verify-timeout VERIFY_TIMEOUT] [--until {review,land}] [--reviewer REVIEWER] [--reviewer-command REVIEWER_COMMAND] [--accept-degraded] [--human] [--tickets TICKETS] [--protocol {none,full}] [--env-hint ENV_HINT] [--require-brief] [--root ROOT] [--json] [--force] ticket_id` |
+| `auto` | `dispatch auto [-h] --executor EXECUTOR [--agent AGENT] [--resume] [--max-attempts MAX_ATTEMPTS] [--timeout TIMEOUT] [--verify-timeout VERIFY_TIMEOUT] [--until {review,land}] [--reviewer REVIEWER] [--reviewer-command REVIEWER_COMMAND] [--accept-degraded] [--human] [--tickets TICKETS] [--protocol {none,full}] [--env-hint ENV_HINT] [--require-brief] [--root ROOT] [--json] [--force] [--allow-unassigned-persona] ticket_id` |
 | `brief` | `dispatch brief [-h] [--tickets TICKETS] [--root ROOT] [--check] [--approve NAME] [--json] ticket_id` |
 | `checkpoint` | `dispatch checkpoint [-h] [--label LABEL] [--list] [--root ROOT] [--json] ticket_id` |
 | `claim` | `dispatch claim [-h] [--ttl-minutes TTL_MINUTES] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
@@ -26,7 +26,7 @@
 | `plan` | `dispatch plan [-h] [--tickets TICKETS] [--done ID] [--json]` |
 | `questions` | `dispatch questions [-h] [--root ROOT] [--json] slug` |
 | `release` | `dispatch release [-h] [--root ROOT] [--json] ticket_id` |
-| `render` | `dispatch render [-h] [--tickets TICKETS] [--root ROOT] [--agent AGENT] [--no-worktree] [--deadline-minutes DEADLINE_MINUTES] [--seat-cap SEAT_CAP] [--claim] [--with-context] [--require-brief] ticket_id` |
+| `render` | `dispatch render [-h] [--tickets TICKETS] [--root ROOT] [--agent AGENT] [--allow-unassigned-persona] [--no-worktree] [--deadline-minutes DEADLINE_MINUTES] [--seat-cap SEAT_CAP] [--claim] [--with-context] [--require-brief] ticket_id` |
 | `repair` | `dispatch repair [-h] [--root ROOT] [--write] [--json]` |
 | `retry` | `dispatch retry [-h] --reason REASON [--root ROOT] [--json] ticket_id` |
 | `review` | `dispatch review [-h] [--reviewer REVIEWER] --verdict {pass,fail} [--notes NOTES] [--human] [--self-reviewed] [--packet-hash PACKET_HASH] [--accept-degraded] [--root ROOT] ticket_id` |

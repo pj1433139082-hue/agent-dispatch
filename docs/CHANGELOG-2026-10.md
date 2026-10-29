@@ -80,6 +80,15 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.8.3：人格绑定与审计（ADR 0014）
+
+- `render` 把角色卡的 `sha256` / 来源 / 名字写进 `run.json.persona`；票面 `Persona:` 只算意图。
+- `persona_policy=off` 或新 flag `--allow-unassigned-persona` 会在 run 里记 `persona_waiver`（来源 + 时间），不再静默关闭。
+- `verify` 新增 persona 审计：角色卡被改、L2+ 新 run 回执缺 `persona`、回执与绑定不一致 → degraded（不 failed）。
+- `status` 显示 `persona <名字>` / `persona waived (<来源>)`；`wrap` 只对"该绑没绑且无豁免"的未落地 run 报 issue。
+- v1.8.2 及以前的 run 视为 legacy，不追溯。
+- 测试：`tests/test_persona_binding.py`（7 条）。
+
 ## 2026-10-29 · v1.8.2：三处门禁谓词修正（TDD 红→绿演练产出）
 
 - **verify**：degraded 判定从"证据前缀全 attested"改成"整条 criterion 全部 attested"——证据书写顺序不再改变结论（note 写在 file 前面不再误判降级）。

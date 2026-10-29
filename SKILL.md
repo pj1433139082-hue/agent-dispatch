@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.8.2。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.8.3。
 
 ## 何时使用
 
@@ -388,6 +388,14 @@ dispatch new 01 --title "recon runtime" --what "写报告" --write-scope reports
 - **顺序**：人格门在 **brief 门之前**（v0.96 起）；否则 `require_brief=true` 时先看到 exit 1 的 brief 报错，会以为人格门没生效。
 - **阈值对 render 和 auto 一致**（v0.96 修）：`persona_policy` 三个值 `l2/l3/l4` 两条路径都按同一张表判定。
 - 为什么不是 L0/L1：小改强绑人格只会增加摩擦；L2+ 才是"要异体评审"的级别。
+
+### 人格绑定与审计（v1.8.3）
+
+- **run 记事实**：`render` 把角色卡的 `sha256`、来源、名字写进 `run.json.persona`；票面 `Persona:` 仍是意图，可换。
+- **豁免留痕**：`persona_policy=off` 或 `render/auto --allow-unassigned-persona` 会在 run 里记 `persona_waiver: {source, at}`——门可以关，但关了有记录。
+- **verify 只降级**：角色卡在 render 后被改、L2+ 新 run 回执没自报 `persona`、回执与绑定不一致 → `status=degraded`（exit 2），review 显式 `--accept-degraded` 才放行；不直接 failed。
+- **老 run 不追溯**：v1.8.2 及以前的 run 没有绑定字段，按 legacy 处理，不判降级。
+- **看得见**：`status` 行尾显示 `persona <名字>` 或 `persona waived (<来源>)`；`wrap` 只对"该绑没绑也没豁免"的未落地 run 报 issue。
 
 ## 根级汇总：status --all（v0.93）
 

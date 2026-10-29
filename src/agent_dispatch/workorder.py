@@ -46,6 +46,14 @@ RECEIPT_SCHEMA: dict[str, object] = {
         "run_id": {"type": "string"},
         "status": {"enum": ["done", "failed"]},
         "summary": {"type": "string"},
+        "persona": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string"},
+                "sha256": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
         "criteria": {"type": "array", "minItems": 1, "items": CRITERION_SCHEMA},
     },
     "additionalProperties": False,
