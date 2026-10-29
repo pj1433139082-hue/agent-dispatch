@@ -28,6 +28,11 @@
 - **定义**：`land` 建出的 `dispatch/land/<run-id>` 分支，聚合已验收的票。
 - **不算**：main；`land` 从不 push、不合并 main。
 
+## 合后全量回归（verify-all）
+- **定义**：`land --verify-all "<命令>"` 在 integration branch 上跑的一整套回归命令（如 `python -m pytest -q`），回答"这条分支合起来还能不能用"。
+- **不算**：票面 `Verify`（那只证明这一张票的命令能跑）、`--append` 累积本身。
+- **判据**：`landing.json.verify_all_status == "pass"`；失败时 `status` 是 `landed-unverified`，退出码 1。
+
 ## 收口（wrap-up）
 - **定义**：`dispatch wrap` 一次性给出"这轮活干完没有"：失败票、超期 run、未落地 run、会挡 land 的脏文件、过期租约。
 - **判据**：`wrap` exit 0 才算收工；exit 1 表示还有事没处理。

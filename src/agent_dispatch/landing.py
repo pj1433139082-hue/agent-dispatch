@@ -128,6 +128,8 @@ def land_run(
     integration_branch: str | None = None,
     append: bool = False,
     verify_after: bool = False,
+    verify_all: list[str] | None = None,
+    verify_all_timeout: int = 1800,
 ) -> dict[str, object]:
     """Create an integration branch containing a reviewed run.
 
@@ -263,6 +265,14 @@ def land_run(
         record["verify_after_status"] = str(outcome.get("status", "fail"))
         if record["verify_after_status"] != "pass":
             record["status"] = "landed-unverified"
+    if verify_all:
+        outcome = run_commands_on_branch(
+            root, integration, list(dict.fromkeys(verify_all)), timeout=verify_all_timeout
+        )
+        record["verify_all"] = outcome
+        record["verify_all_status"] = str(outcome.get("status", "fail"))
+        if record["verify_all_status"] != "pass":
+            record["status"] = "landed-unverified"
 
     landing_path = run.directory / "landing.json"
     landing_path.write_text(
@@ -301,7 +311,9 @@ def _verify_after_landing(root: Path, branch: str, ticket: Ticket) -> dict[str, 
     return {"status": "fail" if failed else "pass", "commands": results}
 
 
-def run_commands_on_branch(root: Path, branch: str, commands: list[str]) -> dict[str, object]:
+def run_commands_on_branch(
+    root: Path, branch: str, commands: list[str], *, timeout: int = 300
+) -> dict[str, object]:
     """在 integration 分支上跑一组命令（去重由调用方做）。"""
     from .verify import _run_command
 
@@ -314,7 +326,7 @@ def run_commands_on_branch(root: Path, branch: str, commands: list[str]) -> dict
     try:
         log = directory / ".dispatch-verify.log"
         for command in commands:
-            results.append(_run_command(command, directory, log, 300))
+            results.append(_run_command(command, directory, log, timeout))
     finally:
         _git(root, "worktree", "remove", "--force", str(directory))
         _git(root, "worktree", "prune")

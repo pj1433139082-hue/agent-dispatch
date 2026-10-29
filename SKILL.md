@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.7.3。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.8.0。
 
 ## 何时使用
 
@@ -436,6 +436,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 - 仍需人工 push / 开 PR；land 始终不碰目标分支。
 - **`--verify`（v1.5.0）**：落地后在 integration 分支上复跑票面 Verify，打印 `VERIFY-AFTER <id>: pass|fail`；失败退出码 1，逐条列出失败命令，并把 `landing.json` 的 `status` 记成 **`landed-unverified`**（分支已建，但没通过合后验证）。用途：抓"worktree 里能过、合进分支就挂"的票（典型：判据依赖被 gitignore 的产物）。
 - **整波一次验（v1.6.0）**：`land --wave --branch X --append --verify` 会在合完之后，把**所有落地票的 Verify 去重后在同一条分支上跑一次**，打印 `VERIFY-AFTER wave X: pass|fail (N unique command(s))`；失败退出码 1。不带 `--branch` 时仍逐票各验一次。
+- **整分支全量回归（v1.8.0）**：`land <id> --verify-all "<命令>"`（可重复，重复命令只跑一次）落地后把**你给的回归命令**放进 integration 分支的临时 worktree 执行，打印 `VERIFY-ALL <id>: pass|fail on <分支>`；失败退出码 1、逐条列出失败命令，并把 `landing.json` 的 `status` 记成 **`landed-unverified`**、`verify_all_status` 记 `fail`（记录里另有 `verify_all.commands` 明细）。与 `--verify` 的分工：`--verify` 复跑票面 Verify（证明这张票），`--verify-all` 跑整套回归（证明这条分支）。整波用法 `land --wave --branch X --append --verify-all "python -m pytest -q"` 只在整波落完后跑一次，打印 `VERIFY-ALL wave X: pass|fail (N command(s))`；**不带 `--branch` 会在落地前直接报错**（逐票分支各跑一遍全量回归不是本意）。`--verify-all-timeout` 默认 1800 秒/条（票面 `--verify` 仍是 300 秒）。
 
 ## retry 会重写 context.md（v1.3.0）
 
@@ -485,7 +486,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `start <id>` | claimed → running |
 | `verify <id> [--allow-main-drift] [--timeout 300]` | 独立验收；passed/degraded → review，failed → failed；退出码 0/2/1 |
 | `review <id> --reviewer ... --verdict <pass 或 fail> [--accept-degraded] [--self-reviewed] [--human] [--notes "..."] [--packet-hash <sha>]` | 异体评审；通过 → done，并追加 review ledger。**L2+ 必须给 `--packet-hash`**（L0/L1 可选，给了也会记 attested） |
-| `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--continue-on-error] [--dry-run]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
+| `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all "命令"] [--verify-all-timeout 1800] [--append] [--continue-on-error] [--dry-run]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--agent <name>] [--resume] [--max-attempts N] [--timeout 1800] [--verify-timeout 300] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
 | `assign <id> --persona <文件或短名> [--by <名字>]` | 把可解析的人设写入票据 Persona；源文件复制到 `tickets/personas/`，并记 `.dispatch/assignments.jsonl` |
