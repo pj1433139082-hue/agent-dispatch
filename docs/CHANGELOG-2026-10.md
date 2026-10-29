@@ -80,6 +80,17 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-29 · v1.8.2：三处门禁谓词修正（TDD 红→绿演练产出）
+
+- **verify**：degraded 判定从"证据前缀全 attested"改成"整条 criterion 全部 attested"——证据书写顺序不再改变结论（note 写在 file 前面不再误判降级）。
+- **land --wave --require-attestation**：补上单票已有的 packet 核验；此前该 flag 在波次路径是静默 no-op。
+- **review --verdict fail**：degraded 验收可以被驳回（`--accept-degraded` 只约束放行），票回到 `failed` 可 `retry`，不再永久钉在 `review`。
+- 回归用例：`tests/test_verify_mixed_note_evidence.py` / `test_land_wave_attestation.py` / `test_review_reject_degraded.py`（均为"先红后绿"产出）。
+- **land --wave 补 review-packet 门**：波次路径此前完全不检查 `review-packet.md`（单票默认要求），现在默认同样要求，`--no-require-packet` 可跳过（老 run 迁移用）。
+- **检查去重**：`--require-attestation` 的判定抽成 `_attestation_problem()`，单票 `_cmd_land` 里重复写两遍的块合并成一处。
+- **补零覆盖用例**：`tests/test_verify_allow_main_drift.py`（2 条）覆盖 `verify --allow-main-drift`——此前该 flag 零用例。
+- **文档口径**：`absent` 证据明确"相对 Run 目录判存在"；`--accept-degraded` 的 help 说明只约束放行；degraded 判定注明"按整条 criterion、与证据顺序无关"。
+
 ## 2026-10-29 · v1.8.1：三个下游技能改成「原技能底座 + 差异层」
 
 - `grill-dispatch` / `to-spec-dispatch` / `to-tickets-dispatch` 不再各自重写删减版：开头显式 `Skill("grilling" / "to-spec" / "to-tickets")`，正文只留 dispatch 产物与门禁，并写冲突裁定与「上游锚点」。

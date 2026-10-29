@@ -24,9 +24,10 @@
 | 区域 | 已覆盖（有测试） | 真实空白（无测试） |
 |---|---|---|
 | S1–S5 主链 | align / select / questions / **sign 三态（pass / hold / reject）** / spec --force / stage --prompt / confirm / tickets / lint / plan | — |
-| 单票执行 | brief / render（含 `--no-worktree`）/ start / verify / review（含 `--accept-degraded`、L2+ 哈希、L1 自审、**L4 拒绝路径**）/ land | — |
+| 单票执行 | brief / render（含 `--no-worktree`）/ start / verify（含 **`--allow-main-drift`**）/ review（含 `--accept-degraded`、L2+ 哈希、L1 自审、**L4 拒绝路径**）/ land | — |
 | 自动推进 | auto 默认 / `--protocol full` / `--max-attempts` / attempt 用尽 / `--resume` / **`--until land` 时 closeout 不过** | — |
-| 波次落地 | `land --wave` / 依赖顺序 / `--require-closeout` / 混入 closeout 不过的票 / `--dry-run` / **`--continue-on-error`** / **`--verify-all`（单票、累积分支、整波一次、缺 `--branch` 报错）** | — |
+| 波次落地 | `land --wave` / 依赖顺序 / `--require-closeout` / 混入 closeout 不过的票 / `--dry-run` / **`--continue-on-error`** / **`--verify-all`（单票、累积分支、整波一次、缺 `--branch` 报错）** / **`--require-attestation`** / **review-packet 门（含 `--no-require-packet`）** | — |
+| 门禁 × 路径 | 同一 flag 在单票与 `--wave` 两条路径都要有用例（2026-10-29 演练：`--require-attestation` 波次为 no-op 就是这么漏的）；新增 flag 必须两路各一条 | — |
 | 证据与收口 | verify 判据 / closeout 五条 / criteria 条数不匹配 / note-only→degraded→accept / checkpoint | — |
 | 运维 | doctor/`--fix` / claim/release / sweep / repair（含 evidence_mismatch）/ seat / roots / **`gc` 对未 land worktree 判 HOLD** | — |
 | 人设/导出 | personas / assign / new --persona / context / export 四格式 | — |

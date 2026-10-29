@@ -385,7 +385,9 @@ def _evaluate_criteria(
                 record["criterion_id"] = criterion_id
                 item_records.append(record)
                 evidence.append(record)
-            degraded = degraded or (bool(item_records) and all(bool(record.get("attested")) for record in item_records))
+        # degraded 的判据是「这条 criterion 的全部证据都是 note」，不是「某个前缀全是 note」：
+        # 证据书写顺序不能改变结论（note 写在 file 前面时，file 已经提供了可复算物证）。
+        degraded = degraded or (bool(item_records) and all(bool(entry.get("attested")) for entry in item_records))
         records.append(
             {
                 "id": criterion_id,

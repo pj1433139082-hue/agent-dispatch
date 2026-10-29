@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.8.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.8.2。
 
 ## 何时使用
 
@@ -135,7 +135,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
    - **先 brief 再动手（v0.7.1）**：`brief <id>` 生成只读 brief（理解 / 计划 / 要改的文件 / 风险 / 疑问）→ 人审 → `brief <id> --approve <人>`；之后 `render <id> --require-brief` 才放行实现。票据或 brief 在审批后被改动，审批自动失效。
 4. **执行者只写两处**：在 **execution root**（worktree）写业务文件；在运行目录写 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 在 execution root 复跑票据命令，按 acceptance 逐条核对 `criteria` 证据，检查 worktree 与主仓都没有越界改动。结论分 `passed` / `degraded` / `failed`，退出码 0 / 2 / 1。
-6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收必须加 `--accept-degraded`。
+6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收**放行**必须加 `--accept-degraded`（判 fail 是拒绝，不需要）。
 7. **落地**：`land` 要求**主检出干净**（脏文件会逐个列出；`setup` 会写 `.gitignore` 排除 `.dispatch/`，但 `tickets/` 里新生成的票仍需先提交），然后 `land <id>` 把已验证 Run 合入本地 integration branch（默认 `dispatch/land/<run-id>`），只创建分支并写 landing 记录；不 push、不合并目标分支。land 会复核 verify 的 worktree diff hash，review 后改动会被拒绝。
 
 ## 选型角色（v0.10.0）
@@ -599,7 +599,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 
 ## degraded 的判定与记录（v0.69）
 
-- **触发**：某条判据的**全部**证据都是 attested（只有 `kind:"note"` 算 attested；file/inline/absent/command 都不算）→ `verify` 判 degraded，**退出码 2**，票进 `review`（不是 failed）。
+- **触发**：某条判据的**全部**证据都是 attested（只有 `kind:"note"` 算 attested；file/inline/absent/command 都不算）→ `verify` 判 degraded，**退出码 2**，票进 `review`（不是 failed）。判定按**整条 criterion** 算，与证据书写顺序无关（v1.8.2 修）。
 - **拒绝可重试**：不带 `--accept-degraded` 的 `review` exit 1，只有一句 stderr，**不写 review.json / 不写 ledger / 状态不变**。
 - **接受后**：`review.json` 的 `status` 是 **passed**（不是 degraded），降解事实在 `verify_status: degraded` + `accepted_degraded: true`。
 

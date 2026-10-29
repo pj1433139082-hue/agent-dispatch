@@ -344,7 +344,7 @@ def _parser() -> argparse.ArgumentParser:
     review_parser.add_argument(
         "--accept-degraded",
         action="store_true",
-        help="Accept a degraded verification result (attested evidence only).",
+        help="Accept a degraded verification result when passing (attested evidence only); a fail verdict never needs it.",
     )
     review_parser.add_argument("--root", type=Path, default=Path("."))
 
@@ -386,14 +386,14 @@ def _parser() -> argparse.ArgumentParser:
         "--require-attestation",
         action="store_true",
         dest="require_attestation",
-        help="Refuse to land unless the review attested the review packet (packet_attested).",
+        help="Refuse to land unless the review attested the review packet (packet_attested). Applies to single-ticket land and --wave.",
     )
     land_parser.add_argument(
         "--no-require-packet",
         action="store_false",
         dest="require_packet",
         default=True,
-        help="Skip the L2+ requirement that review-packet.md exists with a matching hash.",
+        help="Skip the L2+ requirement that review-packet.md exists with a matching hash (single-ticket land and --wave).",
     )
     land_parser.add_argument(
         "--verify",
@@ -2315,6 +2315,17 @@ def _current_run(root: Path, ticket_id: str):
     return store, Run.load(root, str(existing["run_id"]))
 
 
+def _attestation_problem(run) -> bool:
+    """评审没核过 review-packet（packet_attested 非 true）时返回 True。"""
+    review_file = run.directory / "review.json"
+    if not review_file.is_file():
+        return True
+    try:
+        return not bool(json.loads(review_file.read_text(encoding="utf-8")).get("packet_attested"))
+    except (OSError, json.JSONDecodeError):
+        return True
+
+
 def _land_wave(args: argparse.Namespace) -> int:
     verify_all_commands = list(dict.fromkeys(getattr(args, "verify_all", None) or []))
     if verify_all_commands and not getattr(args, "branch", None):
@@ -2383,6 +2394,23 @@ def _land_wave(args: argparse.Namespace) -> int:
                 if not args.continue_on_error:
                     break
                 continue
+
+        if getattr(args, "require_packet", True) and not (run.directory / "review-packet.md").is_file():
+            failed.append(
+                {
+                    "ticket_id": tid,
+                    "reason": "no review-packet.md; run dispatch review-packet first (or pass --no-require-packet)",
+                }
+            )
+            if not args.continue_on_error:
+                break
+            continue
+
+        if getattr(args, "require_attestation", False) and _attestation_problem(run):
+            failed.append({"ticket_id": tid, "reason": "review is not packet-attested"})
+            if not args.continue_on_error:
+                break
+            continue
 
         if getattr(args, "dry_run", False):
             planned.append({"ticket_id": tid, "reason": "would land"})
@@ -2454,24 +2482,6 @@ def _land_wave(args: argparse.Namespace) -> int:
 def _cmd_land(args: argparse.Namespace) -> int:
     if getattr(args, "wave", False):
         return _land_wave(args)
-    if getattr(args, "require_attestation", False):
-        _, run = _current_run(args.root, args.ticket_id)
-        if run is None:
-            print(f"ticket {args.ticket_id}: no run to check attestation", file=sys.stderr)
-            return 1
-        review_file = run.directory / "review.json"
-        attested = False
-        if review_file.is_file():
-            try:
-                attested = bool(json.loads(review_file.read_text(encoding="utf-8")).get("packet_attested"))
-            except (OSError, json.JSONDecodeError):
-                attested = False
-        if not attested:
-            print(
-                f"ticket {args.ticket_id}: review is not packet-attested (run review --packet-hash for L2+, or reviewer must echo packet_hash in auto)",
-                file=sys.stderr,
-            )
-            return 1
     if getattr(args, "require_closeout", False):
         _, run = _current_run(args.root, args.ticket_id)
         if run is None:
@@ -2508,14 +2518,7 @@ def _cmd_land(args: argparse.Namespace) -> int:
         if run is None:
             print(f"ticket {args.ticket_id}: no run to land", file=sys.stderr)
             return 1
-        review_file = run.directory / "review.json"
-        attested = False
-        if review_file.is_file():
-            try:
-                attested = bool(json.loads(review_file.read_text(encoding="utf-8")).get("packet_attested"))
-            except (OSError, json.JSONDecodeError):
-                attested = False
-        if not attested:
+        if _attestation_problem(run):
             print(
                 f"ticket {args.ticket_id}: reviewer did not attest the review packet; "
                 "rerun auto with a reviewer that returns packet_hash, or drop --require-attestation",

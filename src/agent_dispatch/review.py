@@ -68,7 +68,9 @@ def submit_review(
         verify_status = str(verify.get("status", ""))
         if verify_status not in {"passed", "degraded"}:
             errors.append("verify.json did not pass; review is refused")
-        elif verify_status == "degraded" and not accept_degraded:
+        elif verify_status == "degraded" and not accept_degraded and verdict == "pass":
+            # --accept-degraded 只约束"放行"（verdict=pass）。判 fail 是拒绝，不是接受：
+            # 拦住它会把票永久钉在 review（retry 只接受 failed/claimed）。
             errors.append(
                 "verification is degraded; review needs explicit --accept-degraded"
             )
