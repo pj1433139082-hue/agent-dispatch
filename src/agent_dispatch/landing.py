@@ -311,6 +311,82 @@ def _verify_after_landing(root: Path, branch: str, ticket: Ticket) -> dict[str, 
     return {"status": "fail" if failed else "pass", "commands": results}
 
 
+def integrate_branches(
+    root: Path,
+    branches: list[str],
+    integration: str,
+    *,
+    target_branch: str | None = None,
+    verify_all: list[str] | None = None,
+    verify_all_timeout: int = 1800,
+) -> dict[str, object]:
+    """把多条 land 分支按顺序合进一条新的 integration 分支（不 push、不碰目标分支）。"""
+    root = Path(root).resolve()
+    if not _checkout_is_clean(root):
+        raise LandingError("main checkout is dirty; integrate will not modify a dirty checkout")
+    target = target_branch or _default_target(root)
+    if not _branch_exists(root, target):
+        raise LandingError(f"target branch not found: {target}")
+    if _branch_exists(root, integration):
+        raise LandingError(f"integration branch already exists: {integration}")
+    target_commit = _run_git(root, "rev-parse", f"refs/heads/{target}")
+    directory = root / ".dispatch" / "landings" / f"integrate-{uuid.uuid4().hex[:6]}"
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    added = _git(root, "worktree", "add", "-b", integration, str(directory), target_commit)
+    if added.returncode != 0:
+        raise LandingError("cannot create the integration worktree: " + _detail(added))
+    merged_commits: list[dict[str, str]] = []
+    try:
+        for branch in branches:
+            if not _branch_exists(root, branch):
+                raise LandingError(f"branch not found: {branch}")
+            merged = _git(
+                directory, "-c", "user.name=agent-dispatch", "-c", "user.email=dispatch@localhost",
+                "merge", "--no-ff", "--no-edit", branch,
+            )
+            if merged.returncode != 0:
+                raise LandingError(f"merge failed for {branch}: " + _detail(merged))
+            merged_commits.append({"branch": branch, "commit": _run_git(directory, "rev-parse", "HEAD")})
+    except LandingError:
+        _git(directory, "merge", "--abort")
+        _git(root, "worktree", "remove", "--force", str(directory))
+        _git(root, "branch", "-D", integration)
+        _git(root, "worktree", "prune")
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
+    _git(root, "worktree", "remove", "--force", str(directory))
+    _git(root, "worktree", "prune")
+    shutil.rmtree(directory, ignore_errors=True)
+    head = _run_git(root, "rev-parse", f"refs/heads/{integration}")
+    record: dict[str, object] = {
+        "kind": "integrate",
+        "target_branch": target,
+        "target_commit": target_commit,
+        "integration_branch": integration,
+        "merged": merged_commits,
+        "head": head,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "integrated",
+        "pushed": False,
+    }
+    if verify_all:
+        outcome = run_commands_on_branch(
+            root, integration, list(dict.fromkeys(verify_all)), timeout=verify_all_timeout
+        )
+        record["verify_all"] = outcome
+        record["verify_all_status"] = str(outcome.get("status", "fail"))
+        if record["verify_all_status"] != "pass":
+            record["status"] = "integrated-unverified"
+    record_path = directory.parent / f"integrate-{uuid.uuid4().hex[:6]}.json"
+    record_path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    ledger = root / ".dispatch" / "ledger" / "integrations.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    row = dict(record)
+    row["record_hash"] = hashlib.sha256(record_path.read_bytes()).hexdigest()
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return record
+
 def run_commands_on_branch(
     root: Path, branch: str, commands: list[str], *, timeout: int = 300
 ) -> dict[str, object]:

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import hashlib
@@ -221,6 +222,72 @@ def _adversary_says_insufficient(pack: Path) -> bool:
             return True
     return False
 
+REVIEW_WINDOW = "07-review-window.json"
+
+
+def open_review_window(root: Path, slug: str) -> Path:
+    """评审窗口开启：给每份证据拍一份 sha256 快照。"""
+    pack = pack_dir(Path(root), slug)
+    panel_path = pack / "00-panel.json"
+    if not panel_path.is_file():
+        raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
+    panel = json.loads(panel_path.read_text(encoding="utf-8"))
+    files: dict[str, str] = {}
+    for role in panel.get("roles", []):
+        name = str(role.get("deliverable", ""))
+        path = pack / name
+        if path.is_file():
+            files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    record = {
+        "slug": slug,
+        "mode": panel.get("mode", "solo"),
+        "opened_at": datetime.now(timezone.utc).isoformat(),
+        "closed_at": None,
+        "files": files,
+        "changed": [],
+    }
+    target = pack / REVIEW_WINDOW
+    target.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return target
+
+
+def close_review_window(root: Path, slug: str) -> tuple[Path, list[str]]:
+    """评审窗口关闭：对比快照，返回被改过的文件。"""
+    pack = pack_dir(Path(root), slug)
+    target = pack / REVIEW_WINDOW
+    if not target.is_file():
+        raise FileNotFoundError("review window is not open (run: dispatch review-window " + slug + " --open)")
+    record = json.loads(target.read_text(encoding="utf-8"))
+    changed: list[str] = []
+    for name, expected in dict(record.get("files", {})).items():
+        path = pack / str(name)
+        if not path.is_file():
+            changed.append(str(name) + " (missing)")
+            continue
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual != str(expected):
+            changed.append(str(name))
+    record["closed_at"] = datetime.now(timezone.utc).isoformat()
+    record["changed"] = changed
+    target.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return target, changed
+
+
+def review_window_problem(pack: Path) -> str:
+    target = pack / REVIEW_WINDOW
+    if not target.is_file():
+        return "评审窗口未开启（dispatch review-window <slug> --open）"
+    try:
+        record = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "07-review-window.json 读不出来"
+    if not record.get("closed_at"):
+        return "评审窗口未关闭（dispatch review-window <slug> --close）"
+    changed = record.get("changed") or []
+    if changed:
+        return "评审窗口内文件被改过：" + ", ".join(str(item) for item in changed)
+    return ""
+
 def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "", note: str = "") -> Path:
     """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
     if via not in VIA_MARKERS:
@@ -232,6 +299,14 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
     problems = _team_pack_problems(pack)
     if problems:
         raise ValueError("team 模式下证据不可签字：" + "；".join(problems))
+    try:
+        panel = json.loads((pack / "00-panel.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        panel = {}
+    if str(panel.get("mode", "solo")) == "team":
+        window_problem = review_window_problem(pack)
+        if window_problem:
+            raise ValueError(window_problem)
     if choice == "pass" and _adversary_says_insufficient(pack) and not note:
         raise ValueError(
             "adversary 的结论是「证据不足」：签 pass 必须用 --note 写明要补的证据，或改用 --hold"

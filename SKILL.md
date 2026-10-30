@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.9.2。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.10.0。
 
 ## 何时使用
 
@@ -154,6 +154,12 @@ S2 的角色是**必须有**的，不是可选的：
 人设文件随技能分发（`agents/personas/`），用 `personas list` 可查；`--add` 可以挂你自己的角色卡。汇总表 `99-summary.md` 留了**甲方签字行**——按 ADR-0007 Q1，选型结论必须你签。
 
 **team 模式（v1.9.0）**：`select <slug> --mode team` 之后，三个角色各由一个 fresh teammate 产出（各自带角色卡与信息源隔离），回收后做一轮交叉评审写 `06-cross-review.md`；`sign` 会拒绝"还是模板"或缺 `Persona:` 行的证据。没有 teammate 工具时退回 `--mode solo`（主代理代做并标注）。见 ADR 0015。
+
+## 发布前三条（v1.10.0）
+
+- **评审窗口**：`review-window <slug> --open` 给选型包每份证据拍 sha256 快照；交叉评审后 `--close` 对比，有改动就 exit 1。team 模式下 `sign` 要求窗口已开且已关、且没有改动。
+- **变异检查**：`mutate <id>` 把代码退回 run 的 `base_commit` 再跑票面 Verify——全都还过说明判据太弱（`mutation.json: status=weak`，exit 1）；至少一条失败才算 `killed`（exit 0）。
+- **集成者**：`integrate --branch X --from a --from b [--verify-all "cmd"]` 把多条 land 分支按序合进一条新 integration 分支，合后可选跑全量回归；不 push、不碰目标分支，记录写 `.dispatch/ledger/integrations.jsonl`。
 
 ## 上下文包、两阶段与收口（v0.8.0）
 
@@ -499,6 +505,9 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all "命令"] [--verify-all-timeout 1800] [--append] [--continue-on-error] [--dry-run]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--agent <name>] [--resume] [--max-attempts N] [--timeout 1800] [--verify-timeout 300] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
+| `review-window <slug> --open\|--close` | 选型包证据快照：交叉评审前开、评审后关；有改动 exit 1；team 模式签字前必须有干净窗口 |
+| `mutate <id> [--timeout 300]` | 变异检查：在 base_commit 上重跑票面 Verify；全过 = 判据太弱（exit 1） |
+| `integrate --branch X --from a --from b [--verify-all "cmd"]` | 多分支集成：按序 merge 进新分支，合后可跑全量回归；不 push |
 | `assign <id> --persona <文件或短名> [--by <名字>]` | 把可解析的人设写入票据 Persona；源文件复制到 `tickets/personas/`，并记 `.dispatch/assignments.jsonl` |
 | `personas list [--search-root <目录>] [--json]` | 搜索可解析的 agent 人设（本地角色卡、agency、GSD、ruflo 等） |
 | `personas show <文件或短名> [--json]` | 读取单个 persona 的身份、能力与提示词 |

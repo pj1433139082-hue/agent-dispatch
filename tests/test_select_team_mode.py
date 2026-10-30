@@ -52,6 +52,8 @@ def test_sign_accepts_a_team_pack_where_each_file_declares_its_persona(tmp_path:
         (directory / name).write_text(
             "# 证据\n\nPersona: " + persona + "\n\n结论：建议采用\n", encoding="utf-8"
         )
+    assert run_dispatch(tmp_path, "review-window", "demo", "--open").returncode == 0
+    assert run_dispatch(tmp_path, "review-window", "demo", "--close").returncode == 0
 
     result = run_dispatch(tmp_path, "sign", "demo", "--by", "lead", "--via", "card")
 
