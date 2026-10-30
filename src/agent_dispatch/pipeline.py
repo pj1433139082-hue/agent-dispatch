@@ -205,6 +205,22 @@ def _team_pack_problems(pack: Path) -> list[str]:
             problems.append(deliverable + " 还是 brief 模板（team 模式必须由子会话改写成证据）")
     return problems
 
+def _adversary_says_insufficient(pack: Path) -> bool:
+    """03-adversary.md 的结论行是否写着"证据不足"（模板不算）。"""
+    path = pack / "03-adversary.md"
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if "## What to produce" in text:
+        return False
+    for raw in text.splitlines():
+        line = raw.strip().lstrip("-* ").strip()
+        if not line.startswith("结论"):
+            continue
+        if "证据不足" in line:
+            return True
+    return False
+
 def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "", note: str = "") -> Path:
     """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
     if via not in VIA_MARKERS:
@@ -212,9 +228,14 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
     summary = pack_dir(Path(root), slug) / SUMMARY
     if not summary.is_file():
         raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
-    problems = _team_pack_problems(pack_dir(Path(root), slug))
+    pack = pack_dir(Path(root), slug)
+    problems = _team_pack_problems(pack)
     if problems:
         raise ValueError("team 模式下证据不可签字：" + "；".join(problems))
+    if choice == "pass" and _adversary_says_insufficient(pack) and not note:
+        raise ValueError(
+            "adversary 的结论是「证据不足」：签 pass 必须用 --note 写明要补的证据，或改用 --hold"
+        )
 
     labels = {"pass": "通过", "hold": "有保留通过", "reject": "打回"}
     label = labels.get(choice, "通过")

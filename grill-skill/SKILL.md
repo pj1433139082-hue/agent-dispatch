@@ -61,7 +61,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    要求补的证据：<最小实验 / 具体来源>
    ```
    Lead 把三条反驳写进 `docs/selection/<slug>/06-cross-review.md`，分歧结论回填 `99-summary.md` 的"决策"段。
-6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板；缺一条就拒绝签字。**门不校验三份结论是否一致**——adversary 判"证据不足"而 01/02 建议采用时，默认签 `--hold` 并写明要补的证据，别签 `pass` 糊过去。
+6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板；缺一条就拒绝签字。**证据矛盾门（v1.9.2）**：`03-adversary.md` 的结论行写着"证据不足"时，`sign` 拒绝 `pass`（除非带 `--note` 写明要补的证据）；默认签 `--hold`。
 
 **没有 teammate 工具 / spawn 失败时**：退回 `--mode solo`，三份证据由主代理代做，每份文件头写 `Persona: <角色 persona>（主代理代做）`，并在 99-summary 标注 `模式：solo`。降级可以，但必须留痕。
 

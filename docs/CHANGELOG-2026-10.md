@@ -80,6 +80,12 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.9.2：证据矛盾门
+
+- `sign` 在 `03-adversary.md` 的结论行写着"证据不足"时拒绝 `pass`（除非 `--note` 写明要补的证据）；`--hold` 不受影响。
+- 模板 brief 里的"结论三态"说明不触发（只在非模板文件里认结论行）。
+- 测试：`tests/test_sign_adversary_contradiction.py`（4 条）。
+
 ## 2026-10-30 · v1.9.1：grill team 验收反馈
 
 - 交叉评审轮明确**只读**：任何人（包括自己那份）不许改文件；要改由 Lead 汇总后另开一轮。
