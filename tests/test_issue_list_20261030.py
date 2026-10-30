@@ -214,3 +214,17 @@ def test_align_preset_changes_the_question_bank(tmp_path: Path) -> None:
 
     assert "主张" in text
     assert "五个阶段" not in text
+
+
+def test_gc_treats_a_claimed_run_with_a_missing_worktree_as_orphan(tmp_path: Path) -> None:
+    repo(tmp_path)
+    assert run_dispatch(tmp_path, "render", "01", "--tickets", str(tmp_path / "tickets")).returncode == 0
+    run_dir = sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]
+    shutil.rmtree(tmp_path / ".dispatch" / "worktrees", ignore_errors=True)
+
+    listed = run_dispatch(tmp_path, "gc", "--json")
+    assert "ORPHAN" in listed.stdout
+    applied = run_dispatch(tmp_path, "gc", "--apply")
+
+    assert applied.returncode == 0
+    assert not run_dir.exists()

@@ -80,6 +80,13 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.12.1：gc 也认 claimed 的孤儿
+
+- 看板回归发现：`render` 后（claimed）删掉 worktree，`gc` 返回空、`wrap` 仍报 "without landing.json"。
+- `gc` 现在对**任何状态**的 run 都先判 worktree 是否存在：不存在且未落地 → `ORPHAN`，`--apply` 归档；存在才按 done/failed 过滤。
+- `wrap` 文案从 "ended run(s)" 改为 "run(s)"（未落地的不一定 ended）。
+- 测试：`tests/test_issue_list_20261030.py` 新增 1 条（claimed + worktree 丢失）。
+
 ## 2026-10-30 · v1.12.0：问题清单（15 条）修复
 
 **implement 链路**

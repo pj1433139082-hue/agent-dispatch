@@ -391,8 +391,6 @@ def gc(root: Path, *, apply: bool = False) -> list[dict[str, object]]:
         run_state = str(data.get("state", ""))
         if run_id not in {str(v.get("run_id", "")) for v in state.values()}:
             continue
-        if run_state not in {"done", "failed"}:
-            continue
         worktree = data.get("execution_root")
         if not worktree:
             continue
@@ -420,6 +418,8 @@ def gc(root: Path, *, apply: bool = False) -> list[dict[str, object]]:
                     drop_run(root, ticket_id, "worktree missing (gc --apply)")
                 except Exception:
                     pass
+            continue
+        if run_state not in {"done", "failed"}:
             continue
         dirty = subprocess.run(
             ["git", "status", "--porcelain"], cwd=directory, capture_output=True, text=True, check=False
