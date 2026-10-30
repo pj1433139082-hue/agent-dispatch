@@ -80,6 +80,14 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.10.0：评审窗口、变异检查、集成者
+
+- `review-window <slug> --open/--close`：选型包证据 sha256 快照；评审后改动 → exit 1；team 模式签字前必须有干净窗口。
+- `mutate <id>`：退回 `base_commit` 重跑票面 Verify，全过 = `weak`（exit 1），至少一条失败 = `killed`（exit 0）。
+- `integrate --branch X --from a --from b [--verify-all]`：多分支按序集成，合后可选全量回归，记录进 `integrations.jsonl`。
+- CI：test job 加 `macos-latest` 矩阵。
+- 测试：`tests/test_ops_commands.py`（5 条）；ADR 0016。
+
 ## 2026-10-30 · v1.9.2：证据矛盾门
 
 - `sign` 在 `03-adversary.md` 的结论行写着"证据不足"时拒绝 `pass`（除非 `--note` 写明要补的证据）；`--hold` 不受影响。

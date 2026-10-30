@@ -509,6 +509,27 @@ def _parser() -> argparse.ArgumentParser:
         help="Run without a persona even when persona_policy would require one (recorded as a waiver on the run).",
     )
 
+    window_parser = subparsers.add_parser("review-window", help="Snapshot the selection pack before cross-review and verify nothing changed after.")
+    window_parser.add_argument("slug")
+    window_parser.add_argument("--open", action="store_true", dest="open_window")
+    window_parser.add_argument("--close", action="store_true", dest="close_window")
+    window_parser.add_argument("--root", type=Path, default=Path("."))
+    window_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    mutate_parser = subparsers.add_parser("mutate", help="Run the ticket Verify commands on the base commit; passing there means the criteria are weak.")
+    mutate_parser.add_argument("ticket_id")
+    mutate_parser.add_argument("--timeout", type=int, default=300)
+    mutate_parser.add_argument("--root", type=Path, default=Path("."))
+    mutate_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    integrate_parser = subparsers.add_parser("integrate", help="Merge several land branches into one integration branch (never pushes or merges the target).")
+    integrate_parser.add_argument("--branch", required=True, help="Integration branch to create.")
+    integrate_parser.add_argument("--from", dest="branches", action="append", required=True, help="Branch to merge (repeatable, in order).")
+    integrate_parser.add_argument("--into", default=None, help="Target branch (default: main when present).")
+    integrate_parser.add_argument("--verify-all", dest="verify_all", action="append", default=None, metavar="COMMAND", help="Command to run on the integration branch after merging (repeatable).")
+    integrate_parser.add_argument("--root", type=Path, default=Path("."))
+    integrate_parser.add_argument("--json", action="store_true", dest="as_json")
+
     status_parser = subparsers.add_parser("status", help="Show effective ticket states.")
     status_parser.add_argument("--tickets", type=Path, default=None)
     status_parser.add_argument("--root", type=Path, default=Path("."))
@@ -2565,6 +2586,81 @@ def _land_wave(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_review_window(args: argparse.Namespace) -> int:
+    from .pipeline import close_review_window, open_review_window
+
+    if bool(getattr(args, "open_window", False)) == bool(getattr(args, "close_window", False)):
+        print("pass exactly one of --open / --close", file=sys.stderr)
+        return 1
+    try:
+        if args.open_window:
+            path = open_review_window(args.root, args.slug)
+            payload = {"action": "open", "path": str(path)}
+        else:
+            path, changed = close_review_window(args.root, args.slug)
+            payload = {"action": "close", "path": str(path), "changed": changed}
+    except (FileNotFoundError, ValueError) as error:
+        print("REVIEW-WINDOW " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(("Opened " if payload["action"] == "open" else "Closed ") + payload["path"])
+        for name in payload.get("changed", []):
+            print("  changed: " + str(name), file=sys.stderr)
+    return 1 if payload.get("changed") else 0
+
+
+def _cmd_mutate(args: argparse.Namespace) -> int:
+    from .verify import mutate_run
+
+    store, run = _current_run(args.root, args.ticket_id)
+    if run is None:
+        print("ticket " + args.ticket_id + ": no run to mutate", file=sys.stderr)
+        return 1
+    ticket = parse_ticket(run.ticket_path)
+    try:
+        record = mutate_run(args.root, ticket, run, timeout=args.timeout)
+    except ValueError as error:
+        print("MUTATE " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps(record, ensure_ascii=False, indent=2))
+    else:
+        print("MUTATE " + args.ticket_id + ": " + str(record["status"]) + " on base " + str(record["base_commit"])[:12])
+        for item in record.get("commands", []):
+            print("  $ " + str(item.get("command")) + " -> exit " + str(item.get("exit_code")))
+    return 0 if record["status"] == "killed" else 1
+
+
+def _cmd_integrate(args: argparse.Namespace) -> int:
+    from .landing import integrate_branches
+
+    try:
+        record = integrate_branches(
+            args.root,
+            list(args.branches),
+            args.branch,
+            target_branch=args.into,
+            verify_all=getattr(args, "verify_all", None),
+        )
+    except LandingError as error:
+        print("INTEGRATE " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps(record, ensure_ascii=False, indent=2))
+    else:
+        print("Integrated " + str(len(record["merged"])) + " branch(es) -> " + str(record["integration_branch"]))
+        for item in record["merged"]:
+            print("  " + str(item["branch"]) + " @ " + str(item["commit"])[:12])
+        status = record.get("verify_all_status")
+        if status:
+            print("VERIFY-ALL " + str(record["integration_branch"]) + ": " + str(status))
+    if record.get("verify_all_status", "pass") != "pass":
+        return 1
+    return 0
+
+
 def _cmd_land(args: argparse.Namespace) -> int:
     if getattr(args, "wave", False):
         return _land_wave(args)
@@ -3045,6 +3141,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_review(args)
     if args.command == "land":
         return _cmd_land(args)
+    if args.command == "review-window":
+        return _cmd_review_window(args)
+    if args.command == "mutate":
+        return _cmd_mutate(args)
+    if args.command == "integrate":
+        return _cmd_integrate(args)
     if args.command == "auto":
         return _cmd_auto(args)
     if args.command == "status":

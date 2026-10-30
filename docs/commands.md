@@ -19,8 +19,10 @@
 | `gc` | `dispatch gc [-h] [--apply] [--root ROOT] [--json]` |
 | `handoff` | `dispatch handoff [-h] [--to TO] [--root ROOT] [--tickets TICKETS] [--json] ticket_id` |
 | `install-hooks` | `dispatch install-hooks [-h] [--root ROOT] [--force]` |
+| `integrate` | `dispatch integrate [-h] --branch BRANCH --from BRANCHES [--into INTO] [--verify-all COMMAND] [--root ROOT] [--json]` |
 | `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all COMMAND] [--verify-all-timeout SECONDS] [--append] [--json] [ticket_id]` |
 | `lint` | `dispatch lint [-h] [--tickets TICKETS] [--json]` |
+| `mutate` | `dispatch mutate [-h] [--timeout TIMEOUT] [--root ROOT] [--json] ticket_id` |
 | `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--persona PERSONA] [--by BY] [--tickets TICKETS] ticket_id` |
 | `personas` | `dispatch personas [-h] {list,show} ...` |
 | `plan` | `dispatch plan [-h] [--tickets TICKETS] [--done ID] [--json]` |
@@ -31,6 +33,7 @@
 | `retry` | `dispatch retry [-h] --reason REASON [--root ROOT] [--json] ticket_id` |
 | `review` | `dispatch review [-h] [--reviewer REVIEWER] --verdict {pass,fail} [--notes NOTES] [--human] [--self-reviewed] [--packet-hash PACKET_HASH] [--accept-degraded] [--root ROOT] ticket_id` |
 | `review-packet` | `dispatch review-packet [-h] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
+| `review-window` | `dispatch review-window [-h] [--open] [--close] [--root ROOT] [--json] slug` |
 | `roots` | `dispatch roots [-h] [--root ROOT] [--json]` |
 | `seat` | `dispatch seat [-h] [--cap CAP] [--occupied OCCUPIED] [--inactive INACTIVE] [--agent AGENT] [--root ROOT] [--json]` |
 | `select` | `dispatch select [-h] [--title TITLE] [--with WITH_ROLES] [--add ID[:PERSONA]] [--list] [--mode {solo,team}] [--root ROOT] [--json] [slug]` |

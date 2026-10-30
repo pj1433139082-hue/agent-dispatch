@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 import hashlib
 import json
 import os
@@ -463,6 +465,41 @@ def _persona_state(root: Path, ticket: Ticket, run: Run, receipt: dict | None) -
     record["issues"] = issues
     return record, issues
 
+
+def mutate_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> dict[str, object]:
+    """变异检查：把代码退回到 base_commit 再跑 Verify；还全过说明判据太弱。"""
+    root = Path(root)
+    base = str(run.data.get("base_commit", ""))
+    if not run.data.get("use_worktree") or not base:
+        raise ValueError("mutate requires a worktree run with a base commit")
+    directory = root / ".dispatch" / "mutations" / str(run.id)
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    added = subprocess.run(
+        ["git", "worktree", "add", "--detach", str(directory), base],
+        cwd=root, text=True, capture_output=True, check=False,
+    )
+    if added.returncode != 0:
+        raise ValueError("cannot create the mutation worktree: " + (added.stderr or added.stdout).strip())
+    results: list[dict[str, object]] = []
+    try:
+        log = directory / ".mutation.log"
+        for command in ticket.verify:
+            results.append(_run_command(command, directory, log, timeout))
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", str(directory)], cwd=root, text=True, capture_output=True, check=False)
+        subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
+        shutil.rmtree(directory, ignore_errors=True)
+    killed = any(int(item.get("exit_code", 0)) != 0 for item in results)
+    record: dict[str, object] = {
+        "run_id": run.id,
+        "ticket_id": ticket.id,
+        "base_commit": base,
+        "status": "killed" if killed else "weak",
+        "commands": results,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    (run.directory / "mutation.json").write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return record
 
 def verify_run(
     root: Path,
