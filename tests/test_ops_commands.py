@@ -66,6 +66,7 @@ def test_review_window_clean_close_allows_sign(tmp_path: Path) -> None:
     directory = tmp_path / "docs" / "selection" / "demo"
     for name, persona in (("01-oss.md", "builtin:oss-scout"), ("02-sources.md", "builtin:search-scout"), ("03-adversary.md", "builtin:adversary")):
         (directory / name).write_text("# 证据\n\nPersona: " + persona + "\n\n结论：建议采用\n", encoding="utf-8")
+    (directory / "06-cross-review.md").write_text("# 交叉评审\n\n- 反驳：…\n", encoding="utf-8")
     assert run_dispatch(tmp_path, "review-window", "demo", "--open").returncode == 0
     assert run_dispatch(tmp_path, "review-window", "demo", "--close").returncode == 0
 

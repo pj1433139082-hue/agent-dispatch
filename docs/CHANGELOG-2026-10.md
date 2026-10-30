@@ -80,6 +80,12 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.11.1：交叉评审成为 team 签字前置
+
+- `sign` 在 team 模式下要求 `06-cross-review.md` 存在且非空（此前只查 Persona / 模板 / 评审窗口）。
+- 看板验收发现：没有 06 也能签过——补上。
+- 测试：`tests/test_select_team_mode.py` 新增 1 条。
+
 ## 2026-10-30 · v1.11.0：无人值守与更细的变异检查
 
 - `answer <slug> --answers <json>`：把无人值守的答案按顺序填进问卷空 `> ` 行（条数不符拒绝），不再靠手抄。

@@ -325,6 +325,9 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
         window_problem = review_window_problem(pack)
         if window_problem:
             raise ValueError(window_problem)
+        cross = pack / "06-cross-review.md"
+        if not cross.is_file() or not cross.read_text(encoding="utf-8").strip():
+            raise ValueError("team 模式缺 06-cross-review.md（交叉评审必须先落盘）")
     if choice == "pass" and _adversary_says_insufficient(pack) and not note:
         raise ValueError(
             "adversary 的结论是「证据不足」：签 pass 必须用 --note 写明要补的证据，或改用 --hold"
