@@ -519,8 +519,15 @@ def _parser() -> argparse.ArgumentParser:
     mutate_parser = subparsers.add_parser("mutate", help="Run the ticket Verify commands on the base commit; passing there means the criteria are weak.")
     mutate_parser.add_argument("ticket_id")
     mutate_parser.add_argument("--timeout", type=int, default=300)
+    mutate_parser.add_argument("--per-file", action="store_true", dest="per_file", help="Revert each changed file one at a time; a file whose revert still passes is weak.")
     mutate_parser.add_argument("--root", type=Path, default=Path("."))
     mutate_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    answer_parser = subparsers.add_parser("answer", help="Fill the questionnaire's blank answers from a JSON list (unattended runs).")
+    answer_parser.add_argument("slug")
+    answer_parser.add_argument("--answers", type=Path, required=True, help="JSON array of strings, one per blank '> ' line.")
+    answer_parser.add_argument("--root", type=Path, default=Path("."))
+    answer_parser.add_argument("--json", action="store_true", dest="as_json")
 
     integrate_parser = subparsers.add_parser("integrate", help="Merge several land branches into one integration branch (never pushes or merges the target).")
     integrate_parser.add_argument("--branch", required=True, help="Integration branch to create.")
@@ -2586,6 +2593,29 @@ def _land_wave(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_answer(args: argparse.Namespace) -> int:
+    from .pipeline import answer_questionnaire
+
+    try:
+        answers = json.loads(args.answers.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        print("ANSWER cannot read answers file: " + str(error), file=sys.stderr)
+        return 1
+    if not isinstance(answers, list) or not all(isinstance(item, str) for item in answers):
+        print("ANSWER --answers must be a JSON array of strings", file=sys.stderr)
+        return 1
+    try:
+        path = answer_questionnaire(args.root, args.slug, answers)
+    except (FileNotFoundError, ValueError) as error:
+        print("ANSWER " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps({"path": str(path), "answers": len(answers)}, ensure_ascii=False))
+    else:
+        print("Answered " + str(len(answers)) + " question(s) -> " + str(path))
+    return 0
+
+
 def _cmd_review_window(args: argparse.Namespace) -> int:
     from .pipeline import close_review_window, open_review_window
 
@@ -2620,7 +2650,7 @@ def _cmd_mutate(args: argparse.Namespace) -> int:
         return 1
     ticket = parse_ticket(run.ticket_path)
     try:
-        record = mutate_run(args.root, ticket, run, timeout=args.timeout)
+        record = mutate_run(args.root, ticket, run, timeout=args.timeout, per_file=bool(getattr(args, "per_file", False)))
     except ValueError as error:
         print("MUTATE " + str(error), file=sys.stderr)
         return 1
@@ -3141,6 +3171,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_review(args)
     if args.command == "land":
         return _cmd_land(args)
+    if args.command == "answer":
+        return _cmd_answer(args)
     if args.command == "review-window":
         return _cmd_review_window(args)
     if args.command == "mutate":

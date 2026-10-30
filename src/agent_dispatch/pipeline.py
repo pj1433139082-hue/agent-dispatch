@@ -288,6 +288,24 @@ def review_window_problem(pack: Path) -> str:
         return "评审窗口内文件被改过：" + ", ".join(str(item) for item in changed)
     return ""
 
+def answer_questionnaire(root: Path, slug: str, answers: list[str]) -> Path:
+    """无人值守：按顺序把答案填进问卷的空 `> ` 行（条数必须与空行数一致）。"""
+    from .align import questionnaire_path
+
+    path = questionnaire_path(Path(root), slug)
+    if not path.is_file():
+        raise FileNotFoundError("questionnaire is missing: " + str(path))
+    lines = path.read_text(encoding="utf-8").splitlines()
+    blanks = [index for index, line in enumerate(lines) if line.strip() == ">"]
+    if len(answers) != len(blanks):
+        raise ValueError(
+            "expected " + str(len(blanks)) + " answer(s), got " + str(len(answers))
+        )
+    for index, answer in zip(blanks, answers):
+        lines[index] = "> " + str(answer).strip()
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
 def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "", note: str = "") -> Path:
     """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
     if via not in VIA_MARKERS:
