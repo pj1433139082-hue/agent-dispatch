@@ -201,6 +201,10 @@ def _parser() -> argparse.ArgumentParser:
         metavar="ID[:PERSONA]", help="追加自定义角色，可重复",
     )
     select_parser.add_argument("--list", action="store_true", dest="list_only")
+    select_parser.add_argument(
+        "--mode", choices=("solo", "team"), default="solo",
+        help="team: each evidence file must be produced by its own sub-session (Persona line required); solo: main agent writes them.",
+    )
     select_parser.add_argument("--root", type=Path, default=Path("."))
     select_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -1241,7 +1245,7 @@ def _cmd_select(args: argparse.Namespace) -> int:
         print(str(error), file=sys.stderr)
         return 1
     title = args.title.strip() or slug
-    written = write_selection_pack(args.root, slug, title, roles)
+    written = write_selection_pack(args.root, slug, title, roles, args.mode)
     if args.as_json:
         print(json.dumps({"slug": slug, "roles": [role.id for role in roles], "files": [str(path) for path in written]}, ensure_ascii=False))
         return 0

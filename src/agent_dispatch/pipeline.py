@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import json
+
 import hashlib
 
 from datetime import datetime, timezone
@@ -177,6 +179,32 @@ def _today() -> str:
     return date.today().isoformat()
 
 
+def _team_pack_problems(pack: Path) -> list[str]:
+    """team 模式：每份证据必须由对应子会话产出（文件头带 Persona 行）。"""
+    panel_path = pack / "00-panel.json"
+    if not panel_path.is_file():
+        return []
+    try:
+        payload = json.loads(panel_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ["00-panel.json 读不出来"]
+    if str(payload.get("mode", "solo")) != "team":
+        return []
+    problems: list[str] = []
+    for role in payload.get("roles", []):
+        deliverable = str(role.get("deliverable", ""))
+        persona = str(role.get("persona", ""))
+        path = pack / deliverable
+        if not path.is_file():
+            problems.append(deliverable + " 不存在")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if ("Persona: " + persona) not in text:
+            problems.append(deliverable + " 缺 Persona 行（team 模式必须由对应子会话产出）")
+        elif "## What to produce" in text:
+            problems.append(deliverable + " 还是 brief 模板（team 模式必须由子会话改写成证据）")
+    return problems
+
 def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: str = "", note: str = "") -> Path:
     """把签字写回 99-summary.md：签字人 + 勾选 + 确认方式（dialog / card）。"""
     if via not in VIA_MARKERS:
@@ -184,6 +212,10 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
     summary = pack_dir(Path(root), slug) / SUMMARY
     if not summary.is_file():
         raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
+    problems = _team_pack_problems(pack_dir(Path(root), slug))
+    if problems:
+        raise ValueError("team 模式下证据不可签字：" + "；".join(problems))
+
     labels = {"pass": "通过", "hold": "有保留通过", "reject": "打回"}
     label = labels.get(choice, "通过")
     lines = summary.read_text(encoding="utf-8").splitlines()

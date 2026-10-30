@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.8.4。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.9.0。
 
 ## 何时使用
 
@@ -152,6 +152,8 @@ S2 的角色是**必须有**的，不是可选的：
 | 自定义 | `--add id:persona` | `9N-<id>.md` | 按自带 persona 的判据 |
 
 人设文件随技能分发（`agents/personas/`），用 `personas list` 可查；`--add` 可以挂你自己的角色卡。汇总表 `99-summary.md` 留了**甲方签字行**——按 ADR-0007 Q1，选型结论必须你签。
+
+**team 模式（v1.9.0）**：`select <slug> --mode team` 之后，三个角色各由一个 fresh teammate 产出（各自带角色卡与信息源隔离），回收后做一轮交叉评审写 `06-cross-review.md`；`sign` 会拒绝"还是模板"或缺 `Persona:` 行的证据。没有 teammate 工具时退回 `--mode solo`（主代理代做并标注）。见 ADR 0015。
 
 ## 上下文包、两阶段与收口（v0.8.0）
 
