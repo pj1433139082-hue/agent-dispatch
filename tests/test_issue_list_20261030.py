@@ -228,3 +228,14 @@ def test_gc_treats_a_claimed_run_with_a_missing_worktree_as_orphan(tmp_path: Pat
 
     assert applied.returncode == 0
     assert not run_dir.exists()
+
+
+def test_model_contract_preset_gives_six_domain_questions(tmp_path: Path) -> None:
+    assert run_dispatch(tmp_path, "align", "demo", "--level", "standard", "--preset", "model-contract").returncode == 0
+
+    text = (tmp_path / "docs" / "questions" / "demo.md").read_text(encoding="utf-8")
+    headings = [line for line in text.splitlines() if line.startswith("### ")]
+
+    assert len(headings) == 6
+    keywords = ("数据源", "输入形态", "计算频率", "聚合规则", "算法路线", "验收口径")
+    assert sum(1 for name in keywords if name in text) >= 4

@@ -86,6 +86,23 @@ def _assert_reviewed_worktree(run: Run) -> None:
         )
 
 
+def _assert_reviewed_commit(root: Path, run: Run, commit: str) -> None:
+    """from-commit 路径没有 worktree：用 verify 记录里改过的文件清单核对这个 commit。"""
+    verify_path = run.directory / "verify.json"
+    if not verify_path.is_file():
+        raise LandingError("run has no verify record; verify before land")
+    record = json.loads(verify_path.read_text(encoding="utf-8"))
+    changed = set(str(item) for item in record.get("changed_files", []))
+    diff = _git(root, "diff", "--name-only", str(run.data.get("base_commit", "")) + ".." + commit)
+    if diff.returncode != 0:
+        raise LandingError("cannot diff from-commit: " + _detail(diff))
+    actual = {line.strip() for line in diff.stdout.splitlines() if line.strip()}
+    if actual != changed:
+        raise LandingError(
+            "from-commit does not match the verified change set: "
+            + ", ".join(sorted(actual ^ changed))
+        )
+
 def _commit_worktree(run: Run) -> str:
     worktree = run.execution_root
     status = _git(worktree, "status", "--porcelain", "--untracked-files=all")
@@ -120,6 +137,39 @@ def _commit_worktree(run: Run) -> str:
     return commit
 
 
+def _tickets_prefix(root: Path) -> str:
+    """票目录在仓库内的相对前缀（默认 tickets/）；配置了绝对路径就返回空。"""
+    try:
+        payload = json.loads((Path(root) / ".dispatch" / "config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    value = str(payload.get("tickets_dir") or "tickets")
+    path = Path(value)
+    if path.is_absolute():
+        try:
+            return path.resolve().relative_to(Path(root).resolve()).as_posix().rstrip("/") + "/"
+        except ValueError:
+            return ""
+    return value.strip("./").rstrip("/") + "/"
+
+
+def _resolve_ticket_conflicts(worktree: Path, root: Path) -> list[str]:
+    """add/add 冲突只发生在票文件上时，用目标分支的版本解决（票是流水线文档）。"""
+    unmerged = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=U"],
+        cwd=worktree, text=True, capture_output=True, check=False,
+    ).stdout.splitlines()
+    prefix = _tickets_prefix(root)
+    if not unmerged or not prefix:
+        return []
+    for path in unmerged:
+        if not (path == prefix.rstrip("/") or path.startswith(prefix)):
+            return []
+    for path in unmerged:
+        _git(worktree, "checkout", "--ours", "--", path)
+        _git(worktree, "add", "--", path)
+    return list(unmerged)
+
 def land_run(
     root: Path,
     ticket_id: str,
@@ -130,6 +180,7 @@ def land_run(
     verify_after: bool = False,
     verify_all: list[str] | None = None,
     verify_all_timeout: int = 1800,
+    from_commit: str | None = None,
 ) -> dict[str, object]:
     """Create an integration branch containing a reviewed run.
 
@@ -155,7 +206,7 @@ def land_run(
     ticket = parse_ticket(run.ticket_path)
     if ticket.content_hash != str(run.data.get("ticket_hash", "")):
         raise LandingError("ticket content changed since render; rerender the run first")
-    if not run.execution_root.is_dir():
+    if not from_commit and not run.execution_root.is_dir():
         raise LandingError(
             f"run worktree is missing: {run.execution_root}; next steps: "
             "dispatch drop " + str(run.data.get("ticket_id", "")) + " --reason <why> (archive the run), "
@@ -185,7 +236,7 @@ def land_run(
         )
 
     run_branch = str(run.data["worktree_branch"])
-    if not _branch_exists(root, run_branch):
+    if not _branch_exists(root, run_branch) and not from_commit:
         raise LandingError(f"run branch not found: {run_branch}")
 
     target = target_branch or _default_target(root)
@@ -201,8 +252,12 @@ def land_run(
             "(drop --branch for one branch per run, or add --append to merge into it)"
         )
 
-    _assert_reviewed_worktree(run)
-    run_commit = _commit_worktree(run)
+    if from_commit:
+        _assert_reviewed_commit(root, run, from_commit)
+        run_commit = from_commit
+    else:
+        _assert_reviewed_worktree(run)
+        run_commit = _commit_worktree(run)
     landing_root = (
         root / ".dispatch" / "landings" / f"{run.id}-{uuid.uuid4().hex[:6]}"
     )
@@ -229,7 +284,17 @@ def land_run(
             run_commit,
         )
         if merged.returncode != 0:
-            raise LandingError("landing merge failed: " + _detail(merged))
+            resolved = _resolve_ticket_conflicts(landing_root, root)
+            if resolved:
+                merged = _git(
+                    landing_root,
+                    "-c", "user.name=agent-dispatch", "-c", "user.email=dispatch@localhost",
+                    "commit", "--no-edit",
+                )
+                if merged.returncode != 0:
+                    raise LandingError("landing merge failed: " + _detail(merged))
+            else:
+                raise LandingError("landing merge failed: " + _detail(merged) + " | if the conflicts include non-ticket files, resolve them manually; ticket-only conflicts are auto-resolved with the target version")
         landing_commit = _run_git(landing_root, "rev-parse", "HEAD")
         ancestry = _git(root, "merge-base", "--is-ancestor", run_commit, landing_commit)
         if ancestry.returncode != 0:

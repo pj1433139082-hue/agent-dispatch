@@ -22,7 +22,7 @@
 | `handoff` | `dispatch handoff [-h] [--to TO] [--root ROOT] [--tickets TICKETS] [--json] ticket_id` |
 | `install-hooks` | `dispatch install-hooks [-h] [--root ROOT] [--force]` |
 | `integrate` | `dispatch integrate [-h] --branch BRANCH --from BRANCHES [--into INTO] [--verify-all COMMAND] [--root ROOT] [--json]` |
-| `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all COMMAND] [--verify-all-timeout SECONDS] [--append] [--json] [ticket_id]` |
+| `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--from-commit FROM_COMMIT] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all COMMAND] [--verify-all-timeout SECONDS] [--append] [--json] [ticket_id]` |
 | `lint` | `dispatch lint [-h] [--tickets TICKETS] [--json]` |
 | `mutate` | `dispatch mutate [-h] [--timeout TIMEOUT] [--per-file] [--root ROOT] [--json] ticket_id` |
 | `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--persona PERSONA] [--by BY] [--tickets TICKETS] ticket_id` |

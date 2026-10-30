@@ -25,7 +25,7 @@ def test_questions_turn_adversary_assumptions_into_grill_questions(tmp_path: Pat
     result = run_dispatch(tmp_path, "questions", "demo", "--json")
 
     assert result.returncode == 0, result.stderr
-    items = json.loads(result.stdout)
+    items = json.loads(result.stdout)["questions"]
     assert len(items) == 2
     assert "单机" in items[0]["question"]
     assert items[0]["options"]
@@ -46,7 +46,7 @@ def test_questions_only_read_the_assumption_section(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    items = json.loads(run_dispatch(tmp_path, "questions", "demo", "--json").stdout)
+    items = json.loads(run_dispatch(tmp_path, "questions", "demo", "--json").stdout)["questions"]
 
     assert len(items) == 2
     assert all("假设" in item["question"] for item in items)
