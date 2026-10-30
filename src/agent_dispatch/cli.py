@@ -1680,7 +1680,7 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
     if runs_without_landing:
         detail = f" — tickets: {', '.join(unlanded_tickets)}" if unlanded_tickets else ""
         issues.append(
-            f"{len(runs_without_landing)} ended run(s) without landing.json (dispatch gc to review, or land them){detail}"
+            f"{len(runs_without_landing)} run(s) without landing.json (dispatch gc to review, or land them){detail}"
         )
     actions: list[str] = []
     for issue in issues:
