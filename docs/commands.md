@@ -5,6 +5,7 @@
 | 命令 | usage |
 |---|---|
 | `align` | `dispatch align [-h] [--title TITLE] [--level LEVEL] [--root ROOT] [--json] slug` |
+| `answer` | `dispatch answer [-h] --answers ANSWERS [--root ROOT] [--json] slug` |
 | `assign` | `dispatch assign [-h] --persona PERSONA [--tickets TICKETS] [--root ROOT] [--by BY] [--json] ticket_id` |
 | `auto` | `dispatch auto [-h] --executor EXECUTOR [--agent AGENT] [--resume] [--max-attempts MAX_ATTEMPTS] [--timeout TIMEOUT] [--verify-timeout VERIFY_TIMEOUT] [--until {review,land}] [--reviewer REVIEWER] [--reviewer-command REVIEWER_COMMAND] [--accept-degraded] [--human] [--tickets TICKETS] [--protocol {none,full}] [--env-hint ENV_HINT] [--require-brief] [--root ROOT] [--json] [--force] [--allow-unassigned-persona] ticket_id` |
 | `brief` | `dispatch brief [-h] [--tickets TICKETS] [--root ROOT] [--check] [--approve NAME] [--json] ticket_id` |
@@ -22,7 +23,7 @@
 | `integrate` | `dispatch integrate [-h] --branch BRANCH --from BRANCHES [--into INTO] [--verify-all COMMAND] [--root ROOT] [--json]` |
 | `land` | `dispatch land [-h] [--wave] [--dry-run] [--continue-on-error] [--into INTO] [--branch BRANCH] [--root ROOT] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all COMMAND] [--verify-all-timeout SECONDS] [--append] [--json] [ticket_id]` |
 | `lint` | `dispatch lint [-h] [--tickets TICKETS] [--json]` |
-| `mutate` | `dispatch mutate [-h] [--timeout TIMEOUT] [--root ROOT] [--json] ticket_id` |
+| `mutate` | `dispatch mutate [-h] [--timeout TIMEOUT] [--per-file] [--root ROOT] [--json] ticket_id` |
 | `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--persona PERSONA] [--by BY] [--tickets TICKETS] ticket_id` |
 | `personas` | `dispatch personas [-h] {list,show} ...` |
 | `plan` | `dispatch plan [-h] [--tickets TICKETS] [--done ID] [--json]` |

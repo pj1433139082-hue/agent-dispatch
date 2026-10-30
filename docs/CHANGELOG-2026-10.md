@@ -80,6 +80,13 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.11.0：无人值守与更细的变异检查
+
+- `answer <slug> --answers <json>`：把无人值守的答案按顺序填进问卷空 `> ` 行（条数不符拒绝），不再靠手抄。
+- `mutate --per-file`：逐个回退改动文件再跑 Verify，`weak_files` 列出"改了但判据没覆盖"的文件（新文件按删除处理）。
+- CI 新增 `wrap` job：`scripts/wrap_smoke.py`（健康仓 CLEAN / 缺 tickets 目录给明确错误）。
+- 测试：`tests/test_unattended_and_mutation.py`（3 条）。
+
 ## 2026-10-30 · v1.10.0：评审窗口、变异检查、集成者
 
 - `review-window <slug> --open/--close`：选型包证据 sha256 快照；评审后改动 → exit 1；team 模式签字前必须有干净窗口。

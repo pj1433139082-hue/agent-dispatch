@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import shutil
 
 import hashlib
@@ -466,7 +468,19 @@ def _persona_state(root: Path, ticket: Ticket, run: Run, receipt: dict | None) -
     return record, issues
 
 
-def mutate_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> dict[str, object]:
+def _changed_files(run: Run) -> list[str]:
+    base = str(run.data.get("base_commit", ""))
+    root = run.execution_root
+    names: set[str] = set()
+    diff = subprocess.run(["git", "diff", "--name-only", base, "--"], cwd=root, text=True, capture_output=True, check=False)
+    if diff.returncode == 0:
+        names.update(line.strip() for line in diff.stdout.splitlines() if line.strip())
+    others = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"], cwd=root, text=True, capture_output=True, check=False)
+    if others.returncode == 0:
+        names.update(line.strip() for line in others.stdout.splitlines() if line.strip())
+    return sorted(names)
+
+def mutate_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300, per_file: bool = False) -> dict[str, object]:
     """变异检查：把代码退回到 base_commit 再跑 Verify；还全过说明判据太弱。"""
     root = Path(root)
     base = str(run.data.get("base_commit", ""))
@@ -490,11 +504,38 @@ def mutate_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300) -> dict
         subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
         shutil.rmtree(directory, ignore_errors=True)
     killed = any(int(item.get("exit_code", 0)) != 0 for item in results)
+    weak_files: list[str] = []
+    if per_file:
+        for name in _changed_files(run):
+            source = run.execution_root / name
+            if not source.is_file():
+                continue
+            sandbox = root / ".dispatch" / "mutations" / (str(run.id) + "-" + uuid.uuid4().hex[:6])
+            sandbox.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(run.execution_root, sandbox, ignore=shutil.ignore_patterns(".git", ".dispatch"))
+            base_bytes = subprocess.run(
+                ["git", "show", base + ":" + name],
+                cwd=root, text=True, capture_output=True, check=False,
+            )
+            if base_bytes.returncode == 0:
+                (sandbox / name).write_text(base_bytes.stdout, encoding="utf-8")
+            else:
+                target = sandbox / name
+                if target.exists():
+                    target.unlink()
+            file_results = [
+                _run_command(command, sandbox, sandbox / ".mutation.log", timeout)
+                for command in ticket.verify
+            ]
+            if all(int(item.get("exit_code", 0)) == 0 for item in file_results):
+                weak_files.append(name)
+            shutil.rmtree(sandbox, ignore_errors=True)
     record: dict[str, object] = {
         "run_id": run.id,
         "ticket_id": ticket.id,
         "base_commit": base,
-        "status": "killed" if killed else "weak",
+        "status": "weak" if (weak_files or not killed) else "killed",
+        "weak_files": weak_files,
         "commands": results,
         "at": datetime.now(timezone.utc).isoformat(),
     }

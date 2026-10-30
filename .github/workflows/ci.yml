@@ -47,6 +47,21 @@ jobs:
       - name: Matrix summary
         run: echo "ubuntu-latest and macos-latest passed"
 
+  wrap:
+    # 独立 job：wrap 自己的 smoke（健康仓 CLEAN / 缺 tickets 目录给明确错误）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Wrap smoke
+        run: python scripts/wrap_smoke.py
+
   concurrency:
     # 并发/竞态用例单独反复跑：单跑一次说明不了稳定性
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
