@@ -20,7 +20,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 
 ## 做什么
 
-1. 出问卷（**最低集 + 留痕文件**）：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py align <slug> --level standard`（quick 3 / standard 6 / thorough 10）
+1. 出问卷（**最低集 + 留痕文件**）：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py align <slug> --level standard`（quick 3 / standard 6 / thorough 10）。下文所有 `dispatch xxx` 都指这条完整路径——`dispatch` 不一定在 PATH 上。
    - 问卷是**起点不是全部**：前沿里问卷没覆盖的问题，按下面「追加轮次」继续问，并写回同一个文件。
 2. 出角色 brief（**注意：`select` 生成的是 brief，不是证据**；执行者要把 `01/02/03` 原地改写成证据；重跑 `select` 会重写 `99-summary.md`，先备份）：`python ...\dispatch.py select <slug> --mode team`（写域受限时省略 `--with`；有 teammate 工具时默认 `team`，见下节）
 3. 派三个执行者填三份证据（有 teammate 用 send_message；没有就自己写，文件里标注"主代理代做"）：
@@ -54,14 +54,14 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    未证实：<逐条，没有写"无">
    ```
 4. **等齐再往下**：`wait_agent` 到三个都结束；任何一个超时/失败，就把它那份标 `未产出` 并在 99-summary 写明，不许主代理悄悄补写成"已完成"。
-5. **交叉评审（必做一轮）**：三份齐了之后，让每个 teammate **只读另外两份**，回一条反驳：
+5. **交叉评审（必做一轮，只读）**：三份齐了之后，让每个 teammate **只读另外两份**，回一条反驳；**本轮任何人都不许改文件**（包括自己那份），要改由 Lead 汇总后单独开一轮：
    ```
    质疑对象：02-sources.md 的 <结论>
    反驳：<一句话 + 依据>
    要求补的证据：<最小实验 / 具体来源>
    ```
    Lead 把三条反驳写进 `docs/selection/<slug>/06-cross-review.md`，分歧结论回填 `99-summary.md` 的"决策"段。
-6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板；缺一条就拒绝签字。
+6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板；缺一条就拒绝签字。**门不校验三份结论是否一致**——adversary 判"证据不足"而 01/02 建议采用时，默认签 `--hold` 并写明要补的证据，别签 `pass` 糊过去。
 
 **没有 teammate 工具 / spawn 失败时**：退回 `--mode solo`，三份证据由主代理代做，每份文件头写 `Persona: <角色 persona>（主代理代做）`，并在 99-summary 标注 `模式：solo`。降级可以，但必须留痕。
 

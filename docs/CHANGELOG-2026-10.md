@@ -80,6 +80,12 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.9.1：grill team 验收反馈
+
+- 交叉评审轮明确**只读**：任何人（包括自己那份）不许改文件；要改由 Lead 汇总后另开一轮。
+- 签字口径：adversary 判"证据不足"而 01/02 建议采用时，默认签 `--hold` 并写明待补证据，不签 `pass`。
+- 技能统一用完整 `python <技能目录>/scripts/dispatch.py` 调用（`dispatch` 不一定在 PATH 上）。
+
 ## 2026-10-30 · v1.9.0：grill 三会话并行（team 模式）
 
 - `select --mode team`：证据包标记为"每份证据由独立子会话产出"；`--mode solo`（默认）保持旧行为。
