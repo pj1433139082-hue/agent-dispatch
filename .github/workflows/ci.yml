@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  tests:
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +38,14 @@ jobs:
 
       - name: Run publish acceptance smoke
         run: python scripts/acceptance.py --json
+
+  # 分支保护要求存在名为 "test" 的检查；矩阵 job 改名后由这个聚合 job 兜住。
+  test:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Matrix summary
+        run: echo "ubuntu-latest and macos-latest passed"
 
   concurrency:
     # 并发/竞态用例单独反复跑：单跑一次说明不了稳定性
