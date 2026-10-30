@@ -156,7 +156,11 @@ def land_run(
     if ticket.content_hash != str(run.data.get("ticket_hash", "")):
         raise LandingError("ticket content changed since render; rerender the run first")
     if not run.execution_root.is_dir():
-        raise LandingError(f"run worktree is missing: {run.execution_root}")
+        raise LandingError(
+            f"run worktree is missing: {run.execution_root}; next steps: "
+            "dispatch drop " + str(run.data.get("ticket_id", "")) + " --reason <why> (archive the run), "
+            "or dispatch gc --apply (ORPHAN rows), or restore the worktree and retry"
+        )
     if (run.directory / "landing.json").exists():
         raise LandingError(f"run {run.id} already has a landing record")
     if not _checkout_is_clean(root):

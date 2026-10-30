@@ -69,6 +69,10 @@ def test_retry_puts_a_failed_ticket_back_to_running(tmp_path: Path) -> None:
     if not worktree.is_absolute():
         worktree = tmp_path / worktree
     (worktree / "out.txt").write_text("ok", encoding="utf-8")
+    (run_dir / "receipt.json").write_text(json.dumps({
+        "ticket_id": "01", "run_id": run["run_id"], "status": "done", "summary": "done",
+        "criteria": [{"id": 1, "verdict": "pass", "evidence": [{"kind": "inline", "content": "ok"}]}],
+    }), encoding="utf-8")
     assert run_dispatch(tmp_path, "verify", "01").returncode == 0
 
 

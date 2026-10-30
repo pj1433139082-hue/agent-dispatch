@@ -64,4 +64,6 @@ def test_dirty_main_checkout_message_says_how_to_fix(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     combined = result.stdout + result.stderr
-    assert "commit them first" in combined, combined
+    assert "clean checkout required" in combined, combined
+    assert ".gitignore" in combined
+    assert "git add .gitignore" not in combined

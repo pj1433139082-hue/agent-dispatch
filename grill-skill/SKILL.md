@@ -61,7 +61,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    要求补的证据：<最小实验 / 具体来源>
    ```
    Lead 把三条反驳写进 `docs/selection/<slug>/06-cross-review.md`，分歧结论回填 `99-summary.md` 的"决策"段。
-6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板；缺一条就拒绝签字。**证据矛盾门（v1.9.2）**：`03-adversary.md` 的结论行写着"证据不足"时，`sign` 拒绝 `pass`（除非带 `--note` 写明要补的证据）；默认签 `--hold`。另外 team 模式签字前必须 `review-window <slug> --open`（评审前）→ `--close`（评审后无改动），并且 `06-cross-review.md` 必须存在且非空，否则 `sign` 拒绝。
+6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板 ④`06-cross-review.md` 存在且非空 ⑤评审窗口已开且已关、无改动 ⑥没有 `panel --set <role>=missing/failed` 的角色（有的话 `pass` 必须带 `--note`）；缺一条就拒绝签字。**证据矛盾门（v1.9.2）**：`03-adversary.md` 的结论行写着"证据不足"时，`sign` 拒绝 `pass`（除非带 `--note` 写明要补的证据）；默认签 `--hold`。另外 team 模式签字前必须 `review-window <slug> --open`（评审前）→ `--close`（评审后无改动），并且 `06-cross-review.md` 必须存在且非空，否则 `sign` 拒绝。
 
 **没有 teammate 工具 / spawn 失败时**：退回 `--mode solo`，三份证据由主代理代做，每份文件头写 `Persona: <角色 persona>（主代理代做）`，并在 99-summary 标注 `模式：solo`。降级可以，但必须留痕。
 
@@ -77,11 +77,11 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 - **档位 ≠ 空行数**：`--level standard` 是 6 问，但模板有 **7 个 `> `**（6 问 + 最后的 `Anything else?`）。**全部都要填**，留一个空 `spec` 会拒："还有 1 个问题没填"。
 - **可选角色 04/05**：`--with domain-owner,cost-keeper` 只多两个 brief；写最小证据即可，**不写不卡 `sign`**（`sign` 只改签字四行）。
 - **`99-summary` 的表格不影响门禁**：`sign` 不校验表格，`spec` 只校验签字行——但填了才好审计。
-- **`questions` 的 stderr 只报条数**，不列具体哪几条被跳过；`TODO` 是**包含匹配**（行内任何位置出现都跳过）。
+- **`questions` 的跳过明细**：默认只报条数（stderr）；要逐条看加 `--with-skipped`，JSON 变成 `{"questions": [...], "skipped": [...]}`。`TODO` 是**包含匹配**（行内任何位置出现都跳过）。
 - **单 agent 会话里谁签**：没有人类通道时以**主代理名义**代签（`--by lead --via card`），并在交付说明里注明"代为签字"。
 - **`sign` 实际改 4 行**：签字人 / 日期 / 选择 / 确认方式（带 `--note` 再多一行 备注）——不是三行。`99-summary` 的 `- 日期：` 仍然不用手填。
 - **`select` 必写 `00-panel.json`**（角色面板索引）；`--with domain-owner,cost-keeper` 还会多写 `04-*.md` / `05-*.md` 两个 brief。写域被限死时：去掉 `--with`（不写不卡 `sign`），或先确认这两个文件算不算允许。
-- **`questions` 拒绝时退出码是 2**（不是 1），模板检测是字符串匹配：`03-adversary.md` 里出现 `## What to produce` 或 `Persona: builtin:adversary` 就永远判「还是模板」——改写时要把这两处删掉。
+- **`questions` 拒绝时退出码是 2**（不是 1），模板检测只看 `## What to produce`（v1.12.0 起不再把 `Persona:` 行当模板标记）——改写时删掉那个小节即可。
 - **无人值守（没人能答）**：把问题写进 `docs/questions/<slug>.md` 的 `## 追加轮次（grilling）`，每题带 `➡️ 推荐答案`，答案记 `> 用户答案：是（采纳推荐）`，并在交付说明里写明「无人值守自答」——不要因为没人答就跳过前沿。
 
 ## 收敛标准

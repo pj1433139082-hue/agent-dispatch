@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -137,6 +138,40 @@ def _load_state(root: Path) -> dict[str, dict[str, object]]:
     tickets = loaded.get("tickets") if isinstance(loaded, dict) else None
     return dict(tickets) if isinstance(tickets, dict) else {}
 
+
+def drop_run(root: Path, ticket_id: str, reason: str = "") -> dict[str, object]:
+    """把一条 run 归档到 .dispatch/archive 并从索引移除（worktree 丢失时的出路）。"""
+    root = Path(root)
+    state = _load_state(root)
+    entry = state.get(ticket_id)
+    if entry is None:
+        raise ValueError("ticket " + ticket_id + " is not in the index")
+    run_id = str(entry.get("run_id", ""))
+    run_dir = root / ".dispatch" / "runs" / run_id
+    archive = root / ".dispatch" / "archive" / "runs" / run_id
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    if run_dir.is_dir():
+        if archive.exists():
+            shutil.rmtree(archive, ignore_errors=True)
+        shutil.move(str(run_dir), str(archive))
+    remaining = {key: value for key, value in state.items() if key != ticket_id}
+    path = root / ".dispatch" / "state.json"
+    path.write_text(
+        json.dumps({"version": 1, "tickets": remaining}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    ledger = root / ".dispatch" / "ledger" / "dropped.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "ticket_id": ticket_id,
+        "run_id": run_id,
+        "reason": reason,
+        "archive": str(archive),
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return row
 
 def repair(root: Path, write: bool = False) -> dict[str, object]:
     """从 runs/*/run.json 反向重建索引；默认 dry-run。"""
@@ -365,6 +400,26 @@ def gc(root: Path, *, apply: bool = False) -> list[dict[str, object]]:
         if not directory.is_absolute():
             directory = Path(root) / directory
         if not directory.is_dir():
+            landed_now = (Path(root) / ".dispatch" / "runs" / run_id / "landing.json").is_file()
+            if landed_now:
+                continue
+            rows.append(
+                {
+                    "ticket_id": ticket_id,
+                    "run_id": run_id,
+                    "state": run_state,
+                    "worktree": str(directory),
+                    "branch": str(data.get("worktree_branch", "")),
+                    "dirty": False,
+                    "landed": landed_now,
+                    "verdict": "ORPHAN",
+                }
+            )
+            if apply:
+                try:
+                    drop_run(root, ticket_id, "worktree missing (gc --apply)")
+                except Exception:
+                    pass
             continue
         dirty = subprocess.run(
             ["git", "status", "--porcelain"], cwd=directory, capture_output=True, text=True, check=False
