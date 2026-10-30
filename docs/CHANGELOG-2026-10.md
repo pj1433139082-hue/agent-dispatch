@@ -80,6 +80,26 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.12.0：问题清单（15 条）修复
+
+**implement 链路**
+- verify 脏主检出：逐条列路径 + clean checkout required: N path(s)，去掉通用 gitignore 建议；新增 verify --allow-dirty <path>。
+- write scope：__init__.py 作为包声明自动放行（目录前缀本就支持）。
+- land：worktree 丢失时给出 drop / gc --apply 的下一步；新增 drop <id> --reason 归档 + ledger。
+- gc：worktree 丢失的未落地 run 报 ORPHAN；--apply 归档并自动重建索引。
+- wrap：.agents/skills 等只在被 git 跟踪时算污染；输出带 branch= / target=。
+- retry：旧 receipt 归档为 attempts/receipt-NN.json.bak，verify 报 receipt stale (attempt N)。
+- unknown ticket 报错附 tickets_dir；land 输出带 branch/target。
+
+**grill 链路**
+- questions：不再把 Persona: builtin:* 当模板标记（team 证据可用）；新增 --with-skipped 输出跳过明细。
+- review-window：状态改存 .dispatch/reviews/<slug>.json，不再写进 docs/selection/。
+- panel --set <role>=missing|failed：team 签字缺角色时 pass 必须带 --note。
+- align --preset dispatch|model-contract|research：内置题库预设。
+- 文档：grill 技能里三处自相矛盾/过时说法修正。
+
+测试：tests/test_issue_list_20261030.py（11 条）；ADR 0017。
+
 ## 2026-10-30 · v1.11.1：交叉评审成为 team 签字前置
 
 - `sign` 在 team 模式下要求 `06-cross-review.md` 存在且非空（此前只查 Persona / 模板 / 评审窗口）。

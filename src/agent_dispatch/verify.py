@@ -63,6 +63,21 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
+def package_init_allowed(scope: str, path: str) -> bool:
+    """__init__.py 是包声明：所在目录在 scope 内、或是 scope 的祖先目录，就放行。"""
+    if not path.endswith("__init__.py"):
+        return False
+    directory = path.rsplit("/", 1)[0] if "/" in path else ""
+    scope = scope.strip().rstrip("/")
+    scope_dir = scope if scope.endswith("/") else (scope.rsplit("/", 1)[0] if "/" in scope else "")
+    if directory == scope_dir:
+        return True
+    if directory and scope_dir.startswith(directory + "/"):
+        return True
+    if scope_dir and directory.startswith(scope_dir + "/"):
+        return True
+    return False
+
 def path_matches_scope(scope: str, path: str) -> bool:
     scope = _normalize(scope)
     path = _normalize(path)
@@ -548,6 +563,7 @@ def verify_run(
     run: Run,
     timeout: int = 300,
     allow_main_drift: bool = False,
+    allow_dirty: list[str] | None = None,
 ) -> tuple[dict[str, object], bool]:
     root = Path(root)
     run_dir = run.directory
@@ -574,7 +590,22 @@ def verify_run(
     receipt_path = run_dir / "receipt.json"
     receipt: dict[str, object] | None = None
     receipt_kind = ""
-    if not receipt_path.is_file():
+    stale_problem = ""
+    stale_at = run.data.get("receipt_stale_at")
+    if stale_at:
+        try:
+            stale_dt = datetime.fromisoformat(str(stale_at))
+        except ValueError:
+            stale_dt = None
+        attempt = str(run.data.get("attempt", "?"))
+        if not receipt_path.is_file():
+            stale_problem = "receipt stale (attempt " + attempt + "): receipt.json was archived by retry; rewrite it"
+        elif stale_dt is not None and datetime.fromtimestamp(receipt_path.stat().st_mtime, tz=timezone.utc) <= stale_dt:
+            stale_problem = "receipt stale (attempt " + attempt + "): receipt.json predates the retry; rewrite it"
+
+    if stale_problem:
+        check("receipt", False, stale_problem)
+    elif not receipt_path.is_file():
         check(
             "receipt",
             False,
@@ -641,7 +672,10 @@ def verify_run(
         out_of_scope = [
             path
             for path in files
-            if not any(path_matches_scope(scope, path) for scope in ticket.write_scope)
+            if not any(
+                path_matches_scope(scope, path) or package_init_allowed(scope, path)
+                for scope in ticket.write_scope
+            )
         ]
         house_only = [path for path in out_of_scope if housekeeping(path)]
         if house_only:
@@ -703,13 +737,26 @@ def verify_run(
                 elif allowed:
                     detail = "main checkout has uncommitted changes (allowed): " + ", ".join(main_files)
                 else:
-                    detail = (
-                        "main checkout has uncommitted changes: "
-                        + ", ".join(main_files)
-                        + " (commit them first; dispatch setup writes .gitignore, so run: "
-                        "git add .gitignore && git commit -m 'chore: ignore .dispatch'"
-                        + ")"
-                    )
+                    allowed_paths = list(allow_dirty or [])
+                    blocked = [
+                        path
+                        for path in main_files
+                        if not any(
+                            path == item.rstrip("/") or path.startswith(item.rstrip("/") + "/")
+                            for item in allowed_paths
+                        )
+                    ]
+                    if blocked:
+                        detail = (
+                            "clean checkout required: " + str(len(blocked)) + " path(s) — "
+                            + ", ".join(blocked)
+                            + " (commit or ignore them; git status --porcelain lists the same paths)"
+                        )
+                        if any(path.startswith(".dispatch/") for path in blocked):
+                            detail += " | .dispatch/ is not ignored: add it to .gitignore and commit that file"
+                    else:
+                        main_files = []
+                        detail = "clean"
                 check("main checkout", not main_files or allow_main_drift, detail)
                 files = sorted(set(files) | set(main_files))
 

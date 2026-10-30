@@ -111,7 +111,9 @@ def test_verify_refuses_a_dirty_main_checkout(tmp_path: Path) -> None:
     result = run_dispatch(tmp_path, "verify", "01")
 
     assert result.returncode == 1, result.stdout + result.stderr
-    assert "uncommitted" in (result.stdout + result.stderr).lower()
+    combined = (result.stdout + result.stderr).lower()
+    assert "clean checkout required" in combined
+    assert "scratch-dirty.txt" in combined
 
 
 def test_verify_allow_main_drift_reports_but_passes(tmp_path: Path) -> None:

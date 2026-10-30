@@ -54,12 +54,20 @@ def test_verify_warns_when_the_same_failure_repeats(tmp_path: Path) -> None:
         "criteria": [{"id": 1, "verdict": "pass", "evidence": [{"kind": "inline", "content": "ok"}]}],
     }), encoding="utf-8")
 
+    def rewrite_receipt() -> None:
+        (run_dir / "receipt.json").write_text(json.dumps({
+            "ticket_id": "01", "run_id": run["run_id"], "status": "done", "summary": "ok",
+            "criteria": [{"id": 1, "verdict": "pass", "evidence": [{"kind": "inline", "content": "ok"}]}],
+        }), encoding="utf-8")
+
     first = run_dispatch(tmp_path, "verify", "01")
     assert first.returncode == 1 and "repeated failure" not in first.stderr
     assert run_dispatch(tmp_path, "retry", "01", "--reason", "same failure").returncode == 0
+    rewrite_receipt()
     second = run_dispatch(tmp_path, "verify", "01")
     assert second.returncode == 1 and "repeated failure" not in second.stderr
     assert run_dispatch(tmp_path, "retry", "01", "--reason", "same failure again").returncode == 0
+    rewrite_receipt()
     third = run_dispatch(tmp_path, "verify", "01")
 
     assert "repeated failure" in third.stderr

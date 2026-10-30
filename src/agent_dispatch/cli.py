@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import argparse
 import hashlib
 import json
@@ -170,6 +172,10 @@ def _parser() -> argparse.ArgumentParser:
     align_parser.add_argument("slug")
     align_parser.add_argument("--title", default="")
     align_parser.add_argument("--level", default="standard", help="quick | standard | thorough")
+    align_parser.add_argument(
+        "--preset", choices=("dispatch", "model-contract", "research"), default="dispatch",
+        help="Question bank preset (dispatch = the default flow).",
+    )
     align_parser.add_argument("--root", type=Path, default=Path("."))
     align_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -244,6 +250,7 @@ def _parser() -> argparse.ArgumentParser:
     questions_parser.add_argument("slug")
     questions_parser.add_argument("--root", type=Path, default=Path("."))
     questions_parser.add_argument("--json", action="store_true", dest="as_json")
+    questions_parser.add_argument("--with-skipped", action="store_true", dest="with_skipped", help="Include the skipped-lines detail in the JSON output.")
 
     roots_parser = subparsers.add_parser("roots", help="Find dispatch roots living in subdirectories of this repo.")
     roots_parser.add_argument("--root", type=Path, default=Path("."))
@@ -339,6 +346,13 @@ def _parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("ticket_id")
     verify_parser.add_argument("--root", type=Path, default=Path("."))
     verify_parser.add_argument("--timeout", type=int, default=300)
+    verify_parser.add_argument(
+        "--allow-dirty",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="Ignore this dirty path in the main checkout (repeatable).",
+    )
     verify_parser.add_argument(
         "--allow-main-drift",
         action="store_true",
@@ -528,6 +542,18 @@ def _parser() -> argparse.ArgumentParser:
     answer_parser.add_argument("--answers", type=Path, required=True, help="JSON array of strings, one per blank '> ' line.")
     answer_parser.add_argument("--root", type=Path, default=Path("."))
     answer_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    panel_parser = subparsers.add_parser("panel", help="Mark a role's status in the selection panel (produced / missing / failed / skipped).")
+    panel_parser.add_argument("slug")
+    panel_parser.add_argument("--set", dest="assignment", required=True, metavar="ROLE=STATUS")
+    panel_parser.add_argument("--root", type=Path, default=Path("."))
+    panel_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    drop_parser = subparsers.add_parser("drop", help="Archive a run whose worktree is gone and remove it from the index.")
+    drop_parser.add_argument("ticket_id")
+    drop_parser.add_argument("--reason", default="", help="Why this run is being dropped (recorded in the ledger).")
+    drop_parser.add_argument("--root", type=Path, default=Path("."))
+    drop_parser.add_argument("--json", action="store_true", dest="as_json")
 
     integrate_parser = subparsers.add_parser("integrate", help="Merge several land branches into one integration branch (never pushes or merges the target).")
     integrate_parser.add_argument("--branch", required=True, help="Integration branch to create.")
@@ -951,7 +977,7 @@ def _cmd_assign(args: argparse.Namespace) -> int:
     tickets = load_tickets(directory)
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     existing = DispatchState(args.root).ticket(ticket.id)
     if existing:
@@ -1087,7 +1113,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
 
     policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
@@ -1204,7 +1230,7 @@ def _cmd_context(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     target = write_context_pack(args.root, ticket)
     text = target.read_text(encoding="utf-8")
@@ -1221,7 +1247,7 @@ def _cmd_brief(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     if args.approve:
         try:
@@ -1296,7 +1322,7 @@ def _cmd_align(args: argparse.Namespace) -> int:
         print(f"questionnaire already exists: {target}", file=sys.stderr)
         return 1
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render_questionnaire(slug, title, level), encoding="utf-8")
+    target.write_text(render_questionnaire(slug, title, level, args.preset), encoding="utf-8")
     if args.as_json:
         print(json.dumps({"slug": slug, "level": level, "path": str(target)}, ensure_ascii=False))
     else:
@@ -1408,7 +1434,7 @@ def _cmd_review_packet(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -1458,7 +1484,7 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -1476,14 +1502,20 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
 
 def _cmd_questions(args: argparse.Namespace) -> int:
     try:
-        items = grill_questions(args.root, args.slug)
+        payload = grill_questions(
+            args.root, args.slug, with_skipped=getattr(args, "with_skipped", False)
+        )
     except FileNotFoundError as error:
         print(str(error), file=sys.stderr)
         return 1
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
-    if args.as_json or True:
+    if getattr(args, "with_skipped", False):
+        items, skipped = payload
+        print(json.dumps({"questions": items, "skipped": skipped}, ensure_ascii=False, indent=2))
+    else:
+        items = payload
         print(json.dumps(items, ensure_ascii=False, indent=2))
     return 0 if items else 2
 
@@ -1694,7 +1726,7 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
             bits.append(f"released {len(released)} expired lease(s)")
         print("Fixed: " + ("; ".join(bits) or "nothing to fix"))
     summary = ", ".join(f"{state} {count}" for state, count in sorted(counts.items())) or "no tickets"
-    print(f"Wrap-up: {len(document['tickets'])} ticket(s) — {summary}")
+    print(f"Wrap-up: {len(document['tickets'])} ticket(s) — {summary} [branch={_current_branch(root) or '?'} target={_default_branch(root) or '?'}]")
     print("Frontier: " + (", ".join(document["frontier"]) or "-"))
     if issues:
         print("Issues:")
@@ -1787,7 +1819,7 @@ def _cmd_handoff(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -1944,7 +1976,10 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     host_packages: list[str] = []
     for base in (".agents/skills", ".claude/skills", ".codex/skills"):
         folder = root / base
-        if folder.is_dir():
+        tracked = subprocess.run(
+            ["git", "ls-files", "--", base], cwd=root, text=True, capture_output=True, check=False
+        ).stdout.strip()
+        if folder.is_dir() and tracked:
             host_packages.extend(base + "/" + child.name for child in sorted(folder.iterdir()) if child.is_dir())
     if host_packages:
         warnings.append(
@@ -1986,6 +2021,21 @@ def _fix_safe(root: Path) -> list[str]:
             data["tickets"].pop(tid, None)
         if stale:
             state.save(data)
+            ledger = Path(root) / ".dispatch" / "ledger" / "dropped.jsonl"
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            with ledger.open("a", encoding="utf-8") as handle:
+                for tid in sorted(stale):
+                    handle.write(
+                        json.dumps(
+                            {
+                                "ticket_id": tid,
+                                "reason": "stale index entry (run missing on disk)",
+                                "at": datetime.now(timezone.utc).isoformat(),
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
             fixed.append("dropped stale index entries: " + ", ".join(sorted(stale)))
     except Exception as error:  # noqa: BLE001
         fixed.append(f"index cleanup failed: {error}")
@@ -2077,13 +2127,15 @@ def _cmd_retry(args: argparse.Namespace) -> int:
     attempts.mkdir(parents=True, exist_ok=True)
     number = len(list(attempts.glob("verify-*.json"))) + 1
     kept: list[str] = []
-    for name in ("verify.json", "review.json", "closeout.json"):
+    for name in ("receipt.json", "verify.json", "review.json", "closeout.json"):
         source = run.directory / name
         if source.is_file():
-            target = attempts / (name.replace(".json", "") + "-" + f"{number:02d}" + ".json")
+            suffix = ".json.bak" if name == "receipt.json" else ".json"
+            target = attempts / (name.replace(".json", "") + "-" + f"{number:02d}" + suffix)
             source.replace(target)
             kept.append(str(target.relative_to(run.directory)).replace("\\", "/"))
     run.data["attempt"] = int(run.data.get("attempt", 1)) + 1
+    run.data["receipt_stale_at"] = datetime.now(timezone.utc).isoformat()
     run.set_state("running")
     run.write()
     context_file = run.directory / "context.md"
@@ -2187,7 +2239,7 @@ def _cmd_claim(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     _, run = _current_run(args.root, args.ticket_id)
     if run is None:
@@ -2215,6 +2267,11 @@ def _cmd_claim(args: argparse.Namespace) -> int:
 
 def _cmd_gc(args: argparse.Namespace) -> int:
     rows = gc_worktrees(args.root, apply=args.apply)
+    if args.apply:
+        try:
+            repair_state(args.root, write=True)
+        except Exception:
+            pass
     if args.as_json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return 0
@@ -2593,6 +2650,40 @@ def _land_wave(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_panel(args: argparse.Namespace) -> int:
+    from .select import set_role_status
+
+    if "=" not in args.assignment:
+        print("PANEL --set expects ROLE=STATUS", file=sys.stderr)
+        return 1
+    role_id, status = args.assignment.split("=", 1)
+    try:
+        path = set_role_status(args.root, args.slug, role_id.strip(), status.strip())
+    except (FileNotFoundError, ValueError) as error:
+        print("PANEL " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps({"path": str(path), "role": role_id.strip(), "status": status.strip()}, ensure_ascii=False))
+    else:
+        print("Panel " + role_id.strip() + " = " + status.strip())
+    return 0
+
+
+def _cmd_drop(args: argparse.Namespace) -> int:
+    from .lifecycle import drop_run
+
+    try:
+        row = drop_run(args.root, args.ticket_id, args.reason)
+    except ValueError as error:
+        print("DROP " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps(row, ensure_ascii=False, indent=2))
+    else:
+        print("Dropped " + args.ticket_id + " (run " + str(row["run_id"]) + ") -> " + str(row["archive"]))
+    return 0
+
+
 def _cmd_answer(args: argparse.Namespace) -> int:
     from .pipeline import answer_questionnaire
 
@@ -2691,7 +2782,29 @@ def _cmd_integrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _default_branch(root) -> str:
+    for name in ("main", "master"):
+        found = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "refs/heads/" + name],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        if found.returncode == 0:
+            return name
+    return ""
+
+
+def _current_branch(root) -> str:
+    found = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root, text=True, capture_output=True, check=False
+    )
+    return found.stdout.strip() if found.returncode == 0 else ""
+
+
 def _cmd_land(args: argparse.Namespace) -> int:
+    branch = _current_branch(args.root)
+    target = _default_branch(args.root)
+    if (branch or target) and not getattr(args, "as_json", False):
+        print(f"Land: branch={branch or '?'} -> target={target or '?'}")
     if getattr(args, "wave", False):
         return _land_wave(args)
     if getattr(args, "require_closeout", False):
@@ -2808,7 +2921,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
         return code
     ticket = _find_ticket(tickets, args.ticket_id)
     if ticket is None:
-        print(f"unknown ticket: {args.ticket_id}", file=sys.stderr)
+        print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
     auto_policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
     if not getattr(args, "allow_unassigned_persona", False) and persona_required(ticket.risk, auto_policy) and not ticket.persona:
@@ -3173,6 +3286,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_land(args)
     if args.command == "answer":
         return _cmd_answer(args)
+    if args.command == "drop":
+        return _cmd_drop(args)
+    if args.command == "panel":
+        return _cmd_panel(args)
     if args.command == "review-window":
         return _cmd_review_window(args)
     if args.command == "mutate":

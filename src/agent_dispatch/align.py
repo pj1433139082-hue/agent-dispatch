@@ -48,10 +48,33 @@ def normalize_level(value: str) -> str:
     return level if level in LEVELS else "standard"
 
 
-def render_questionnaire(slug: str, title: str, level: str) -> str:
+PRESETS = {
+    "dispatch": None,
+    "model-contract": [
+        ("输入契约", "模型/脚本的输入字段、类型、缺失值策略是什么？", "契约不清，后面每个调用点都要各自猜。"),
+        ("输出契约", "输出写到哪、字段顺序/列名/精度要求是什么？", "下游直接消费，格式漂移等于破坏接口。"),
+        ("数据边界", "训练/推理数据的时间范围、频率、单位是什么？", "边界写不清，评测和线上会各说各话。"),
+        ("失败语义", "输入不合法/数据缺失时应该报错还是降级？", "决定调用方要不要兜底。"),
+        ("兼容性", "旧版本产物还要不要能读？", "决定要不要写迁移或版本字段。"),
+    ],
+    "research": [
+        ("主张", "这次要验证或证伪的核心主张是什么？", "没有可证伪的主张就没有研究方向。"),
+        ("证据门槛", "什么级别的证据算数（同行评议/复现/预印本）？", "决定检索范围与工作量。"),
+        ("基线", "对比基线是什么，为什么是它？", "基线选错，结论没有意义。"),
+        ("评测", "用什么指标、在什么数据上评测？", "指标与数据必须写死，否则不可复现。"),
+        ("停止条件", "出现什么结果就停（含负面结果）？", "防止无限调参。"),
+    ],
+}
+
+
+BANK_BY_PRESET = {"dispatch": BANK}
+
+
+def render_questionnaire(slug: str, title: str, level: str, preset: str = "dispatch") -> str:
     level = normalize_level(level)
     count = LEVELS[level]
-    questions = BANK[:count]
+    bank = PRESETS.get(preset) or BANK
+    questions = bank[:count] if bank else BANK[:count]
     themes: list[str] = []
     lines = [
         "# " + title,

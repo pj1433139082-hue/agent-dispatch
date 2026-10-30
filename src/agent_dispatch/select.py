@@ -152,6 +152,7 @@ def render_panel_json(slug: str, title: str, roles: list[Role], mode: str = "sol
                 "persona": role.persona,
                 "deliverable": role.deliverable,
                 "required": role.required,
+                "status": "produced",
                 "evidence": role.evidence,
             }
             for role in roles
@@ -192,6 +193,24 @@ def render_summary(slug: str, title: str, roles: list[Role], mode: str = "solo")
     ])
     return "\n".join(lines)
 
+
+def set_role_status(root: Path, slug: str, role_id: str, status: str) -> Path:
+    """标记某个角色是否真的产出（produced / missing / failed / skipped）。"""
+    import json
+
+    path = pack_dir(Path(root), slug) / "00-panel.json"
+    if not path.is_file():
+        raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    found = False
+    for role in payload.get("roles", []):
+        if str(role.get("id", "")) == role_id:
+            role["status"] = status
+            found = True
+    if not found:
+        raise ValueError("unknown role: " + role_id)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 def write_pack(root: Path, slug: str, title: str, roles: list[Role], mode: str = "solo") -> list[Path]:
     directory = pack_dir(root, slug)

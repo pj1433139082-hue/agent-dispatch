@@ -4,7 +4,7 @@
 
 | 命令 | usage |
 |---|---|
-| `align` | `dispatch align [-h] [--title TITLE] [--level LEVEL] [--root ROOT] [--json] slug` |
+| `align` | `dispatch align [-h] [--title TITLE] [--level LEVEL] [--preset {dispatch,model-contract,research}] [--root ROOT] [--json] slug` |
 | `answer` | `dispatch answer [-h] --answers ANSWERS [--root ROOT] [--json] slug` |
 | `assign` | `dispatch assign [-h] --persona PERSONA [--tickets TICKETS] [--root ROOT] [--by BY] [--json] ticket_id` |
 | `auto` | `dispatch auto [-h] --executor EXECUTOR [--agent AGENT] [--resume] [--max-attempts MAX_ATTEMPTS] [--timeout TIMEOUT] [--verify-timeout VERIFY_TIMEOUT] [--until {review,land}] [--reviewer REVIEWER] [--reviewer-command REVIEWER_COMMAND] [--accept-degraded] [--human] [--tickets TICKETS] [--protocol {none,full}] [--env-hint ENV_HINT] [--require-brief] [--root ROOT] [--json] [--force] [--allow-unassigned-persona] ticket_id` |
@@ -15,6 +15,7 @@
 | `confirm` | `dispatch confirm [-h] --by BY --via {dialog,card} [--note NOTE] [--force] [--root ROOT] slug` |
 | `context` | `dispatch context [-h] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
 | `doctor` | `dispatch doctor [-h] [--root ROOT] [--tickets TICKETS] [--json] [--fix]` |
+| `drop` | `dispatch drop [-h] [--reason REASON] [--root ROOT] [--json] ticket_id` |
 | `dsh` | `dispatch dsh [-h] {push,status,outcome,update,archive,run,delete} ...` |
 | `export` | `dispatch export [-h] --format {agent-team,dsh-team,dsh-board,codex,generic} [--tickets TICKETS] [--root ROOT] [--output OUTPUT]` |
 | `gc` | `dispatch gc [-h] [--apply] [--root ROOT] [--json]` |
@@ -25,9 +26,10 @@
 | `lint` | `dispatch lint [-h] [--tickets TICKETS] [--json]` |
 | `mutate` | `dispatch mutate [-h] [--timeout TIMEOUT] [--per-file] [--root ROOT] [--json] ticket_id` |
 | `new` | `dispatch new [-h] --title TITLE [--what WHAT] [--owner OWNER] [--risk {L0,L1,L2,L3,L4}] [--write-scope WRITE_SCOPE] [--verify VERIFY] [--depends-on DEPENDS_ON] [--persona PERSONA] [--by BY] [--tickets TICKETS] ticket_id` |
+| `panel` | `dispatch panel [-h] --set ROLE=STATUS [--root ROOT] [--json] slug` |
 | `personas` | `dispatch personas [-h] {list,show} ...` |
 | `plan` | `dispatch plan [-h] [--tickets TICKETS] [--done ID] [--json]` |
-| `questions` | `dispatch questions [-h] [--root ROOT] [--json] slug` |
+| `questions` | `dispatch questions [-h] [--root ROOT] [--json] [--with-skipped] slug` |
 | `release` | `dispatch release [-h] [--root ROOT] [--json] ticket_id` |
 | `render` | `dispatch render [-h] [--tickets TICKETS] [--root ROOT] [--agent AGENT] [--allow-unassigned-persona] [--no-worktree] [--deadline-minutes DEADLINE_MINUTES] [--seat-cap SEAT_CAP] [--claim] [--with-context] [--require-brief] ticket_id` |
 | `repair` | `dispatch repair [-h] [--root ROOT] [--write] [--json]` |
@@ -46,5 +48,5 @@
 | `status` | `dispatch status [-h] [--tickets TICKETS] [--root ROOT] [--all] [--json]` |
 | `sweep` | `dispatch sweep [-h] [--root ROOT] [--json]` |
 | `tickets` | `dispatch tickets [-h] [--force] [--root ROOT] [--json] slug` |
-| `verify` | `dispatch verify [-h] [--root ROOT] [--timeout TIMEOUT] [--allow-main-drift] ticket_id` |
+| `verify` | `dispatch verify [-h] [--root ROOT] [--timeout TIMEOUT] [--allow-dirty PATH] [--allow-main-drift] ticket_id` |
 | `wrap` | `dispatch wrap [-h] [--root ROOT] [--tickets TICKETS] [--json] [--fix]` |

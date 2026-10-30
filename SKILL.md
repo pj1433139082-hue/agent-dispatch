@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.11.1。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.12.0。
 
 ## 何时使用
 
@@ -505,6 +505,8 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `land <id> \| --wave [--into 目标分支] [--branch 前缀] [--require-closeout] [--require-attestation] [--no-require-packet] [--verify] [--verify-all "命令"] [--verify-all-timeout 1800] [--append] [--continue-on-error] [--dry-run]` | 把已验证 Run 合入本地 integration branch；**默认要求 review-packet.md 存在**；目标分支不变，不 push |
 | `auto <id> --executor <shell> [--agent <name>] [--resume] [--max-attempts N] [--timeout 1800] [--verify-timeout 300] [--until review 或 land] [--reviewer ... --reviewer-command ...]` | 半自动推进：render → 执行器 → verify（可重试）；`--until land` 需独立 reviewer 命令 |
 | `auto <id> --executor <shell> --protocol full [--env-hint "<命令>"] [--require-brief]` | 带协议跑：注入 context + 环境前置、检查 brief 门、每次 verify 后发 checkpoint、跑 closeout；`--until land` 必须 closeout pass 才 land |
+| `panel <slug> --set <role>=<status>` | 标记角色产出状态（produced / missing / failed / skipped）；team 模式下缺角色签字需 `--note` |
+| `drop <id> --reason <why>` | worktree 丢失的 run 归档到 `.dispatch/archive/` 并从索引移除（记 ledger） |
 | `answer <slug> --answers <json>` | 无人值守：按顺序把 JSON 答案填进问卷空 `> ` 行；条数不符即拒 |
 | `review-window <slug> --open\|--close` | 选型包证据快照：交叉评审前开、评审后关；有改动 exit 1；team 模式签字前必须有干净窗口 |
 | `mutate <id> [--timeout 300] [--per-file]` | 变异检查：base_commit 重跑 Verify（全过=weak）；`--per-file` 逐个回退改动文件，找出"改了但判据没覆盖"的文件 |
@@ -517,10 +519,10 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
 | `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
 | `questions <slug> [--json]` | 把 `03-adversary.md` 的假设转成可直接问甲方的问题（配合 `ask_user_question`） |
-| `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
+| `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list] [--mode solo\|team]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
 | `sweep [--json]` | 只读巡检：每条 active run 的 `age_seconds / last_artifact / idle_seconds / has_receipt / deadline_seconds / over_deadline`；**不自动 kill** |
 | `repair [--write] [--json]` | 从 `.dispatch/runs/*/run.json` 反向重建 `state.json`；默认 dry-run；冲突票**不写**并 exit 1 |
-| `align <slug> [--level quick 或 standard 或 thorough]` | S1：出需求问卷 `docs/questions/<slug>.md`，第一段就是档位选择（3 / 6 / 10 问） |
+| `align <slug> [--level quick 或 standard 或 thorough] [--preset dispatch 或 model-contract 或 research]` | S1：出需求问卷 `docs/questions/<slug>.md`，第一段就是档位选择（3 / 6 / 10 问） |
 | `closeout <id> [--json]` | 对照 票面 / brief / diff 出收口报告；`land --require-closeout` 才强制 |
 | `spec <slug> [--force]` | S3：问卷答满 **且 S2 已签字** 才允许写规格骨架（--force 跳过签字门） `docs/specs/<slug>.md`（Problem / Solution / Stories / Delivery standard / Decisions / Testing / Out of scope） |
 | `tickets <slug>` | S4：按规格的 `## Delivery standard` 逐条生成草稿票到 `.dispatch/drafts/<slug>/`，补 Write scope 与 Verify 后进 `tickets/` |

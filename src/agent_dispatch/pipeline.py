@@ -246,7 +246,8 @@ def open_review_window(root: Path, slug: str) -> Path:
         "files": files,
         "changed": [],
     }
-    target = pack / REVIEW_WINDOW
+    target = Path(str(root)) / ".dispatch" / "reviews" / (slug + ".json")
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
     return target
 
@@ -254,7 +255,7 @@ def open_review_window(root: Path, slug: str) -> Path:
 def close_review_window(root: Path, slug: str) -> tuple[Path, list[str]]:
     """评审窗口关闭：对比快照，返回被改过的文件。"""
     pack = pack_dir(Path(root), slug)
-    target = pack / REVIEW_WINDOW
+    target = Path(str(root)) / ".dispatch" / "reviews" / (slug + ".json")
     if not target.is_file():
         raise FileNotFoundError("review window is not open (run: dispatch review-window " + slug + " --open)")
     record = json.loads(target.read_text(encoding="utf-8"))
@@ -273,14 +274,14 @@ def close_review_window(root: Path, slug: str) -> tuple[Path, list[str]]:
     return target, changed
 
 
-def review_window_problem(pack: Path) -> str:
-    target = pack / REVIEW_WINDOW
+def review_window_problem(root: Path, slug: str) -> str:
+    target = Path(str(root)) / ".dispatch" / "reviews" / (slug + ".json")
     if not target.is_file():
         return "评审窗口未开启（dispatch review-window <slug> --open）"
     try:
         record = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return "07-review-window.json 读不出来"
+        return "review-window record 读不出来"
     if not record.get("closed_at"):
         return "评审窗口未关闭（dispatch review-window <slug> --close）"
     changed = record.get("changed") or []
@@ -322,9 +323,18 @@ def sign_selection(root: Path, slug: str, by: str, choice: str = "pass", via: st
     except (OSError, json.JSONDecodeError):
         panel = {}
     if str(panel.get("mode", "solo")) == "team":
-        window_problem = review_window_problem(pack)
+        window_problem = review_window_problem(root, slug)
         if window_problem:
             raise ValueError(window_problem)
+        bad_roles = [
+            str(role.get("id", ""))
+            for role in panel.get("roles", [])
+            if str(role.get("status", "produced")) != "produced"
+        ]
+        if bad_roles and choice == "pass" and not note:
+            raise ValueError(
+                "team 模式有角色未产出：" + ", ".join(bad_roles) + "（pass 需 --note 说明，或签 --hold）"
+            )
         cross = pack / "06-cross-review.md"
         if not cross.is_file() or not cross.read_text(encoding="utf-8").strip():
             raise ValueError("team 模式缺 06-cross-review.md（交叉评审必须先落盘）")
@@ -489,7 +499,7 @@ def confirm_spec(root: Path, slug: str, by: str, via: str, note: str = "", force
     return spec
 
 
-def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
+def grill_questions(root: Path, slug: str, with_skipped: bool = False):
     """把 adversary 的假设 + oss 里没写"不采用理由"的参照，变成可以直接问的问题。"""
     folder = pack_dir(Path(root), slug)
     adversary = folder / "03-adversary.md"
@@ -497,7 +507,7 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
         raise FileNotFoundError("selection pack is missing: docs/selection/" + slug)
     items: list[dict[str, object]] = []
     text = adversary.read_text(encoding="utf-8") if adversary.is_file() else ""
-    if "## What to produce" in text or "Persona: builtin:adversary" in text:
+    if "## What to produce" in text:
         raise ValueError(
             "03-adversary.md 还是模板：先让 adversary 把假设与反例写进去，再跑 questions"
         )
@@ -550,4 +560,4 @@ def grill_questions(root: Path, slug: str) -> list[dict[str, object]]:
                 ],
             }
         )
-    return items
+    return (items, skipped) if with_skipped else items
