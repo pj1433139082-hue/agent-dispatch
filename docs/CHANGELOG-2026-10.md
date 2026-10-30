@@ -80,6 +80,16 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-31 · v1.13.0：清单收尾（land 票冲突 / from-commit / 环境自检）
+
+- land：只涉及 tickets_dir 的合并冲突自动用目标分支版本解决；非票冲突原样失败。
+- land --from-commit <sha>：worktree 丢失时用 commit 落地，核对 verify 的 changed_files。
+- align --preset model-contract：六题按报告口径（数据源/输入形态/计算频率/聚合规则/算法路线/验收口径）。
+- questions --json 始终输出 {"questions", "skipped"}（含跳过明细）。
+- doctor：新增 python-writable 自检；ignore_paths 配置可豁免宿主技能目录；dropped ledger 记 run_id。
+- CLI 启动补 HOME/TEMP 默认值（应对 run_code 空 env）。
+- 测试：test_land_conflicts_and_from_commit（3 条）+ 预设/问题形状补充。
+
 ## 2026-10-30 · v1.12.1：gc 也认 claimed 的孤儿
 
 - 看板回归发现：`render` 后（claimed）删掉 worktree，`gc` 返回空、`wrap` 仍报 "without landing.json"。

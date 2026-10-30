@@ -399,6 +399,12 @@ def _parser() -> argparse.ArgumentParser:
         help="With --wave: keep landing independent tickets after a failure.",
     )
     land_parser.add_argument(
+        "--from-commit",
+        default=None,
+        dest="from_commit",
+        help="Restore a missing worktree from this commit and land it (ticket-only).",
+    )
+    land_parser.add_argument(
         "--into",
         default=None,
         help="Target branch (default: main when present, otherwise the current branch).",
@@ -1502,21 +1508,15 @@ def _cmd_closeout(args: argparse.Namespace) -> int:
 
 def _cmd_questions(args: argparse.Namespace) -> int:
     try:
-        payload = grill_questions(
-            args.root, args.slug, with_skipped=getattr(args, "with_skipped", False)
-        )
+        payload = grill_questions(args.root, args.slug, with_skipped=True)
     except FileNotFoundError as error:
         print(str(error), file=sys.stderr)
         return 1
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
-    if getattr(args, "with_skipped", False):
-        items, skipped = payload
-        print(json.dumps({"questions": items, "skipped": skipped}, ensure_ascii=False, indent=2))
-    else:
-        items = payload
-        print(json.dumps(items, ensure_ascii=False, indent=2))
+    items, skipped = payload
+    print(json.dumps({"questions": items, "skipped": skipped}, ensure_ascii=False, indent=2))
     return 0 if items else 2
 
 
@@ -1891,6 +1891,11 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     issues: list[str] = []
     warnings: list[str] = []
     checks: list[dict[str, object]] = []
+    try:
+        config = json.loads((root / ".dispatch" / "config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        config = {}
+    ignore_paths = [str(item).rstrip("/") + "/" for item in (config.get("ignore_paths") or [])]
 
     tickets: list = []
     if not directory.exists():
@@ -1902,6 +1907,16 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
         if not tickets:
             issues.append("no tickets found; dispatch cannot advance anything")
     checks.append({"name": "tickets", "ok": bool(tickets), "detail": f"{len(tickets)} ticket(s)"})
+
+    try:
+        probe = root / ".dispatch" / ".write-probe"
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        checks.append({"name": "python-writable", "ok": True, "detail": "project root is writable by Python"})
+    except OSError as error:
+        issues.append("project root is not writable by Python: " + str(error) + " (check ACLs / integrity level)")
+        checks.append({"name": "python-writable", "ok": False, "detail": str(error)})
 
     states = _state_map(root)
     failed = sorted(tid for tid, value in states.items() if value == "failed")
@@ -1975,6 +1990,8 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
 
     host_packages: list[str] = []
     for base in (".agents/skills", ".claude/skills", ".codex/skills"):
+        if any((base + "/").startswith(prefix) for prefix in ignore_paths):
+            continue
         folder = root / base
         tracked = subprocess.run(
             ["git", "ls-files", "--", base], cwd=root, text=True, capture_output=True, check=False
@@ -2029,6 +2046,7 @@ def _fix_safe(root: Path) -> list[str]:
                         json.dumps(
                             {
                                 "ticket_id": tid,
+                                "run_id": str(((data.get("tickets") or {}).get(tid) or {}).get("run_id", "")),
                                 "reason": "stale index entry (run missing on disk)",
                                 "at": datetime.now(timezone.utc).isoformat(),
                             },
@@ -2858,6 +2876,7 @@ def _cmd_land(args: argparse.Namespace) -> int:
             target_branch=args.into,
             integration_branch=args.branch,
             append=bool(getattr(args, "append", False)),
+            from_commit=getattr(args, "from_commit", None),
             verify_after=bool(getattr(args, "verify", False)),
             verify_all=getattr(args, "verify_all", None),
             verify_all_timeout=int(getattr(args, "verify_all_timeout", 1800)),
@@ -3215,7 +3234,24 @@ def _cmd_dsh_delete(args: argparse.Namespace) -> int:
         print(f"Deleted {result['ticket_id']} ({result['task_id']})")
     return 0
 
+def _seed_environment() -> None:
+    """run_code 等入口的 env 可能为空：补上 HOME/TEMP，免得 git/python 子进程报错。"""
+    home = os.environ.get("USERPROFILE") or os.environ.get("HOME")
+    if not home:
+        try:
+            home = str(Path.home())
+        except Exception:
+            return
+    os.environ.setdefault("HOME", home)
+    os.environ.setdefault("USERPROFILE", home)
+    for key in ("TEMP", "TMP"):
+        if not os.environ.get(key):
+            candidate = Path(home) / "AppData" / "Local" / "Temp"
+            os.environ[key] = str(candidate if candidate.is_dir() else home)
+
+
 def main(argv: list[str] | None = None) -> int:
+    _seed_environment()
     args = _parser().parse_args(argv)
     if args.command == "lint":
         return _cmd_lint(args)
