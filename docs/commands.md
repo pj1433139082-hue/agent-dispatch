@@ -33,7 +33,7 @@
 | `review-packet` | `dispatch review-packet [-h] [--tickets TICKETS] [--root ROOT] [--json] ticket_id` |
 | `roots` | `dispatch roots [-h] [--root ROOT] [--json]` |
 | `seat` | `dispatch seat [-h] [--cap CAP] [--occupied OCCUPIED] [--inactive INACTIVE] [--agent AGENT] [--root ROOT] [--json]` |
-| `select` | `dispatch select [-h] [--title TITLE] [--with WITH_ROLES] [--add ID[:PERSONA]] [--list] [--root ROOT] [--json] [slug]` |
+| `select` | `dispatch select [-h] [--title TITLE] [--with WITH_ROLES] [--add ID[:PERSONA]] [--list] [--mode {solo,team}] [--root ROOT] [--json] [slug]` |
 | `setup` | `dispatch setup [-h] [--root ROOT] [--tickets TICKETS] [--executor-mode {teammate,dsh,command}] [--default-reviewer DEFAULT_REVIEWER] [--json]` |
 | `sign` | `dispatch sign [-h] --by BY [--note NOTE] --via {dialog,card} [--hold] [--reject] [--root ROOT] slug` |
 | `spec` | `dispatch spec [-h] [--title TITLE] [--force] [--root ROOT] [--json] slug` |

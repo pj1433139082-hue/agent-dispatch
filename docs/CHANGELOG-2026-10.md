@@ -80,6 +80,14 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-30 · v1.9.0：grill 三会话并行（team 模式）
+
+- `select --mode team`：证据包标记为"每份证据由独立子会话产出"；`--mode solo`（默认）保持旧行为。
+- `sign` 在 team 模式下要求每份证据带 `Persona: <角色 persona>` 行、且不再是 `## What to produce` 模板，否则拒绝签字。
+- `grill-dispatch` 技能新增「三会话并行」：spawn 三个 fresh teammate（角色卡 + 信息源隔离 + 只写自己文件）、回收格式、交叉评审 `06-cross-review.md`、无 teammate 时的 solo 降级留痕。
+- 测试：`tests/test_select_team_mode.py`（4 条）。
+- ADR 0015。
+
 ## 2026-10-30 · v1.8.4：人格验收反馈补齐
 
 - 回执 persona 现在**同时比对 source 与 sha256**（此前只比 sha，source 写错也能过）。

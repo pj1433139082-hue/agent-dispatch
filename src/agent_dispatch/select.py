@@ -137,13 +137,14 @@ def render_role_brief(slug: str, role: Role, title: str) -> str:
     ])
 
 
-def render_panel_json(slug: str, title: str, roles: list[Role]) -> str:
+def render_panel_json(slug: str, title: str, roles: list[Role], mode: str = "solo") -> str:
     import json
 
     payload = {
         "slug": slug,
         "title": title,
         "stage": "S2 selection",
+        "mode": mode,
         "roles": [
             {
                 "id": role.id,
@@ -160,11 +161,13 @@ def render_panel_json(slug: str, title: str, roles: list[Role]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
-def render_summary(slug: str, title: str, roles: list[Role]) -> str:
+def render_summary(slug: str, title: str, roles: list[Role], mode: str = "solo") -> str:
     lines = [
         "# 选型结论: " + title,
         "",
         "> 汇总各角色证据后填这张表；**结论由甲方签字才算过**（ADR-0007 Q1）。",
+        ">",
+        "> 产物模式：" + ("team（每份证据由独立子会话产出，文件头必须带 Persona 行）" if mode == "team" else "solo（主代理代做，文件头标注）"),
         "",
         "| 角色 | 结论 | 证据位置 | 未证实项 |",
         "|---|---|---|---|",
@@ -190,12 +193,12 @@ def render_summary(slug: str, title: str, roles: list[Role]) -> str:
     return "\n".join(lines)
 
 
-def write_pack(root: Path, slug: str, title: str, roles: list[Role]) -> list[Path]:
+def write_pack(root: Path, slug: str, title: str, roles: list[Role], mode: str = "solo") -> list[Path]:
     directory = pack_dir(root, slug)
     directory.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     panel_file = directory / "00-panel.json"
-    panel_file.write_text(render_panel_json(slug, title, roles), encoding="utf-8")
+    panel_file.write_text(render_panel_json(slug, title, roles, mode), encoding="utf-8")
     written.append(panel_file)
     for role in roles:
         target = directory / role.deliverable
@@ -203,6 +206,6 @@ def write_pack(root: Path, slug: str, title: str, roles: list[Role]) -> list[Pat
             target.write_text(render_role_brief(slug, role, title), encoding="utf-8")
         written.append(target)
     summary = directory / "99-summary.md"
-    summary.write_text(render_summary(slug, title, roles), encoding="utf-8")
+    summary.write_text(render_summary(slug, title, roles, mode), encoding="utf-8")
     written.append(summary)
     return written
