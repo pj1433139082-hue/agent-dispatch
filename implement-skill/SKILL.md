@@ -32,6 +32,17 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id
 - `note` 可以**和可复算证据混用**（file/inline/command 都在时不会 degraded）；只有"**仅 note**"才降级
 - 完整 schema 在 `references/ticket-contract.md`，每次 `render` 也会写进 `work-order.md` 的 `## Receipt contract`
 
+## brief 里的方案备选（Design It Twice 轻量版）
+
+**触发**：Risk ≥ L3、或接口拿不准、或 Write scope 跨 ≥2 个模块。其余小票不用写。
+
+写两节：
+
+- **方案 A**：一句话 + 关键取舍（复杂度 / 改动面 / 风险）
+- **方案 B**：必须和 A **结构上不同**（不是改个名字）
+- **推荐哪个、为什么**；被否的那个一句话说明为什么不选
+
+L4 或"新建模块/接口"时，升级为并行子代理各出一版（用 codebase-design 的 Design It Twice），再把对比写回 brief。**只写一个方案不算过**——批准人看不到取舍就没法批。
 ## brief 的判据
 
 `dispatch brief <id> --check` 只校验"五段非空、不是占位"（`<填写：…>`），**不判长度和内容质量**；写没写清楚由批准的人负责。

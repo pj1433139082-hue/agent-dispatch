@@ -38,6 +38,25 @@
 - **不算**：被 spawn 的 teammate（那是执行者）、票面 Owner（那是责任人）、票面 `- Persona:` 字符串（那只是指向角色卡的指针）。
 - **判据**：说得出这次执行用的是哪张角色卡，并能核对它没有在事后被改过。
 
+## 决策票（decision ticket）
+- **定义**：一张只回答"选哪个方向"的票，写清问题 / 选项 / 判据 / 截止。
+- **不算**：执行票（执行票有 Write scope / Verify，进 `plan` 波次）、spec（spec 是整份交付的合同）。
+- **判据**：读完能拍一个方向，且不需要写代码。
+
+## 执行票（execution ticket）
+- **定义**：方向已定、只差动手的票：`tickets/NN-slug.md`，带 Owner / Risk / Write scope / Verify / Acceptance。
+- **不算**：决策票（只问方向）、草稿（`.dispatch/drafts/` 里还没补契约的）。
+- **判据**：`lint` 过、`plan` 能排进波次、`render` 能开 run。
+
+## 阶段边界（phase boundary）
+- **定义**：一个会话里两块活之间的缝（grilling → 实现、实现 → 验收）；只在这里决定 continue / clear / handoff / subagent / compact。
+- **不算**：阶段中间（那里只有"继续"或"拆子任务"，压缩会丢线索）。
+- **判据**：说得出下一阶段需不需要这一阶段的**原始上下文**。
+
+## 出界知识库（out-of-scope knowledge base）
+- **定义**：仓库根 `.out-of-scope/<概念>.md`，记录被否掉的方向、理由与历史请求，一个概念一个文件。
+- **不算**：run 失败记录（那是 `dispatch drop --reason` 与 ledger 的事）。
+- **判据**：下次有人再提同一方向，能先翻到这一页而不是重新论证。
 ## 收口（wrap-up）
 - **定义**：`dispatch wrap` 一次性给出"这轮活干完没有"：失败票、超期 run、未落地 run、会挡 land 的脏文件、过期租约。
 - **判据**：`wrap` exit 0 才算收工；exit 1 表示还有事没处理。

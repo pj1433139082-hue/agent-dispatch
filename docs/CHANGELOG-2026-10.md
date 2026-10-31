@@ -80,6 +80,14 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-31 · v1.14.0：吸收上游编排层（wayfinder / triage / phase boundaries）
+
+- dispatch-flow：A0「雾大」→ wayfinder 决策票地图；阶段边界五选一（continue/clear/handoff/subagent/compact）；外部 issue/PR 先 triage。
+- tickets-skill：决策票 vs 执行票；`.out-of-scope/<概念>.md` 出界知识库。
+- implement-skill：brief 对 Risk≥L3 / 接口拿不准 / 跨 ≥2 模块的票要求两个候选方案（L4 升级并行子代理）。
+- GLOSSARY：决策票 / 执行票 / 阶段边界 / 出界知识库 4 个词条；ADR 0019「路由，不重写」。
+- 测试：`tests/test_skills_upstream_sections.py`。
+
 ## 2026-10-31 · v1.13.0：清单收尾（land 票冲突 / from-commit / 环境自检）
 
 - land：只涉及 tickets_dir 的合并冲突自动用目标分支版本解决；非票冲突原样失败。
