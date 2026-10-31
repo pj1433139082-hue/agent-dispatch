@@ -35,6 +35,29 @@ dispatch new 01 --title "runtime 侦察" --owner recon-runtime \
 - 不写也不会报错，但 **L2+ 的票在 `render` 时会被人格门挡住（exit 6）**，所以高风险票请一开始就写。
 - L0/L1 可以留空（`(unassigned)`）；抢时间的小改别为了走流程硬造人格。
 
+## 决策票 vs 执行票
+
+- **执行票**：tickets/NN-slug.md，有 Write scope / Verify / Acceptance，进 lint / plan 波次。
+- **决策票**：只回答"选哪个方向"，写清 **问题 / 选项 / 判据 / 截止**，**不写** Write scope / Verify，也不进 plan。决策票用 wayfinder 的地图格式管理（见 dispatch-flow 的 A0），不塞进 tickets/——否则 lint 会按执行票契约判它缺字段。
+
+一句话：**决策票是给"要不要做/做成什么样"的，执行票是给"已经决定、只差动手"的。**
+
+## 出界知识库：.out-of-scope/
+
+拒绝一个方向时（triage 判 wontfix、grill 明确否定一个方案、用户说"这个不做"），在仓库根写 .out-of-scope/<概念>.md，一个概念一个文件，随仓库提交：
+
+    # <概念名>
+
+    ## 为什么不做
+
+    <2–3 段：约束、代价、和项目方向的关系；能引代码/文档就引>
+
+    ## 之前的请求
+
+    - #42: <原话摘要>
+    - #87: <原话摘要>
+
+下次有人再提同一个方向，先翻这里，不要重新论证一遍。**只记"方向被否"，不记"run 失败"**——后者是 dispatch drop --reason 的事。
 ## 票面可选字段
 
 - `Requires: local | network | ssh | browser`（默认 `local`）：声明执行端需要什么；现在只做 lint 警告。

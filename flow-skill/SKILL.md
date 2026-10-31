@@ -21,11 +21,40 @@ description: 派单流程路由：判断手上的活该走「需求→票」「�
 
 只打了 `/agent-dispatch` 时：**先问"票在哪"**，再 `dispatch lint` → `dispatch status` → 挑 frontier 走 B。
 
-## 先问三句
+## 先问四句
 
-1. **有没有票？** 没有 → 流程 A；有 → 流程 B。
-2. **一张还是整波？** 一张 → B；整波/半自动 → C。
-3. **是不是坏了/卡住了？** 是 → D；不是 → 继续。
+1. **Destination 说得清吗？** 说不清、或要先定 3 个以上决策 → **A0（wayfinder）**；说清 → 下一句。
+2. **有没有票？** 没有 → 流程 A；有 → 流程 B。
+3. **一张还是整波？** 一张 → B；整波/半自动 → C。
+4. **是不是坏了/卡住了？** 是 → D；不是 → 继续。
+
+## A0｜雾大：先用 wayfinder 画地图
+
+命中任一就走 wayfinder（已安装技能）：
+
+- 说不出 **Destination**（这摊活最后要变成什么：一份 spec、一个决策、还是一次迁移）；
+- 要先定 **3 个以上决策**才能开出第一张执行票；
+- 预计 **超过一个会话**。
+
+wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so far / Not yet specified / Out of scope），一次解一张，解完才 hand off。**决策票不是执行票**：不写 Write scope / Verify，也不进 dispatch plan 的波次；地图清了再回来走 A/B。
+
+## 阶段边界：continue / clear / handoff / subagent / compact
+
+**阶段**＝一个会话里的一块活（grilling、实现、验收），边界只在两块活之间。阶段中间不要 compact。
+
+| 选项 | 什么时候用 | 我们这里怎么执行 |
+|---|---|---|
+| continue | 下一阶段要把这一阶段的推理当**原始材料**用，且上下文还够 | 留在本会话 |
+| clear | 这一阶段的一切（探索、死路）对下一阶段都没用 | 新开会话，不带走上下文 |
+| handoff | 换 harness / 换目录 / 交给别人 / 中途 fork 支线 | dispatch handoff 或 handoff 技能写文件 |
+| subagent | 任务能独立做完、只要一份报告回来 | spawn_teammate 或 DSH 看板卡 |
+| compact | 上下文过半、或已经压缩过一次，但下一阶段还要点背景 | handoff 文档压缩后喂新会话 |
+
+**硬提示**：上下文过半或已压缩过一次 → 优先 handoff / 新会话，别硬撑。
+
+## 外部输入：issue / 外部 PR 先 triage
+
+外部来的 issue 或外部 PR **不要直接进 B**。先走 triage（已安装技能）：它把条目推进 needs-triage → needs-info / ready-for-agent / ready-for-human / wontfix，并写 agent-ready brief；确认是"该做的活"后，再用 to-tickets / dispatch tickets 转成执行票，然后进 B。拒绝一个方向时，按 tickets-skill 的 .out-of-scope/ 约定记一笔。
 
 ## 流程 A｜需求 → 票（S1–S5）
 
