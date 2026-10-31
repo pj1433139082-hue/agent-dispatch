@@ -1,8 +1,40 @@
 # 派单台 · agent-dispatch
 
+[![CI](https://github.com/pj1433139082-hue/agent-dispatch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pj1433139082-hue/agent-dispatch/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/pj1433139082-hue/agent-dispatch?color=blue)](https://github.com/pj1433139082-hue/agent-dispatch/releases)
+[![License](https://img.shields.io/github/license/pj1433139082-hue/agent-dispatch)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+
 > **ask-matt 决定做什么、先后做什么；dispatch 决定谁做、能写哪、拿什么证据。**
 
 `agent-dispatch` 是一个文件优先的任务编排分发 CLI。它把“票据”变成可执行的工单，把执行者的回执交给独立验收门禁，再交给异体评审，最后才允许票据进入 `done`。
+
+## 快速开始（5 分钟）
+
+```bash
+git clone https://github.com/pj1433139082-hue/agent-dispatch.git
+cd agent-dispatch
+python scripts/install_skill.py      # 把 8 个技能镜像到 ~/.agents/skills（Windows 路径 ~/.agents/skills）
+dispatch --version                    # 期望输出 dispatch 1.15.x
+```
+
+> 没有 `dispatch` 命令时，用完整路径：`python ~/.agents/skills/agent-dispatch/scripts/dispatch.py --version`（Windows 把 `~` 换成 `%USERPROFILE%`）。
+
+在任意项目里第一次使用：
+
+```bash
+cd /path/to/your-project
+dispatch setup --tickets tickets                 # 写 .dispatch/config.json + .gitignore
+dispatch new 01 --title "第一个改动" --what "一句话说清做完什么能用" \
+  --write-scope src/example.py --verify "python -m pytest -q tests/test_example.py"
+dispatch lint && dispatch plan                   # 校验票面 + 拓扑波次
+dispatch brief 01 && dispatch brief 01 --approve <你>
+dispatch render 01 --agent implementer           # 一票一 worktree + work-order.md
+dispatch verify 01 && dispatch review 01 --reviewer <另一人> --verdict pass
+dispatch land 01                                 # 只建 integration branch，不 push
+```
+
+收工：`dispatch wrap`（exit 0 才算干净）。完整命令表见 [docs/commands.md](docs/commands.md)。
 
 当前版本以 `pyproject.toml` 为准（`dispatch --version` 同值），Python 3.11+，运行时只用标准库；pytest 仅用于本项目开发测试。版本变化：v0.2 DSH 看板适配；v0.2.1 跨项目路径与 Windows verify 修复；v0.3 看板卡片 update / archive / delete；v0.4 一票一 worktree + 判据级证据 + review ledger + `dsh run`；v0.5 `dispatch land`（只建本地 integration branch，人工开 PR）；v0.6 `dispatch auto`（外部执行器 + 重试）；v0.7 Persona 人设字段与 `assign` / `personas`；v0.7.1 上下文包 `context`、两阶段 `brief` 门禁、`auto` 失败回灌；v0.8.0 运行检查点 `checkpoint` 与收口报告 `closeout`；v0.9.0 需求对齐薄包装 `align` / `spec` / `tickets`（问卷分级 + 交付标准切票）；v0.10.0 S2 选型面板 `select` 与 5 张随技能分发的角色卡（oss-scout / search-scout / adversary / domain-owner / cost-keeper）。 v0.11.0 `auto --protocol full`（context / 环境前置 / brief 门 / checkpoint / closeout），并收编 `seat` 与 `review-packet`；v0.12.0 `sweep` 判活巡检与 `repair` 索引重建；v0.13.0 `--self-reviewed` 留痕与状态/证据交叉校验；v0.14.0 `skill_version` 入 run.json 与文档一致性门；v0.15.0 deadline 进 sweep、协议失败留 auto.json、只读命令不动项目数据；v0.15.1 发布前验收脚本 `scripts/acceptance.py`；v0.15.2 review-packet 补未跟踪文件 hunk；v0.16.0 文件租约 `claim` 与 worktree 回收 `gc`（并修 `**/` 不匹配零层目录）；v0.17.0 git 不可用/仓库嵌套 fail-closed；v0.18.0 `stage` 视图与 S3 前的 S2 签字门；v0.19.0 全链路修复（lint 占位符、交付项诊断、主仓放行流水线文档）；v0.20.0 `stage --prompt` 与 `sign`；v0.21.0 `sign --via` 必填与确认方式留痕；v0.22.0 `confirm`（S3 留痕）与 `tickets` 确认门；v0.23.0 CLI 护栏与 land 释放租约；v0.24.0 CLI 缝补齐（含 checkpoint/closeout/dsh）；v0.25.0 claim 并发原子化；v0.26.0 dsh 假板测试；v0.26.1 `status` 认票据文件 Status；v0.27.0 diff 口径统一（ADR-0011）与评审包成为被审对象；v0.28.0 `land --require-attestation`、CI 跑验收、文档对齐；v0.29.0 `land --wave` 按拓扑序批量合入；v0.30.0 写路径穿过 symlink/junction 时 verify 判死，并发用例进 CI 定时跑；v0.31–v0.34 `retry` / `release`（失败与卡住的合法回头路）；v0.35–v0.37 越界诊断更清楚、`doctor` 体检与 `stage` 健康摘要；v0.38–v0.39 `doctor --fix` 安全修复与 `auto` 开跑前体检。
 
