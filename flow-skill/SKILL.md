@@ -47,7 +47,7 @@ wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so 
 | continue | 下一阶段要把这一阶段的推理当**原始材料**用，且上下文还够 | 留在本会话 |
 | clear | 这一阶段的一切（探索、死路）对下一阶段都没用 | 新开会话，不带走上下文 |
 | handoff | 换 harness / 换目录 / 交给别人 / 中途 fork 支线 | dispatch handoff 或 handoff 技能写文件 |
-| subagent | 任务能独立做完、只要一份报告回来 | spawn_teammate 或 DSH 看板卡 |
+| subagent | 任务能独立做完、只要一份报告回来 | `spawn_worker` 槽（DSH=`spawn_teammate`；千问办公=`task`）或 DSH 看板卡 |
 | compact | 上下文过半、或已经压缩过一次，但下一阶段还要点背景 | handoff 文档压缩后喂新会话 |
 
 **硬提示**：上下文过半或已压缩过一次 → 优先 handoff / 新会话，别硬撑。
@@ -101,7 +101,7 @@ wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so 
 
 | 会话里有什么 | 用哪条 |
 |---|---|
-| `list_agents` 有目标 teammate | B4 `handoff --to <它>` + `send_message` |
+| `list_workers` 有目标 teammate | B4 `handoff --to <它>` + `message` 槽 |
 | DSH 看板在跑 | `dispatch dsh push` 建卡 → 板上点 run / `dsh run` → `dsh outcome` 回写 |
 | 都没有 | `auto --executor "<cmd>"`，**并说明这是主代理自执行** |
 

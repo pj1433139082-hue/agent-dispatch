@@ -80,6 +80,14 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-31 · v1.16.0：跨 harness 可移植（能力槽）
+
+- 六个技能里的 harness 专属工具名换成**能力槽**：`ask` / `shell` / `spawn_worker` / `list_workers` / `message` / `wait`。
+- 新增 `references/harness-adapters.md`：DSH（已核实）、千问办公 / QwenWork（已核实，本机 1.3.2-26101704）、Claude Code（未核验）、Codex（未核验）四张映射表。
+- `setup-agent-dispatch` 增加「装到别的 harness」：四种宿主的安装位置与注意事项（千问办公走应用内技能管理，不是 `~/.qwen/skills`）。
+- 千问办公实测：`ask=question`、`shell=bash`、`spawn_worker=task`（带 `subagent_type`）；`list_workers` / `message` / `wait` 无 → team 模式走 solo 降级。
+- 测试：`tests/test_harness_slots.py`（4 条，钉住槽名与映射表覆盖）。
+
 ## 2026-10-31 · v1.15.0：P1 + P2（外部问卷 / tracker / wiki / guardrails）
 
 **P1**

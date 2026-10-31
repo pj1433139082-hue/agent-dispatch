@@ -28,7 +28,7 @@ description: 把已拷问过的需求收敛成规格：底座是 to-spec（不�
 
 ## 做什么
 
-1. 按 to-spec 第 1–2 步读仓库、列**测试接缝**，把接缝清单发给用户确认（`ask_user_question`）。这一步没有工具门，**必须真问**；不问就直接写规格是漏的。
+1. 按 to-spec 第 1–2 步读仓库、列**测试接缝**，把接缝清单发给用户确认（`ask` 槽：DSH=`ask_user_question`，千问办公=`question`）。这一步没有工具门，**必须真问**；不问就直接写规格是漏的。
 2. 生成骨架：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py spec <slug>`（问卷没答满 / S2 没签字 → 拒绝；`--force` 跳过，不推荐）
 3. 按 to-spec 的写法把七节写完：Problem Statement / Solution / User Stories / **Delivery standard** / Implementation Decisions / Testing Decisions / Out of Scope。`Further Notes` 可留空，**不进 S3 门**。
 4. **三角色逐段挑刺**（各写一段评论，结论写进 `## Implementation Decisions`——`spec` 模板的正式小节名，口头叫 Decisions 也是它）：

@@ -23,11 +23,11 @@ description: 给一个仓库做一次性 dispatch 配置（票目录、执行端
 > 推荐：仓库里已有的那个（`tickets/` 或 `.scratch/<feature>/issues/`）。没有就建议 `tickets/`。
 
 **B. 执行端模式**
-> - `teammate` —— 派给 harness 里的 teammate（需要 `list_agents` 里真有目标）
+> - `teammate` —— 派给 harness 里的 teammate（需要 `list_workers` 槽查得到目标）
 > - `dsh` —— 推到 DSH 看板，人在板上点 run
 > - `command` —— `auto --executor "<cmd>"`（没有 teammate 时等于主代理自执行）
 >
-> 推荐：看会话里 `list_agents` 有什么；只有 lead 就选 `command` 或 `dsh`，别选 teammate。
+> 推荐：用 `list_workers` 槽看有什么；只有 lead 就选 `command` 或 `dsh`，别选 teammate。
 
 **C. 默认评审人**
 > 推荐：一个**不是执行者**的名字（异体评审）。可以留空，之后每票用 `--reviewer` 指定。
@@ -43,6 +43,18 @@ python ~/.agents/skills/agent-dispatch/scripts/dispatch.py setup \
 
 它会写 `.dispatch/config.json`（幂等：重跑不带参数就保留原值）。
 
+## 3.5 装到别的 harness（可选）
+
+技能正文只写能力槽（`ask` / `shell` / `spawn_worker` / `list_workers` / `message` / `wait`），具体工具见 `references/harness-adapters.md`。装法按宿主分：
+
+| 宿主 | 装到哪 | 注意 |
+|---|---|---|
+| DSH | `~/.agents/skills/`（`python scripts/install_skill.py` 镜像） | 一切可用 |
+| Claude Code | `~/.claude/skills/` | `ask`/`shell`/`spawn_worker` 有；`list_workers`/`message`/`wait` 无 → team 走 solo |
+| Codex | `~/.codex/skills/` | 同上，更依赖 `references/codex-handoff.md` 的工单文件交接 |
+| 千问办公（QwenWork） | 应用内技能管理（`qwenwork.settings.skills.install_from_path`），**不是** `~/.qwen/skills` | `~/.qwen/skills` 是 Qwen Code CLI 的，两个产品不通用 |
+
+装完先跑一次 `dispatch --version` 确认 CLI 能起来；`spawn_worker` 槽缺失时，grill 的 team 模式自动走 solo（文件头标「主代理代做」）。
 ## 4. 接进入口（可选但推荐）
 
 在 `AGENTS.md`（没有就 `CLAUDE.md`）加一段：
@@ -67,4 +79,4 @@ python ~/.agents/skills/agent-dispatch/scripts/dispatch.py doctor
 ## 边界
 
 - 只写 `.dispatch/config.json` 和 `AGENTS.md` 那一段；不动票、不动 src、不动 CI（CI 要加拉一条 `acceptance.py`，问过再加）。
-- 不要替用户决定执行端；`list_agents` 里没有的名字不要写进配置。
+- 不要替用户决定执行端；`list_workers` 里没有的名字不要写进配置。
