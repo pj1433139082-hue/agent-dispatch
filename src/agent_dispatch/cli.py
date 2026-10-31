@@ -36,6 +36,7 @@ from .align import (
     questionnaire_path,
     render_questionnaire,
     render_spec,
+    render_stakeholder_questionnaire,
     spec_path,
     write_drafts,
 )
@@ -173,6 +174,11 @@ def _parser() -> argparse.ArgumentParser:
     align_parser.add_argument("--title", default="")
     align_parser.add_argument("--level", default="standard", help="quick | standard | thorough")
     align_parser.add_argument(
+        "--for", dest="recipient", default="",
+        help="Write a stakeholder questionnaire for this recipient (external expert, vendor, domain owner).",
+    )
+    align_parser.add_argument("--deadline", default="", help="Deadline shown in a stakeholder questionnaire.")
+    align_parser.add_argument(
         "--preset", choices=("dispatch", "model-contract", "research"), default="dispatch",
         help="Question bank preset (dispatch = the default flow).",
     )
@@ -271,6 +277,8 @@ def _parser() -> argparse.ArgumentParser:
     setup_parser.add_argument("--tickets", default=None, help="Ticket directory, relative to the project root (default: tickets).")
     setup_parser.add_argument("--executor-mode", choices=("teammate", "dsh", "command"), default=None)
     setup_parser.add_argument("--default-reviewer", default=None)
+    setup_parser.add_argument("--tracker", choices=("local", "github"), default=None, help="Issue tracker type (recorded only; local = tickets/).")
+    setup_parser.add_argument("--tracker-repo", default=None, help="owner/name for a GitHub tracker.")
     setup_parser.add_argument("--json", action="store_true", dest="as_json")
 
     handoff_parser = subparsers.add_parser("handoff", help="Print the message to send a teammate so it can execute this run.")
@@ -554,6 +562,28 @@ def _parser() -> argparse.ArgumentParser:
     panel_parser.add_argument("--set", dest="assignment", required=True, metavar="ROLE=STATUS")
     panel_parser.add_argument("--root", type=Path, default=Path("."))
     panel_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    issue_parser = subparsers.add_parser("issue", help="Import a tracker issue into .dispatch/imports (read-only).")
+    issue_parser.add_argument("number")
+    issue_parser.add_argument("--repo", default=None, help="owner/name (default: the current repo).")
+    issue_parser.add_argument("--from-file", type=Path, default=None, dest="from_file", help="Read a fixture JSON instead of calling gh.")
+    issue_parser.add_argument("--root", type=Path, default=Path("."))
+    issue_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    wiki_parser = subparsers.add_parser("wiki", help="Repo wiki: init / add / list / check.")
+    wiki_parser.add_argument("action", choices=("init", "add", "list", "check"))
+    wiki_parser.add_argument("--slug", default="")
+    wiki_parser.add_argument("--title", default="")
+    wiki_parser.add_argument("--body", default="")
+    wiki_parser.add_argument("--summary", default="")
+    wiki_parser.add_argument("--root", type=Path, default=Path("."))
+    wiki_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    guard_parser = subparsers.add_parser("guard", help="Install/check a pre-push hook that blocks pushes to main/master.")
+    guard_parser.add_argument("action", choices=("install", "status"))
+    guard_parser.add_argument("--force", action="store_true")
+    guard_parser.add_argument("--root", type=Path, default=Path("."))
+    guard_parser.add_argument("--json", action="store_true", dest="as_json")
 
     drop_parser = subparsers.add_parser("drop", help="Archive a run whose worktree is gone and remove it from the index.")
     drop_parser.add_argument("ticket_id")
@@ -1328,7 +1358,11 @@ def _cmd_align(args: argparse.Namespace) -> int:
         print(f"questionnaire already exists: {target}", file=sys.stderr)
         return 1
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render_questionnaire(slug, title, level, args.preset), encoding="utf-8")
+    if getattr(args, "recipient", ""):
+        text = render_stakeholder_questionnaire(slug, title, level, args.recipient, getattr(args, "deadline", ""))
+    else:
+        text = render_questionnaire(slug, title, level, args.preset)
+    target.write_text(text, encoding="utf-8")
     if args.as_json:
         print(json.dumps({"slug": slug, "level": level, "path": str(target)}, ensure_ascii=False))
     else:
@@ -1786,6 +1820,9 @@ def _cmd_setup(args: argparse.Namespace) -> int:
     if not target.is_dir():
         target.mkdir(parents=True, exist_ok=True)
         print(f"Created {target}")
+    previous_tracker = current.get("tracker") if isinstance(current.get("tracker"), dict) else {}
+    tracker_type = args.tracker or str(previous_tracker.get("type", "local"))
+    tracker_repo = args.tracker_repo if args.tracker_repo is not None else str(previous_tracker.get("repo", ""))
     updated = {
         "version": 1,
         "tickets_dir": tickets.replace("\\", "/"),
@@ -1794,6 +1831,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         "require_brief": True,
         "persona_policy": "l2",
         "skill_version": __version__,
+        "tracker": {"type": tracker_type, "repo": tracker_repo},
     }
     ignore = root / ".gitignore"
     if not ignore.exists():
@@ -1810,6 +1848,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         print(f"Wrote {path}")
         for key in ("tickets_dir", "executor_mode", "default_reviewer"):
             print(f"  {key}: {updated[key]}")
+        print("  tracker: " + tracker_type + (" (" + tracker_repo + ")" if tracker_repo else ""))
     return 0
 
 
@@ -2668,6 +2707,65 @@ def _land_wave(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_issue(args: argparse.Namespace) -> int:
+    from .tracker import TrackerError, import_issue
+
+    try:
+        path = import_issue(args.root, args.number, repo=args.repo, from_file=args.from_file)
+    except (TrackerError, OSError, ValueError) as error:
+        print("ISSUE " + str(error), file=sys.stderr)
+        return 1
+    if getattr(args, "as_json", False):
+        print(json.dumps({"path": str(path)}, ensure_ascii=False))
+    else:
+        print("Imported issue " + args.number + " -> " + str(path))
+        print("Next: fill Write scope / Verify, then move it into tickets/.")
+    return 0
+
+
+def _cmd_wiki(args: argparse.Namespace) -> int:
+    from . import wiki as wiki_mod
+
+    if args.action == "init":
+        path = wiki_mod.init(args.root)
+        print(str(path) if not getattr(args, "as_json", False) else json.dumps({"path": str(path)}))
+        return 0
+    if args.action == "add":
+        if not args.slug or not args.title:
+            print("WIKI add needs --slug and --title", file=sys.stderr)
+            return 1
+        path = wiki_mod.add(args.root, args.slug, args.title, args.body, args.summary)
+        print(str(path) if not getattr(args, "as_json", False) else json.dumps({"path": str(path)}))
+        return 0
+    if args.action == "list":
+        for name in wiki_mod.pages(args.root):
+            print(name)
+        return 0
+    problems = wiki_mod.check(args.root)
+    for problem in problems:
+        print(problem, file=sys.stderr)
+    return 1 if problems else 0
+
+
+def _cmd_guard(args: argparse.Namespace) -> int:
+    from . import guard as guard_mod
+
+    if args.action == "install":
+        try:
+            path = guard_mod.install(args.root, force=args.force)
+        except (OSError, ValueError) as error:
+            print("GUARD " + str(error), file=sys.stderr)
+            return 1
+        print(str(path) if not getattr(args, "as_json", False) else json.dumps({"path": str(path)}))
+        return 0
+    status = guard_mod.status(args.root)
+    if getattr(args, "as_json", False):
+        print(json.dumps(status, ensure_ascii=False))
+    else:
+        print(("installed: " if status["installed"] else "not installed: ") + str(status["path"]))
+    return 0 if status["installed"] else 1
+
+
 def _cmd_panel(args: argparse.Namespace) -> int:
     from .select import set_role_status
 
@@ -3326,6 +3424,12 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_drop(args)
     if args.command == "panel":
         return _cmd_panel(args)
+    if args.command == "issue":
+        return _cmd_issue(args)
+    if args.command == "wiki":
+        return _cmd_wiki(args)
+    if args.command == "guard":
+        return _cmd_guard(args)
     if args.command == "review-window":
         return _cmd_review_window(args)
     if args.command == "mutate":
