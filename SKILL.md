@@ -5,7 +5,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 # agent-dispatch · 票据派单台
 
-本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.15.0。
+本技能把“谁做、在哪个 worktree 做、能写哪、拿什么证据、谁来验收”变成可执行的文件契约。它自带一个零第三方依赖的 Python 框架（`src/agent_dispatch`），不要求目标项目安装 `dispatch`，也不依赖全局 PATH。当前版本 1.16.0。
 
 ## 何时使用
 
@@ -45,15 +45,16 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 
 | 你有的 | 怎么走 | 代价 |
 |---|---|---|
-| 会话里有 teammate（`list_agents` 看得到） | `render` → `handoff` → `send_message` | 真隔离，reviewer 能真换人 |
-| 什么都没有，但能 `spawn_teammate` | **先建职能队友**（见 `docs/team/README.md` 八个角色），再派活 | 名字永久占用，一个会话最多 `maxMembers` 个 |
+| 会话里有 teammate（`list_workers` 查得到） | `render` → `handoff` → `message` 槽发过去 | 真隔离，reviewer 能真换人 |
+| 什么都没有，但 `spawn_worker` 槽可用 | **先建职能队友**（见 `docs/team/README.md` 八个角色），再派活 | 名字永久占用，一个会话最多 `maxMembers` 个 |
 | 名额满了 / 要删旧成员 | `docs/team/roster-setup.md`：调 `maxMembers` 或装 `dsh-agent-team-roster` | 装插件要解 asar + 重启 |
 | DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` | 慢（十几分钟），要先有 workspace |
 | 都没有 | `render` → 自己在 worktree 干 → `verify` → `review --reviewer <名字>` | **主代理自执行**；review 只是换名字，不是真异体——交付说明里必须写清 |
 
 最后一条**不是错误用法**，是单 agent 环境的正常用法，只要如实标注。dispatch 的价值（写域、证据、验收、可回溯的 landing）在只有一个 agent 时同样成立。
 
-> 判据：**能调 `list_agents` 才算有队友**。用 `globalThis.tools` 探测会得到 undefined（工具是词法注入的），别据此得出"没有团队"的结论。
+> 判据：**`list_workers` 槽能查到目标才算有队友**。具体工具名见 `references/harness-adapters.md`（DSH / 千问办公 / Claude Code / Codex 各一张表）。
+> 探测要按本 harness 的方式：DSH 用 `Object.keys(tools)`，别用 `globalThis.tools`（工具是词法注入的，会得到 undefined）；其他 harness 用各自的工具发现入口。
 ## 自带框架
 
 技能根目录就是框架根。调用入口是：
@@ -194,7 +195,7 @@ python scripts/acceptance.py --json   # 机读（CI）
 S1 / S2 / S3 三个门**不许由 agent 代拍板**。固定动作：
 
 1. `dispatch stage <slug> --prompt` 拿到结构化问题（`{id, header, question, options[{label, description}]}`）；
-2. 把这份 JSON **原样**喂给 `ask_user_question`（弹窗）或文字决策卡（弹窗不可用时）；
+2. 把这份 JSON **原样**喂给 `ask` 槽（DSH=`ask_user_question`，千问办公=`question`；槽不可用时用文字决策卡）；
 3. 拿到答案后再落盘：问卷写进 `docs/questions/<slug>.md`、S2 签字用 `dispatch sign <slug> --by <人> --via dialog|card`、S3 规格核对用 `dispatch confirm <slug> --by <人> --via dialog|card`；没确认过 `tickets` 会拒绝拆票。
 
 没有 `--via` 的签字直接报错——审计时能分清"问过的"和"自己写的"。
@@ -215,8 +216,8 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 `dispatch` 只做**契约与证据**；谁真的动手，由会话决定。现有三条路，选哪条取决于会话里有什么：
 
 1. **teammate（harness 的 spawn provider）**
-   `dispatch handoff <id> --to <agent>` 打出交接内容 → 你用 `send_message` 发过去 → 它交 brief → 批准 → 在 worktree 执行 → `dispatch verify` → **另一个** reviewer 跑 `dispatch review`。
-   ⚠️ `render --agent X` 只是把名字写进工作单，**不会创建 teammate**。`list_agents` 里没有这个 target 就发不出去——这时别假装派了。
+   `dispatch handoff <id> --to <agent>` 打出交接内容 → 你用 `message` 槽发过去 → 它交 brief → 批准 → 在 worktree 执行 → `dispatch verify` → **另一个** reviewer 跑 `dispatch review`。
+   ⚠️ `render --agent X` 只是把名字写进工作单，**不会创建 teammate**。`list_workers` 里没有这个 target 就发不出去——这时别假装派了。
 2. **DSH 看板**
    `dsh push --project <p>` 建卡 → 人在板上点 run（或 `dsh run <id>`）→ 结果用 `dsh outcome` 回写。看板地址以会话 runtime context 里的 **DSH Web GUI URL** 为准（端口每次可能不同），请求要带 `sec-fetch-site: same-origin`。
 3. **外部执行器命令**
@@ -248,7 +249,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 - L4 还要 `--human`（人工评审）。**顺序是：先有 packet → 再对 `--packet-hash` → 最后才问 `--human`**；不跑 `review-packet` 就永远看不到 human 的报错。
 - `--human` 现在会记进 `review.json` 与 ledger 的 `human: true`（v0.71 起；以前只在退出码里，事后无法区分）。
-- 这三层挡的是"手滑"和"没读包"，**挡不住"同一个模型换个名字"**——要那样得靠会话隔离（`list_agents` 里真有第二个 agent）。
+- 这三层挡的是"手滑"和"没读包"，**挡不住"同一个模型换个名字"**——要那样得靠会话隔离（`list_workers` 里真有第二个 agent）。
 - 没 teammate 时 `render --agent X` 只是标签；交付说明里要写"主代理自执行"。
 
 ### brief 门是否强制：看配置，命令自己会说
@@ -521,7 +522,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `context <id> [--json]` | 生成 `.dispatch/context/<id>.md`：入口文档摘录 / 同票历史运行 / 阻塞邻居 / 踩坑索引 |
 | `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
 | `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
-| `questions <slug> [--json]` | 把 `03-adversary.md` 的假设转成可直接问甲方的问题（配合 `ask_user_question`） |
+| `questions <slug> [--json]` | 把 `03-adversary.md` 的假设转成可直接问甲方的问题（配合 `ask` 槽） |
 | `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list] [--mode solo\|team]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
 | `sweep [--json]` | 只读巡检：每条 active run 的 `age_seconds / last_artifact / idle_seconds / has_receipt / deadline_seconds / over_deadline`；**不自动 kill** |
 | `repair [--write] [--json]` | 从 `.dispatch/runs/*/run.json` 反向重建 `state.json`；默认 dry-run；冲突票**不写**并 exit 1 |

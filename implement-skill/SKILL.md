@@ -62,7 +62,7 @@ L4 或"新建模块/接口"时，升级为并行子代理各出一版（用 code
 
 | 你有的 | 怎么走 |
 |---|---|
-| teammate（`list_agents` 里真有） | `handoff <id> --to <它>` → `send_message` |
+| teammate（`list_workers` 里真有） | `handoff <id> --to <它>` → `message` 槽 |
 | DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` |
 | 都没有 | 自己在 worktree 干，交付里写"主代理自执行" |
 

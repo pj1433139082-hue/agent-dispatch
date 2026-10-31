@@ -23,18 +23,18 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 1. 出问卷（**最低集 + 留痕文件**）：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py align <slug> --level standard`（quick 3 / standard 6 / thorough 10）。下文所有 `dispatch xxx` 都指这条完整路径——`dispatch` 不一定在 PATH 上。
    - 问卷是**起点不是全部**：前沿里问卷没覆盖的问题，按下面「追加轮次」继续问，并写回同一个文件。
 2. 出角色 brief（**注意：`select` 生成的是 brief，不是证据**；执行者要把 `01/02/03` 原地改写成证据；重跑 `select` 会重写 `99-summary.md`，先备份）：`python ...\dispatch.py select <slug> --mode team`（写域受限时省略 `--with`；有 teammate 工具时默认 `team`，见下节）
-3. 派三个执行者填三份证据（有 teammate 用 send_message；没有就自己写，文件里标注"主代理代做"）：
+3. 派三个执行者填三份证据（`spawn_worker` + `message` 槽可用就走 team；不可用就自己写，文件里标注"主代理代做"）：
    - `01-oss.md`：≥2 个开源参照，指到 `文件:函数` 或 commit，并写**不采用的理由**
    - `02-sources.md`：每条事实带 URL + 原文摘录 + 抓取日期 + 版本
    - `03-adversary.md`：没说出口的假设，每条给可证伪实验（≤7 条）
 4. **等 adversary 把 03 写完再问**（还是模板时 `questions` 会拒绝）
-5. **把对抗变成问题**（`questions` 只给"成立/不成立/不确定"三个选项，**不生成推荐**——喂给用户前你要先替每题选一个推荐并在正文里写明理由）：只读 `## 假设` 小节（`## 未证实项` 不会被当成问题；文件里没有"假设"标题时才退化成读全文所有 bullet），最多取 20 条；以"写 "/"证据门槛"/"只读"开头的模板说明和 `<`/`TODO` 占位会被**跳过并在 stderr 说明**：`python ...\dispatch.py questions <slug> --json` → 喂 `ask_user_question`（选项照传，推荐写在你自己的话里）→ 答案写回 `docs/questions/<slug>.md`
+5. **把对抗变成问题**（`questions` 只给"成立/不成立/不确定"三个选项，**不生成推荐**——喂给用户前你要先替每题选一个推荐并在正文里写明理由）：只读 `## 假设` 小节（`## 未证实项` 不会被当成问题；文件里没有"假设"标题时才退化成读全文所有 bullet），最多取 20 条；以"写 "/"证据门槛"/"只读"开头的模板说明和 `<`/`TODO` 占位会被**跳过并在 stderr 说明**：`python ...\dispatch.py questions <slug> --json` → 喂 `ask` 槽（选项照传，推荐写在你自己的话里）→ 答案写回 `docs/questions/<slug>.md`
 
 ## 三会话并行（team 模式，v1.9.0）
 
 `select --mode team` 把证据包标记成"每份证据由独立子会话产出"。之后：
 
-1. **spawn 三个 fresh teammate**（`spawn_teammate({name, description, prompt})`），一个角色一个，不共享上下文：
+1. **用 `spawn_worker` 槽起三个 fresh 执行者**（一个角色一个，不共享上下文；DSH=`spawn_teammate({name, description, prompt, context:"fresh"})`，千问办公=`task` 带 `subagent_type`，映射见 `references/harness-adapters.md`）：
    - `name`：`grill-oss` / `grill-search` / `grill-adversary`
    - `prompt` = ①该角色 persona 正文（`agents/personas/<id>.md` 全文）②自己的 brief（mission + 证据门槛 + **只许写自己的文件**）③下面的信息源隔离表 ④回收格式
 2. **信息源隔离**（否则三个都会去搜同一批东西）：
@@ -53,7 +53,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    置信度：高 / 中 / 低 + 一句为什么
    未证实：<逐条，没有写"无">
    ```
-4. **等齐再往下**：`wait_agent` 到三个都结束；任何一个超时/失败，就把它那份标 `未产出` 并在 99-summary 写明，不许主代理悄悄补写成"已完成"。
+4. **等齐再往下**：如果有 `wait` 槽就等到三个都结束（DSH=`wait_agent`；千问办公的 `task` 同步返回，不用等）；任何一个超时/失败，就把它那份标 `未产出` 并在 99-summary 写明，不许主代理悄悄补写成"已完成"。
 5. **交叉评审（必做一轮，只读）**：三份齐了之后，让每个 teammate **只读另外两份**，回一条反驳；**本轮任何人都不许改文件**（包括自己那份），要改由 Lead 汇总后单独开一轮：
    ```
    质疑对象：02-sources.md 的 <结论>
