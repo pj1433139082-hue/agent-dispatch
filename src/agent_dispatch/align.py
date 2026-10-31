@@ -71,6 +71,44 @@ PRESETS = {
 BANK_BY_PRESET = {"dispatch": BANK}
 
 
+STAKEHOLDER_BANK = [
+    ("背景", "这个项目/决定背后，有哪些是我们没看到、但会改变判断的事实？", "对方知道而你不知道的那部分，最值钱。"),
+    ("约束", "有哪些硬约束（合规 / 预算 / 时间 / 组织）是我们必须知道的？", "硬约束决定方案可不可行，不是偏好。"),
+    ("现状", "现在这件事是怎么做的？最痛的一步在哪？", "现状的痛点决定值不值得做。"),
+    ("判断", "如果只能给我们一条建议，会是什么？为什么？", "逼对方给优先级，而不是罗列所有可能。"),
+    ("风险", "你最担心我们踩哪个坑？", "外部视角最容易看到内部盲区。"),
+    ("成功", "做到什么程度，你会说\"这成了\"？", "验收口径要在动手前对齐。"),
+]
+
+
+def render_stakeholder_questionnaire(
+    slug: str, title: str, level: str, recipient: str, deadline: str = ""
+) -> str:
+    """给外部专家/干系人填的发现式问卷：先问收件人是谁、要拿回什么。"""
+    level = normalize_level(level)
+    count = LEVELS[level]
+    questions = STAKEHOLDER_BANK[:count]
+    lines = [
+        "# " + title,
+        "",
+        "**Purpose:** 我们从对方那里拿回自己无法独立判断的事实与取舍。",
+        "",
+        "**From:** lead · **To:** " + recipient + " · **How your answers will be used:** 直接进入规格与选型，不再二次转述。",
+        "",
+        "## Context",
+        "",
+        "一段话交代背景：我们在做什么、为什么现在需要你的判断、你已经知道的边界。",
+        "",
+        "## How to answer",
+        "",
+        ("截止：" + deadline + "。" if deadline else "") + "没想好写「不确定」并说明卡在哪；部分答案也有用，别跳过。",
+        "",
+    ]
+    for theme, question, hint in questions:
+        lines.extend(["## " + theme, "", "### " + question, "", "_Why this matters: " + hint + "_", "", "> ", ""])
+    lines.extend(["## Anything else?", "", "还有什么没问到、但会改变结论的？", "", "> ", ""])
+    return "\n".join(lines)
+
 def render_questionnaire(slug: str, title: str, level: str, preset: str = "dispatch") -> str:
     level = normalize_level(level)
     count = LEVELS[level]

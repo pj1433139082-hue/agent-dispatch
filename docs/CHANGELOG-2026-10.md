@@ -80,6 +80,19 @@ brief 两阶段（先只读、审批后才动手）、review-packet 冻结证据
 | 八个职能队友与派活模板 | `docs/team/README.md` |
 | 团队名额与删成员（Windows 实操） | `docs/team/roster-setup.md` |
 
+## 2026-10-31 · v1.15.0：P1 + P2（外部问卷 / tracker / wiki / guardrails）
+
+**P1**
+- `align --for <收件人> --deadline <日期>`：发现式外部问卷（背景/约束/现状/判断/风险/成功），不再只给自己人填。
+- `setup --tracker local|github --tracker-repo owner/name`：把 tracker 类型写进配置（只记录，adapter 见 `issue`）。
+- ADR 0020：dispatch 技能保持 model-invoked 的取舍记录（不照搬上游的 user-invoked 分层）。
+
+**P2**
+- `issue <number>`：GitHub issue → `.dispatch/imports/` 草稿（`--from-file` 可离线测试；不写 tickets/）。
+- `wiki init|add|list|check`：`wiki/index.md` + 每主题一页；check 报坏链与孤儿页。
+- `guard install|status`：pre-push hook 拦直接推 main/master。
+- 测试：`tests/test_p1_p2_upstream.py`（5 条）。
+
 ## 2026-10-31 · v1.14.0：吸收上游编排层（wayfinder / triage / phase boundaries）
 
 - dispatch-flow：A0「雾大」→ wayfinder 决策票地图；阶段边界五选一（continue/clear/handoff/subagent/compact）；外部 issue/PR 先 triage。
