@@ -29,20 +29,21 @@
 | `message` | `send_message` | 给 target 发；inactive 目标会被唤醒 |
 | `wait` | `wait_agent` | 返回 `{timedOut}`；超时后要重新 `list_agents` |
 
-### 千问办公 / QwenWork —— 已核实（本机 1.3.2-26101704）
+### 千问办公 / QwenWork —— 已核实（本机 1.3.2-26101704，实测 2026-10-31）
 
-证据：`resources/agent-sdk/prompts/opencode.md` 的工具清单 + 运行时包 `flash-cli-acp.mjs` 里的工具描述文本。
+证据：本机实测——`qw_query qwenwork.settings.skills` 识别技能 + 完整跑通 T1–T7 单票流程 + team 模式。详见 `docs/verification/2026-10-31-v1.16-qwenwork-eval.md`。
 
-| 槽 | 工具 | 备注 |
+| 槽 | 工具（实际 API 名） | 备注 |
 |---|---|---|
-| `ask` | `question` | 运行时权限里以 `action:"question"` 出现 |
-| `shell` | `bash` | |
-| `spawn_worker` | `task` | 描述原文：「Launch a new agent…you must specify a `subagent_type` parameter」 |
-| `list_workers` | **无** | 包里搜 `list_agents` 零命中 |
-| `message` | **无** | 包里搜 `send_message` 零命中 |
-| `wait` | **无**（`task` 同步返回） | 不需要单独等 |
+| `ask` | `AskUserQuestion` | 支持多问题 + 多选项 + multiSelect；旧文档写的 `question` 是内部 action 名，非对外 API 名 |
+| `shell` | `Bash` | Git Bash 环境；cwd 跨命令会重置到工作目录，需用绝对路径或每次 `cd` |
+| `spawn_worker` | `Agent` | 参数 `subagent_type`（general-purpose / Explore / Plan）+ `prompt`；同步返回；同一条消息块内放多个调用即并行执行 |
+| `list_workers` | **无** | 实测确认不可用 |
+| `message` | **无** | 实测确认不可用；brief / prompt 须一次性自包含全部指令 |
+| `wait` | **无**（`Agent` 同步返回） | 不需要单独等 |
 
-→ 单票执行（render/verify/review/land）可完整跑；grill 的 team 模式必须走 solo 降级。
+→ 单票执行完整通过（T1–T7，7/7）。team 模式用并行 `Agent` 调用即可实现，**不需要降级为 solo**（此前"缺 list_workers/message 故 team 必须走 solo"的推论已被实测推翻）。
+→ 状态机注意：`render` 后 ticket 处于 `claimed`，必须先 `dispatch start <id>` 推进到 `running`，`verify` 才接受。
 
 ### Claude Code —— 未在本仓库核验
 
@@ -73,3 +74,4 @@
 1. 开工前确认本 harness 那张表：`ask` / `shell` 有就等于能跑完整流程；`spawn_worker` 没有就走 solo。
 2. 不要用「系统提示里没写」当结论——用该 harness 的工具发现方式实测一次（DSH 是 `Object.keys(tools)`，千问办公看工具面板，其他看各自的 `/tools` 或等价入口）。
 3. 填一张新表：照上面四节的格式加一节，并在本文件顶部登记「已核实 / 未核验」。
+4. 注意 harness 的 shell 安全策略：千问办公的 `Bash` 拦截 `rm` / `rmdir` 等永久删除命令（返回 `SAFE_DELETE_REQUIRED`），清理需改用 `host_safe_delete` 移入回收站。dispatch 流程本身不删文件，但搭建/清理测试环境时会碰到。
