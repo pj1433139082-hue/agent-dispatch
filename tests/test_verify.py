@@ -76,12 +76,17 @@ def test_dispatch_env_matches_the_executor_contract(tmp_path: Path) -> None:
 
 
 def test_run_command_passes_extra_env(tmp_path: Path) -> None:
-    """The verify child actually sees the injected values."""
-    from agent_dispatch.verify import _run_command
+    """The verify child actually sees the injected values.
 
+    用 sys.executable 跑一段 Python 而不是 `echo %VAR%`：后者只在 cmd.exe 下展开，
+    在 POSIX 的 /bin/sh 里会原样输出 `%VAR%`，测试就变成 Windows 专有的了。
+    """
+    script = tmp_path / "show_env.py"
+    script.write_text("import os\nprint(os.environ.get(\"DISPATCH_RUN_ID\", \"\"))\n", encoding="utf-8")
     log = tmp_path / "logs" / "01.log"
+
     record = _run_command(
-        "echo %DISPATCH_RUN_ID%",
+        f'"{sys.executable}" "{script}"',
         tmp_path,
         log,
         30,
@@ -89,4 +94,4 @@ def test_run_command_passes_extra_env(tmp_path: Path) -> None:
     )
 
     assert record["exit_code"] == 0
-    assert "run-42" in (tmp_path / "logs" / "01.log").read_text(encoding="utf-8")
+    assert "run-42" in log.read_text(encoding="utf-8")
