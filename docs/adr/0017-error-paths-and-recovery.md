@@ -1,5 +1,7 @@
 # 错误信息与恢复路径：每个"卡住"都要给出下一步
 
+**Status:** Partially superseded — `--from-commit` 先被本 ADR 否决，后被 v1.13.0 采纳（见 `docs/CHANGELOG-2026-10.md:115`），最终于 2026-11-02 删除（票 21，`docs/specs/security-audit-fixes.md` D1）。其余决策仍然有效。
+
 问题清单（2026-10-30）里反复出现的不是功能缺失，而是**卡住之后没有出路**：verify 把脏路径藏在一句通用建议后面；land 在 worktree 丢失时只能手工搬目录；retry 之后旧 receipt 仍能通过；wrap 把本地安装的 .agents/skills 当仓库污染。这一版把"状态"和"下一步"一起输出：
 
 - **verify**：脏主检出逐条列路径（clean checkout required: N path(s) — ...），不再给"git add .gitignore"这种通用建议；新增 --allow-dirty <path> 白名单。
