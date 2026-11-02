@@ -53,10 +53,12 @@ def test_a_ticket_marked_done_in_the_file_counts_as_done(tmp_path: Path) -> None
     assert states["02"] == "done"
 
 
-def test_a_done_ticket_unblocks_its_dependents(tmp_path: Path) -> None:
+def test_a_ticket_marked_done_in_the_file_does_not_unlock_dependents(tmp_path: Path) -> None:
+    """SKILL.md:276 — the ticket Status field is an author marker, not a fact."""
     write(tmp_path, "01", "done")
     write(tmp_path, "02", "ready-for-agent", blocked="01")
 
     payload = json.loads(run_dispatch(tmp_path, "status", "--json").stdout)
 
-    assert payload["frontier"] == ["02"], payload
+    assert payload["frontier"] == ["01"], "01 is not done (declared only) so it is ready; 02 stays blocked"
+    assert payload["tickets"][1]["blocked_by"] == ["01"]
