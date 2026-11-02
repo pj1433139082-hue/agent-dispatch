@@ -41,11 +41,12 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 3. 没票但有 spec → `dispatch tickets <slug>`，或让对方先跑 `to-tickets`
 4. 只有想法 → 建议先去 `grill-with-docs`，别在 dispatch 里想需求
 
-### 没有 teammate 怎么办（四条路，选一条，别装）
+### 没有 teammate 怎么办（选一条，别装）
 
 | 你有的 | 怎么走 | 代价 |
 |---|---|---|
 | 会话里有 teammate（`list_workers` 查得到） | `render` → `handoff` → `message` 槽发过去 | 真隔离，reviewer 能真换人 |
+| 只有 `spawn_once` 槽（一次性执行者） | `render` → 用一次性槽跑这一票 → 结果回报后由 Lead 记 `verify` / `review` | **没有 inbox、不能中途改派**；执行者回报完即结束，续不上 |
 | 什么都没有，但 `spawn_worker` 槽可用 | **先建职能队友**（见 `docs/team/README.md` 八个角色），再派活 | 名字永久占用，一个会话最多 `maxMembers` 个 |
 | 名额满了 / 要删旧成员 | `docs/team/roster-setup.md`：调 `maxMembers` 或装 `dsh-agent-team-roster` | 装插件要解 asar + 重启 |
 | DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` | 慢（十几分钟），要先有 workspace |
@@ -54,6 +55,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 最后一条**不是错误用法**，是单 agent 环境的正常用法，只要如实标注。dispatch 的价值（写域、证据、验收、可回溯的 landing）在只有一个 agent 时同样成立。
 
 > 判据：**`list_workers` 槽能查到目标才算有队友**。具体工具名见 `references/harness-adapters.md`（DSH / 千问办公 / Claude Code / Codex 各一张表）。
+> **两个 worker 槽别混用**：一次性执行者（`spawn_once`）不在名册里，`list_workers` / `message` 查不到也发不到它，别拿团队工具去找它；它只回报一份结果，账由 Lead 记。
 > 探测要按本 harness 的方式：DSH 用 `Object.keys(tools)`，别用 `globalThis.tools`（工具是词法注入的，会得到 undefined）；其他 harness 用各自的工具发现入口。
 ## 自带框架
 

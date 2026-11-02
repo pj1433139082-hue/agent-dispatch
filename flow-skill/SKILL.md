@@ -38,7 +38,7 @@ description: 派单流程路由：判断手上的活该走「需求→票」「�
 
 wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so far / Not yet specified / Out of scope），一次解一张，解完才 hand off。**决策票不是执行票**：不写 Write scope / Verify，也不进 dispatch plan 的波次；地图清了再回来走 A/B。
 
-## 阶段边界：continue / clear / handoff / subagent / compact
+## 阶段边界：continue / clear / handoff / subagent / teammate / compact
 
 **阶段**＝一个会话里的一块活（grilling、实现、验收），边界只在两块活之间。阶段中间不要 compact。
 
@@ -47,7 +47,8 @@ wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so 
 | continue | 下一阶段要把这一阶段的推理当**原始材料**用，且上下文还够 | 留在本会话 |
 | clear | 这一阶段的一切（探索、死路）对下一阶段都没用 | 新开会话，不带走上下文 |
 | handoff | 换 harness / 换目录 / 交给别人 / 中途 fork 支线 | dispatch handoff 或 handoff 技能写文件 |
-| subagent | 任务能独立做完、只要一份报告回来 | `spawn_worker` 槽（DSH=`spawn_teammate`；千问办公=`task`）或 DSH 看板卡 |
+| subagent | 任务能独立做完、**只要一份报告回来**（调研、跑测试、查资料、全量 verify） | `spawn_once` 槽（DSH=`subagent`；千问办公=`Agent`）；不占名册、不占队位 |
+| teammate | 需要**具名常驻成员**：共享任务板、中途来回沟通、多轮改派 | `spawn_worker` 槽（DSH=`spawn_teammate`；千问办公无，退 `spawn_once`）或 DSH 看板卡 |
 | compact | 上下文过半、或已经压缩过一次，但下一阶段还要点背景 | handoff 文档压缩后喂新会话 |
 
 **硬提示**：上下文过半或已压缩过一次 → 优先 handoff / 新会话，别硬撑。
