@@ -71,13 +71,13 @@ ready -> claimed -> running -> review -> done
 - `file`：文件必须存在；带 `sha256` 就核对，不带则记录实际哈希。
 - `inline`：字面内容；带 `sha256` 就核对。
 - `absent`：该路径必须不存在（**相对 Run 目录**判存在，不是相对 execution root；worktree 里有同名文件不影响判定）。
-- `command`：执行者报告的命令与退出码；verify 不复跑，但 `exit_code` 必须为 0。
+- `command`：执行者报告的命令与退出码；verify 不复跑，但 `exit_code` 必须为 0。**它不计入可复算证据**：一个 criterion 若除去 `command` 后没有 `file`/`inline`/`absent`，该 criterion 判 degraded。
 - `note`：只有陈述，没有可复算物证。一个 criterion 如果只有 note 证据，会把该 criterion 记为 attested。
 
 结论：
 
 - `passed`：所有 criterion 都有可复算证据且全部 pass。
-- `degraded`：没有 fail，但至少一个 criterion 只有 note 证据；可进入 review，但必须 `review --accept-degraded`。
+- `degraded`：没有 fail，但至少一个 criterion ① 只有 note 证据，或 ② 除去 `command` 后没有可复算物证；可进入 review，但必须 `review --accept-degraded`。
 - `failed`：任何 criterion fail、证据校验失败、命令复跑失败、写域越界或主仓污染。
 
 `dispatch verify` 退出码：0 = passed，2 = degraded，1 = failed。
