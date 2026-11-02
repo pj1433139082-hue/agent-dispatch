@@ -50,7 +50,7 @@ def test_brief_gate_blocks_render_until_approved(tmp_path: Path) -> None:
     assert run_dispatch(tmp_path, "brief", "01").returncode == 0
     brief = tmp_path / ".dispatch" / "briefs" / "01.md"
     text = brief.read_text(encoding="utf-8")
-    for section in ("理解的目标", "计划", "准备改动的文件", "风险", "疑问"):
+    for section in ("理解的目标", "计划", "准备改动的文件", "写域自检", "风险", "疑问"):
         text = text.replace("## " + section + "\n\n<", "## " + section + "\n\n填好了 <")
     brief.write_text(text, encoding="utf-8")
 

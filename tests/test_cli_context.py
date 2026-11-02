@@ -25,7 +25,7 @@ TICKET = """# 09: Wire the gate
 - [ ] The gate closes.
 """
 
-SECTIONS = ("理解的目标", "计划", "准备改动的文件", "风险", "疑问")
+SECTIONS = ("理解的目标", "计划", "准备改动的文件", "写域自检", "风险", "疑问")
 
 
 def make_repo(tmp_path: Path) -> Path:

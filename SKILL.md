@@ -126,7 +126,13 @@ python <技能目录>/scripts/dispatch.py new 01 \
 
 ## 主流程
 
-0. **brief 是模板，不是一次生成就能批**（v1.1.0 起还查质量：每段 ≥8 字，五段不能完全相同；`无`/`none` 例外）：`dispatch brief <id>` 产出五段（理解/计划/要改的文件/风险/疑问），**必须把五段 `<填写：…>` 改成正文**再 `brief <id> --approve <人>`；占位内容会被拒。
+0. **brief 是模板，不是一次生成就能批**（v1.1.0 起还查质量：每段 ≥8 字，六段不能完全相同；`无`/`none` 例外）：`dispatch brief <id>` 产出六段（理解/计划/要改的文件/**写域自检**/风险/疑问），**必须把六段 `<填写：…>` 改成正文**再 `brief <id> --approve <人>`；占位内容会被拒。
+
+   **写域自检（第六段）的三问不是形式主义**，两条实测教训（2026-11-02 同一批五票里各踩一次）：
+   - **票 24**：做到一半才发现，新行为会让 `tests/test_status_from_ticket_file.py` 的既有断言变红——而它不在 Write scope 里。只能 `drop` → 改票 → 重新 `render`，白跑一轮。
+   - **票 25**：票面验收第 4 条要求「`mutate_run` / `_verify_after_landing` / `run_commands_on_branch` 四处调用点同样受益」，但这三处里 `landing.py` 根本不在 Write scope 内——验收和写域**在写票时就矛盾了**，实现时无论多认真都满足不了，最后只在 receipt 里记一笔「需另开票」。
+
+   所以三问要**在写票/写 brief 的当下**答，不是执行时才发现：① 验收要求的每个文件都在 Write scope 里吗 ② 有没有既有测试断言了我要改掉的行为 ③ 改完后哪个调用点/消费者可能被漏掉。任何一问答「有矛盾」，**改票，不要带着矛盾往下做**。`brief --check` 会验第三问的 ①②③ 标记是否都在（写「无」表示不适用）。
 
 1. **建票**：一张票一个 Markdown 文件，写清 `What to build`、`Blocked by`、`Owner`、`Risk`、`Persona`、`Write scope`、`Verify`、`Acceptance`。需要人设时先用 `personas list --search-root <目录>` 搜索，再用 `assign <id> --persona <文件或短名>` 写入；派单员只改 Persona，不改票据契约。
 2. **校验与分波**：`lint` 拒绝缺字段、自依赖、环、未知依赖；`plan` 输出拓扑波次、frontier 和同波写域冲突。
@@ -135,7 +141,7 @@ python <技能目录>/scripts/dispatch.py new 01 \
    - DSH 子智能体 / Agent Team：单票用 `render <id> --agent <name>` 生成 `work-order.md`，交给一个子智能体；多票用 `export --format agent-team` 生成 Team Lead 简报和每票工单。Team Lead 必须先收 brief，再放行实现。
    - Codex：`export --format codex` 生成工单，交给 Codex 会话。
    - 半自动：`auto <id> --executor <shell>` 自动完成 render → 执行器 → verify；失败可 `--max-attempts` 重试。`--until land` 还必须提供独立 `--reviewer` 与 `--reviewer-command`。
-   - **先 brief 再动手（v0.7.1）**：`brief <id>` 生成只读 brief（理解 / 计划 / 要改的文件 / 风险 / 疑问）→ 人审 → `brief <id> --approve <人>`；之后 `render <id> --require-brief` 才放行实现。票据或 brief 在审批后被改动，审批自动失效。
+   - **先 brief 再动手（v0.7.1）**：`brief <id>` 生成只读 brief（理解 / 计划 / 要改的文件 / 写域自检 / 风险 / 疑问）→ 人审 → `brief <id> --approve <人>`；之后 `render <id> --require-brief` 才放行实现。票据或 brief 在审批后被改动，审批自动失效。
 4. **执行者只写两处**：在 **execution root**（worktree）写业务文件；在运行目录写 `receipt.json` 和证据文件；**不能改票据状态**。
 5. **独立验收**：`start` → `verify`。`verify` 在 execution root 复跑票据命令，按 acceptance 逐条核对 `criteria` 证据，检查 worktree 与主仓都没有越界改动。结论分 `passed` / `degraded` / `failed`，退出码 0 / 2 / 1。
 6. **异体评审**：`review --reviewer <另一个名字> --verdict pass`；通过才进入 `done`。L4 必须加 `--human`；degraded 验收**放行**必须加 `--accept-degraded`（判 fail 是拒绝，不需要）。
@@ -169,7 +175,7 @@ S2 的角色是**必须有**的，不是可选的：
 新会话只拿到票面就会跑偏。两个补丁：
 
 - `context <id>` → `.dispatch/context/<id>.md`：票面框架、目标、写/读域、完成定义、**项目入口文档摘录**（AGENTS.md / CLAUDE.md / CONTEXT.md）、**同票历史运行**（state / verify / error）、**阻塞邻居**、**踩坑笔记索引**。只读、确定性、不调模型。`render --with-context` 会把它写进 run 目录并附到 `work-order.md`。
-- `brief <id>` → `.dispatch/briefs/<id>.md`：只读阶段的五段式 brief；`--check` 校验非空非占位，`--approve <人>` 记录审批（brief 与票据的 sha256 一起记），`render --require-brief` 无有效审批直接拒绝开局。
+- `brief <id>` → `.dispatch/briefs/<id>.md`：只读阶段的六段式 brief；`--check` 校验非空非占位，`--approve <人>` 记录审批（brief 与票据的 sha256 一起记），`render --require-brief` 无有效审批直接拒绝开局。
 - `auto` 重试不再原样重跑：第 n 次尝试前把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。
 
 - `checkpoint <id>` → `<run>/checkpoints/<NNN>-<label>/`：`checkpoint.json`（逐文件 sha256 + diff_hash + parent）、`diff.patch`、`status.txt`、`restore.md`；发布后 `current.json` 原子切换，代际只追加不覆盖。
@@ -558,7 +564,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `personas show <文件或短名> [--json]` | 读取单个 persona 的身份、能力与提示词 |
 | `export --format <agent-team / dsh-team / codex / generic>` | 只读导出；`agent-team` 生成 Team Lead 简报 + 每票工单 |
 | `context <id> [--json]` | 生成 `.dispatch/context/<id>.md`：入口文档摘录 / 同票历史运行 / 阻塞邻居 / 踩坑索引 |
-| `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验五段非空、记录审批（票据与 brief 双哈希） |
+| `brief <id> [--check 或 --approve <人>]` | 两阶段：只读 brief 模板、校验六段非空（含写域自检三问）、记录审批（票据与 brief 双哈希） |
 | `checkpoint <id> [--label <名>] [--list]` | 发布不可变检查点（manifest + diff.patch + status + restore.md），`--list` 看代际 |
 | `questions <slug> [--json]` | 把 `03-adversary.md` 的假设转成可直接问甲方的问题（配合 `ask` 槽） |
 | `select <slug> [--with 角色1,角色2] [--add ID[:PERSONA]] [--list] [--mode solo\|team]` | S2：出选型证据包 `docs/selection/<slug>/`——三角色必选（开源借鉴 / 搜索取证 / 对抗审查），可选领域约束与成本守护，其余角色可自带 persona 追加 |
