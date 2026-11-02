@@ -80,6 +80,13 @@ def evidence_state(run_dir: Path) -> str | None:
     return None
 
 
+
+
+def _has_passing_review(run_dir: Path) -> bool:
+    """done 的唯一合法来源：review.json 的 verdict 为 pass。"""
+    review = _read_json(Path(run_dir) / "review.json")
+    return str(review.get("verdict", "")).strip().lower() == "pass"
+
 def _last_artifact(run_dir: Path) -> tuple[str, float | None]:
     newest_name = ""
     newest_ts: float | None = None
@@ -212,10 +219,23 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
         for ticket_id, entry in sorted(latest.items())
         if ticket_id in known and str(known[ticket_id].get("run_id", "")) != str(entry["run_id"])
     ]
+    # done 只能由证据派生：review.json 的 verdict=='pass' 是唯一来源。
+    # 缺证据时不能升 done —— 包括索引里没有该票（added）的新增路径。
+    # 见 docs/specs/security-audit-fixes.md D2 与 2026-11-02 安全审计 F2。
+    evidence_blocked = [
+        {
+            "ticket_id": ticket_id,
+            "state_run": str(entry["state"]),
+        }
+        for ticket_id, entry in sorted(latest.items())
+        if str(entry["state"]) == "done"
+        and not _has_passing_review(Path(root) / ".dispatch" / "runs" / str(entry["run_id"]))
+    ]
     if write:
         merged = {ticket_id: dict(entry) for ticket_id, entry in known.items()}
         conflicted = {str(item["ticket_id"]) for item in conflicts}
         conflicted |= {str(item["ticket_id"]) for item in evidence_mismatch}
+        conflicted |= {str(item["ticket_id"]) for item in evidence_blocked}
         for ticket_id, entry in latest.items():
             if ticket_id in conflicted:
                 # 冲突票不写：index 与 disk 各执一词时，交给人裁决（ADR-0008 D3）
@@ -224,6 +244,7 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
                 "run_id": entry["run_id"],
                 "state": entry["state"],
                 "updated_at": entry["created_at"],
+                "status_source": "evidence" if str(entry["state"]) == "done" else "run.json",
             }
         state_path = Path(root) / ".dispatch" / "state.json"
         state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -238,6 +259,7 @@ def repair(root: Path, write: bool = False) -> dict[str, object]:
         "state_changed": state_changed,
         "conflicts": conflicts,
         "evidence_mismatch": evidence_mismatch,
+        "evidence_blocked": evidence_blocked,
         "written": bool(write),
     }
 

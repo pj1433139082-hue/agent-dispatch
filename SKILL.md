@@ -342,7 +342,7 @@ agent preset not found: liangshen
 |---|---|
 | `claim` / `release` | 都要**先有 run**（brief+render）；`claim` 对 done/failed 票没有状态门；`release` 释放该 run **全部**租约，没有 run 时是 no-op（exit 0）；同 run 再 `claim` 会**续期**；退出码 0/3(冲突)/4(写域展不开) |
 | `sweep` | 只读、永远 exit 0；**文本模式只印一部分字段**（last_artifact / deadline_seconds 要用 `--json`） |
-| `repair` | 默认 dry-run；`--write` 会把整张 state 的 `updated_at` 换成 `run.created_at`；run_id 冲突 → exit 1，evidence_mismatch 只打印不拦 |
+| `repair` | 默认 dry-run；`--write` 会把整张 state 的 `updated_at` 换成 `run.created_at`；run_id 冲突 → exit 1；evidence_mismatch / evidence_blocked 的票**不写**（其余照写），打印 EVIDENCE-MISMATCH / EVIDENCE-BLOCKED |
 | `gc` | `--apply` 会**删掉 worktree 分支**；只处理索引里还有的 run（孤儿 run 不提示）；永远 exit 0 |
 | `seat` | 超 cap 不报错，只给负数 `free`；`inactive` 只在满员时才进建议 |
 | `doctor --fix` | 同样会重写 `updated_at`；只做安全修复，不动票、不删 run |
