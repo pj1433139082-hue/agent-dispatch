@@ -95,3 +95,43 @@ def test_run_command_passes_extra_env(tmp_path: Path) -> None:
 
     assert record["exit_code"] == 0
     assert "run-42" in log.read_text(encoding="utf-8")
+
+def test_mutate_run_passes_dispatch_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """票 26：mutate_run 复跑的判据也要看到 DISPATCH_*。
+
+    只验「有没有把 env 传下去」，不验 git 行为——所以拦 _run_command 而不是伪造
+    整个 subprocess。
+    """
+    from agent_dispatch import verify as verify_mod
+
+    captured: list[tuple[str, dict[str, str]]] = []
+
+    class FakeResult:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(verify_mod.subprocess, "run", lambda *a, **k: FakeResult())
+
+    def fake_run_command(command, root, log_path, timeout, extra_env=None):
+        captured.append((command, dict(extra_env or {})))
+        return {"command": command, "exit_code": 0}
+
+    monkeypatch.setattr(verify_mod, "_run_command", fake_run_command)
+
+    class FakeRun:
+        id = "run-77"
+        directory = tmp_path / "runs" / "run-77"
+        execution_root = tmp_path / "worktrees" / "run-77"
+        ticket_path = tmp_path / "tickets" / "77.md"
+        data = {"ticket_id": "77", "base_commit": "deadbeef", "use_worktree": True}
+
+    (tmp_path / "runs" / "run-77").mkdir(parents=True)  # mutate_run 会写 mutation.json
+    ticket = type("T", (), {"id": "77", "verify": ("true",)})()
+
+    verify_mod.mutate_run(tmp_path, ticket, FakeRun(), timeout=30)
+
+    assert captured, "mutate_run 应该复跑过票面判据"
+    _command, extra_env = captured[0]
+    assert extra_env["DISPATCH_RUN_ID"] == "run-77"
+    assert extra_env["DISPATCH_TICKET_ID"] == "77"
