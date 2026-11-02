@@ -553,8 +553,12 @@ def mutate_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300, per_fil
     results: list[dict[str, object]] = []
     try:
         log = directory / ".mutation.log"
+        # 判据在 mutate 下也要看到与 executor 同一套 DISPATCH_*，否则会出现
+        # 「执行者那儿绿、门禁这儿红」。注意 DISPATCH_EXECUTION_ROOT 指向 run 的
+        # 原 worktree，而这里的 cwd 是退回 base_commit 的复制目录——两者本就不同；
+        # 环境只用于让判据知道「自己属于哪个 run」，不代表当前工作目录。
         for command in ticket.verify:
-            results.append(_run_command(command, directory, log, timeout))
+            results.append(_run_command(command, directory, log, timeout, extra_env=_dispatch_env(run)))
     finally:
         subprocess.run(["git", "worktree", "remove", "--force", str(directory)], cwd=root, text=True, capture_output=True, check=False)
         subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
@@ -580,7 +584,7 @@ def mutate_run(root: Path, ticket: Ticket, run: Run, timeout: int = 300, per_fil
                 if target.exists():
                     target.unlink()
             file_results = [
-                _run_command(command, sandbox, sandbox / ".mutation.log", timeout)
+                _run_command(command, sandbox, sandbox / ".mutation.log", timeout, extra_env=_dispatch_env(run))
                 for command in ticket.verify
             ]
             if all(int(item.get("exit_code", 0)) == 0 for item in file_results):
