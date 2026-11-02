@@ -39,7 +39,7 @@
 - Write scope: tests/test_verify.py
 - Read scope: src/agent_dispatch/auto.py
 - Read scope: docs/specs/security-audit-fixes.md
-- Verify: python -m pytest -q tests/test_verify.py tests/test_cli_mutate.py tests/test_cli_verify.py
+- Verify: python -m pytest -q tests/test_verify.py tests/test_ops_commands.py tests/test_unattended_and_mutation.py tests/test_cli_verify.py
 
 ## Acceptance
 
