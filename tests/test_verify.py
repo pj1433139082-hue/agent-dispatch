@@ -51,3 +51,42 @@ def test_double_star_slash_matches_zero_directories() -> None:
     assert path_matches_scope("src/**/*.py", "src/a.py")
     assert path_matches_scope("src/**/*.py", "src/x/y/b.py")
     assert not path_matches_scope("src/**/*.py", "tests/a.py")
+
+
+def test_dispatch_env_matches_the_executor_contract(tmp_path: Path) -> None:
+    """H: verify must see the same DISPATCH_* variables the executor gets (auto.py:108-118)."""
+    from agent_dispatch.verify import _dispatch_env
+
+    class FakeRun:
+        id = "run-01"
+        directory = tmp_path / "runs" / "run-01"
+        execution_root = tmp_path / "worktrees" / "run-01"
+        ticket_path = tmp_path / "tickets" / "01.md"
+        data = {"ticket_id": "01"}
+
+    env = _dispatch_env(FakeRun())
+
+    assert env["DISPATCH_TICKET_ID"] == "01"
+    assert env["DISPATCH_RUN_ID"] == "run-01"
+    assert env["DISPATCH_RUN_DIR"] == str(FakeRun.directory)
+    assert env["DISPATCH_EXECUTION_ROOT"] == str(FakeRun.execution_root)
+    assert env["DISPATCH_WORK_ORDER"] == str(FakeRun.directory / "work-order.md")
+    assert env["DISPATCH_TICKET_PATH"] == str(FakeRun.ticket_path)
+    assert "DISPATCH_ATTEMPT" not in env, "verify has no attempt concept; do not invent one"
+
+
+def test_run_command_passes_extra_env(tmp_path: Path) -> None:
+    """The verify child actually sees the injected values."""
+    from agent_dispatch.verify import _run_command
+
+    log = tmp_path / "logs" / "01.log"
+    record = _run_command(
+        "echo %DISPATCH_RUN_ID%",
+        tmp_path,
+        log,
+        30,
+        extra_env={"DISPATCH_RUN_ID": "run-42"},
+    )
+
+    assert record["exit_code"] == 0
+    assert "run-42" in (tmp_path / "logs" / "01.log").read_text(encoding="utf-8")
