@@ -15,11 +15,16 @@ from pathlib import Path
 from .ticket import Ticket
 
 BRIEF_DIR = Path(".dispatch") / "briefs"
-SECTIONS = ("理解的目标", "计划", "准备改动的文件", "风险", "疑问")
+SECTIONS = ("理解的目标", "计划", "准备改动的文件", "写域自检", "风险", "疑问")
 HINTS = {
     "理解的目标": "一句话说清这张票要达成什么，以及你判断的边界。",
     "计划": "打算分几步做，每步怎么验证。",
     "准备改动的文件": "逐个列出路径，说明为什么必须改它。",
+    "写域自检": (
+        "三问必答，逐条给结论：① 票面验收要求的每个文件都在 Write scope 里吗？"
+        "② 有没有既有测试断言了我正要改掉的行为？③ 改完后哪个调用点/消费者可能被漏掉？"
+        "任何一问答「有矛盾」，就停下改票，不要带着矛盾往下做。"
+    ),
     "风险": "最可能出错的地方、回滚方式、会不会碰到写域外的文件。",
     "疑问": "不确定的点；没有就写「无」。",
 }
@@ -103,7 +108,15 @@ def check_brief_text(text: str) -> tuple[bool, list[str]]:
             continue
         bodies[section] = body
     if len(bodies) == len(SECTIONS) and len(set(bodies.values())) == 1:
-        problems.append("五段内容完全相同，像是占位填充")
+        problems.append("六段内容完全相同，像是占位填充")
+    # 写域自检必须给三个问号的结论，不能只写一句「没问题」。
+    # 这条不是形式主义：票 24 曾做到一半才发现要改的测试不在写域，票 25 的验收
+    # 要求改 landing.py 而写域里没有 —— 两次都返工。
+    self_check = bodies.get("写域自检", "")
+    if self_check and self_check.lower().rstrip("。.") not in {"无", "none", "n/a", "na"}:
+        missing = [label for label in ("①", "②", "③") if label not in self_check]
+        if len(missing) == 3:
+            problems.append("写域自检没有逐条回答 ①②③ 三问（写「无」表示不适用）")
     return (not problems, problems)
 
 

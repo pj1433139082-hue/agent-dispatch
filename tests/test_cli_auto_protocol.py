@@ -122,6 +122,7 @@ def test_closeout_failure_stops_before_review(tmp_path: Path) -> None:
         ("理解的目标", "写 out.txt"),
         ("计划", "一步写完"),
         ("准备改动的文件", "- other.txt 只是声明，不实际改"),
+        ("写域自检", "① 验收要求的文件都在 Write scope：是。② 既有测试断言了要改掉的行为：无。③ 可能被漏掉的调用点：无。"),
         ("风险", "无"),
         ("疑问", "无"),
     ):
