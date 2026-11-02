@@ -404,9 +404,15 @@ def _evaluate_criteria(
                 record["criterion_id"] = criterion_id
                 item_records.append(record)
                 evidence.append(record)
-        # degraded 的判据是「这条 criterion 的全部证据都是 note」，不是「某个前缀全是 note」：
-        # 证据书写顺序不能改变结论（note 写在 file 前面时，file 已经提供了可复算物证）。
-        degraded = degraded or (bool(item_records) and all(bool(entry.get("attested")) for entry in item_records))
+        # degraded 的判据有两条：
+        # 1) 这条 criterion 的全部证据都是 note（原有规则，顺序无关）；
+        # 2) 除去 command 之后没有任何可复算物证 —— command 是执行者自述的
+        #    command+exit_code，verify 从不重跑（见 work-order 的 receipt contract），
+        #    因此不能单独构成「可复算证据」。见 docs/specs/security-audit-fixes.md D3。
+        all_attested = bool(item_records) and all(bool(entry.get("attested")) for entry in item_records)
+        non_command = [entry for entry in item_records if str(entry.get("kind", "")) != "command"]
+        command_only = bool(item_records) and not non_command
+        degraded = degraded or all_attested or command_only
         records.append(
             {
                 "id": criterion_id,
