@@ -6,7 +6,9 @@
 
 这是交叉评审补出的第四个 done 旁路（oss 与 adversary 都漏了）。
 
-`SKILL.md:240` 已有口径：票面 `**Status:**` 只是**作者标记**，不是事实。本票把该口径落到 `status_document`。
+`SKILL.md:276` 已有口径：票面 `**Status:**` 只是**作者标记**，真实状态看 `.dispatch/state.json`。本票把该口径落到 `status_document`。
+
+**写域说明（2026-11-02 补）**：`tests/test_status_from_ticket_file.py:56-62` 的 `test_a_done_ticket_unblocks_its_dependents` 断言的正是本次要取消的行为，与 `SKILL.md:276` 直接矛盾。它是文档与实现打架的证据，必须同批改掉，故纳入写域。
 
 **Blocked by:** None
 **Status:** ready-for-agent
@@ -18,6 +20,7 @@
 - Persona: dispatcher.md
 - Write scope: src/agent_dispatch/export.py
 - Write scope: tests/test_export.py
+- Write scope: tests/test_status_from_ticket_file.py
 - Read scope: src/agent_dispatch/ticket.py
 - Read scope: src/agent_dispatch/graph.py
 - Verify: python -m pytest -q tests/test_export.py tests/test_status_from_ticket_file.py tests/test_status_unlanded.py
