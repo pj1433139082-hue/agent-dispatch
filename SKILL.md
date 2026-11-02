@@ -663,7 +663,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 
 ## degraded 的判定与记录（v0.69）
 
-- **触发**：某条判据的**全部**证据都是 attested（只有 `kind:"note"` 算 attested；file/inline/absent/command 都不算）→ `verify` 判 degraded，**退出码 2**，票进 `review`（不是 failed）。判定按**整条 criterion** 算，与证据书写顺序无关（v1.8.2 修）。
+- **触发**（两条任一）：① 某条判据的**全部**证据都是 attested（只有 `kind:"note"` 算 attested；file/inline/absent/command 都不算）；② 某条判据**除去 `command` 之后**没有任何 `file`/`inline`/`absent` 证据（v1.16 起：`command` 是执行者自述、verify 从不重跑，不能单独构成可复算证据）。→ `verify` 判 degraded，**退出码 2**，票进 `review`（不是 failed）。判定按**整条 criterion** 算，与证据书写顺序无关（v1.8.2 修）。
 - **拒绝可重试**：不带 `--accept-degraded` 的 `review` exit 1，只有一句 stderr，**不写 review.json / 不写 ledger / 状态不变**。
 - **接受后**：`review.json` 的 `status` 是 **passed**（不是 degraded），降解事实在 `verify_status: degraded` + `accepted_degraded: true`。
 
