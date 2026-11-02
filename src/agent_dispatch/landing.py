@@ -86,23 +86,6 @@ def _assert_reviewed_worktree(run: Run) -> None:
         )
 
 
-def _assert_reviewed_commit(root: Path, run: Run, commit: str) -> None:
-    """from-commit 路径没有 worktree：用 verify 记录里改过的文件清单核对这个 commit。"""
-    verify_path = run.directory / "verify.json"
-    if not verify_path.is_file():
-        raise LandingError("run has no verify record; verify before land")
-    record = json.loads(verify_path.read_text(encoding="utf-8"))
-    changed = set(str(item) for item in record.get("changed_files", []))
-    diff = _git(root, "diff", "--name-only", str(run.data.get("base_commit", "")) + ".." + commit)
-    if diff.returncode != 0:
-        raise LandingError("cannot diff from-commit: " + _detail(diff))
-    actual = {line.strip() for line in diff.stdout.splitlines() if line.strip()}
-    if actual != changed:
-        raise LandingError(
-            "from-commit does not match the verified change set: "
-            + ", ".join(sorted(actual ^ changed))
-        )
-
 def _commit_worktree(run: Run) -> str:
     worktree = run.execution_root
     status = _git(worktree, "status", "--porcelain", "--untracked-files=all")
@@ -180,7 +163,6 @@ def land_run(
     verify_after: bool = False,
     verify_all: list[str] | None = None,
     verify_all_timeout: int = 1800,
-    from_commit: str | None = None,
 ) -> dict[str, object]:
     """Create an integration branch containing a reviewed run.
 
@@ -206,7 +188,7 @@ def land_run(
     ticket = parse_ticket(run.ticket_path)
     if ticket.content_hash != str(run.data.get("ticket_hash", "")):
         raise LandingError("ticket content changed since render; rerender the run first")
-    if not from_commit and not run.execution_root.is_dir():
+    if not run.execution_root.is_dir():
         raise LandingError(
             f"run worktree is missing: {run.execution_root}; next steps: "
             "dispatch drop " + str(run.data.get("ticket_id", "")) + " --reason <why> (archive the run), "
@@ -236,7 +218,7 @@ def land_run(
         )
 
     run_branch = str(run.data["worktree_branch"])
-    if not _branch_exists(root, run_branch) and not from_commit:
+    if not _branch_exists(root, run_branch):
         raise LandingError(f"run branch not found: {run_branch}")
 
     target = target_branch or _default_target(root)
@@ -252,12 +234,8 @@ def land_run(
             "(drop --branch for one branch per run, or add --append to merge into it)"
         )
 
-    if from_commit:
-        _assert_reviewed_commit(root, run, from_commit)
-        run_commit = from_commit
-    else:
-        _assert_reviewed_worktree(run)
-        run_commit = _commit_worktree(run)
+    _assert_reviewed_worktree(run)
+    run_commit = _commit_worktree(run)
     landing_root = (
         root / ".dispatch" / "landings" / f"{run.id}-{uuid.uuid4().hex[:6]}"
     )

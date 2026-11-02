@@ -407,12 +407,6 @@ def _parser() -> argparse.ArgumentParser:
         help="With --wave: keep landing independent tickets after a failure.",
     )
     land_parser.add_argument(
-        "--from-commit",
-        default=None,
-        dest="from_commit",
-        help="Restore a missing worktree from this commit and land it (ticket-only).",
-    )
-    land_parser.add_argument(
         "--into",
         default=None,
         help="Target branch (default: main when present, otherwise the current branch).",
@@ -2974,7 +2968,6 @@ def _cmd_land(args: argparse.Namespace) -> int:
             target_branch=args.into,
             integration_branch=args.branch,
             append=bool(getattr(args, "append", False)),
-            from_commit=getattr(args, "from_commit", None),
             verify_after=bool(getattr(args, "verify", False)),
             verify_all=getattr(args, "verify_all", None),
             verify_all_timeout=int(getattr(args, "verify_all_timeout", 1800)),

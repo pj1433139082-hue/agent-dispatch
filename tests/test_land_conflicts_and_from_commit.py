@@ -136,21 +136,6 @@ def test_resolve_ticket_conflicts_uses_the_target_version(tmp_path: Path) -> Non
     assert content == "target version\n"
 
 
-def test_land_from_commit_restores_a_missing_worktree(tmp_path: Path) -> None:
-    run_dir, run, worktree = prepare(tmp_path, commit_ticket_in_worktree=False)
-    git(worktree, "add", "-A")
-    git(worktree, "commit", "-q", "-m", "the work")
-    sha = git(worktree, "rev-parse", "HEAD")
-    branch = str(run["worktree_branch"])
-    subprocess.run(["git", "worktree", "remove", "--force", str(worktree)], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(["git", "branch", "-D", branch], cwd=tmp_path, check=True, capture_output=True)
-
-    result = run_dispatch(tmp_path, "land", "01", "--from-commit", sha)
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert (run_dir / "landing.json").is_file()
-
-
 def test_doctor_reports_python_writability_and_ignore_paths(tmp_path: Path) -> None:
     (tmp_path / "tickets").mkdir()
     (tmp_path / "tickets" / "01.md").write_text(TICKET, encoding="utf-8")
