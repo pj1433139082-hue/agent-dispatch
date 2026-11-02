@@ -230,6 +230,42 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 `dsh push` **必须**给 `--workspace <id>`：卡片在**那个 workspace** 里跑，不在你当前仓库。省略会在板上默认 workspace 执行——实测把 `hello.txt` 写进了另一个项目。
 确需默认 workspace 时显式加 `--allow-default-workspace`。
 
+**别猜 workspace id**：先 `task_board_list --includeArchived`，看本仓历史卡落在哪个 id 上（agent-dispatch 的测试卡历来在同一个 workspace），拿证据再 push。
+
+## 看板卡必须自包含且有边界（2026-11-02 实测踩坑）
+
+看板卡不是"打个招呼就跑"的队列项——**执行体会把 prompt 当真的任务去做**。一次真实事故：
+
+> 测试卡 prompt 写成占位符 `"原始 prompt"`，权限被改成 `workspace-write`。执行体连调 **12 次工具、耗时 227 秒**仍未收敛，卡一直停在 running。
+
+对照组（prompt 写"只回复 X-OK，不调工具"）**18–20 秒正常落定**。所以：
+
+1. **prompt 写死边界**：要它只回一句话，就明写「只回复 X，不调用任何工具，不改任何文件」。
+2. **权限默认 `read-only`**：给 `workspace-write` 等于允许它真的动文件；只在确实要它改东西时才提权。
+3. **执行会挂起时用 `settle` 收**：`task_board_manage {action:"settle"}` 把卡从 running 打回 todo，该次执行记 `cancelled` + `no verdict was recorded`——**等于这次白跑、没有任何结论**，别指望它产出。
+4. **`run` 只表示已受理**：立刻读 `result` 是拿不到的，要轮询 `task_board_get` / `list` 看 `executions[].result`。
+
+### 两个字段别搞混
+
+| 字段 | 含义 |
+|---|---|
+| `board.counts.running` | **本看板** running 列的卡片数 |
+| `board.runningSessions` | **全 Host** 正在运行的会话数（含你自己这个会话、子智能体） |
+
+`runningSessions` 不是"看板在跑几张卡"，它的用途是**防休眠判断**（有会话在跑就不让系统睡眠），所以只有 `running` 列是 0 而它非 0 属正常，不是 bug。
+
+### 已知限制：subtask cascade 不可用
+
+卡下挂未完成子卡时，`task_board_run` 会让父卡改用 `liangshen` 预设执行；该预设不在默认部署里，实测报：
+
+```
+agent preset not found: liangshen
+(a card with unfinished subtasks runs under the liangshen preset,
+ which this deployment does not serve)
+```
+
+父卡 `failed`，子卡被动继承结论（`external: true`）、不单独开会话。**要么先删子卡、要么补齐预设**，否则带子卡的卡跑不起来。
+
 ## 常见误解（来自看板新会话的真机验收）
 
 1. **receipt 的 `file` 证据**：路径可以相对 **run 目录**，也可以相对 **worktree（execution root）**——先在 run 目录找，找不到再去 worktree 找。业务产物天然在 worktree，不必复制。
