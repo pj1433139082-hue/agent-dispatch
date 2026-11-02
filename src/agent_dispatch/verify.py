@@ -244,8 +244,42 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _run_command(command: str, root: Path, log_path: Path, timeout: int) -> dict[str, object]:
+def _dispatch_env(run: object) -> dict[str, str]:
+    """与 auto._execute 注入的七个 DISPATCH_* 保持一致，见 docs/specs/security-audit-fixes.md H。
+
+    取不到的项不传（例如 verify 路径没有 attempt 概念）。
+    """
+    values: dict[str, str] = {}
+    ticket_id = getattr(run, "data", {}).get("ticket_id") if isinstance(getattr(run, "data", None), dict) else None
+    if ticket_id:
+        values["DISPATCH_TICKET_ID"] = str(ticket_id)
+    for attr, key in (("id", "DISPATCH_RUN_ID"), ("directory", "DISPATCH_RUN_DIR"),
+                      ("execution_root", "DISPATCH_EXECUTION_ROOT"), ("ticket_path", "DISPATCH_TICKET_PATH")):
+        value = getattr(run, attr, None)
+        if value:
+            values[key] = str(value)
+    directory = getattr(run, "directory", None)
+    if directory is not None:
+        values["DISPATCH_WORK_ORDER"] = str(Path(directory) / "work-order.md")
+    attempt = getattr(run, "data", {}).get("attempt") if isinstance(getattr(run, "data", None), dict) else None
+    if attempt is not None:
+        values["DISPATCH_ATTEMPT"] = str(attempt)
+    return values
+
+
+def _run_command(
+    command: str,
+    root: Path,
+    log_path: Path,
+    timeout: int,
+    extra_env: dict[str, str] | None = None,
+) -> dict[str, object]:
     try:
+        # verify 与 executor 必须看到同一套 DISPATCH_* 环境，否则依赖这些变量的判据
+        # 会「对执行者通过、对门禁失败」。见 docs/specs/security-audit-fixes.md 的 H。
+        env = os.environ.copy()
+        env.update(extra_env or {})
+
         result = subprocess.run(
             command,
             shell=True,
@@ -254,6 +288,7 @@ def _run_command(command: str, root: Path, log_path: Path, timeout: int) -> dict
             capture_output=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
         exit_code = result.returncode
         body = f"$ {command}\n\n[stdout]\n{result.stdout}\n[stderr]\n{result.stderr}"
@@ -652,6 +687,7 @@ def verify_run(
                 run.execution_root,
                 run_dir / "logs" / f"{index:02d}.log",
                 timeout,
+                extra_env=_dispatch_env(run),
             )
             commands.append(record)
             check(
