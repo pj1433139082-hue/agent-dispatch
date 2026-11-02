@@ -97,3 +97,66 @@ def test_repair_write_skips_evidence_mismatch(tmp_path: Path) -> None:
 
     after = json.loads(state.read_text(encoding="utf-8"))
     assert after["tickets"]["01-probe"]["state"] == before["tickets"]["01-probe"]["state"]
+
+
+def test_repair_refuses_to_add_a_done_ticket_without_evidence(tmp_path: Path) -> None:
+    """A run.json claiming done with no review/closeout/verify must not become done."""
+    run_id = "01-ghost-20261102T000000Z-aaaaaa"
+    make_run(tmp_path, run_id, "01-ghost", state="done")
+    state = write_state(tmp_path, {})
+
+    report = run_dispatch(tmp_path, "repair", "--json")
+    assert report.returncode == 0, report.stderr
+    payload = json.loads(report.stdout)
+    assert [item["ticket_id"] for item in payload["evidence_blocked"]] == ["01-ghost"]
+
+    result = run_dispatch(tmp_path, "repair", "--write")
+
+    assert result.returncode == 0, result.stderr
+    data = json.loads(state.read_text(encoding="utf-8"))
+    assert "01-ghost" not in data["tickets"], "must not add a done ticket that has no passing review"
+    # 该票被拒写：报告里计入 evidence_blocked（json 模式可查），state 不发生新增
+
+
+def test_repair_keeps_a_failed_ticket_failed_when_run_claims_done(tmp_path: Path) -> None:
+    """Existing index value wins: a done claim without evidence cannot upgrade failed."""
+    run_id = "02-ghost-20261102T000000Z-bbbbbb"
+    make_run(tmp_path, run_id, "02-ghost", state="done")
+    state = write_state(
+        tmp_path,
+        {"02-ghost": {"run_id": run_id, "state": "failed", "updated_at": "2026-11-01T00:00:00+00:00"}},
+    )
+
+    result = run_dispatch(tmp_path, "repair", "--write")
+
+    assert result.returncode == 0, result.stderr
+    data = json.loads(state.read_text(encoding="utf-8"))
+    assert data["tickets"]["02-ghost"]["state"] == "failed", "failed must not be upgraded to done without evidence"
+
+
+def test_repair_writes_done_when_a_passing_review_exists(tmp_path: Path) -> None:
+    """The legitimate path still works: review.json verdict=pass is the proof."""
+    run_id = "03-real-20261102T000000Z-cccccc"
+    run_dir = make_run(tmp_path, run_id, "03-real", state="done")
+    (run_dir / "review.json").write_text(json.dumps({"verdict": "pass"}), encoding="utf-8")
+    state = write_state(tmp_path, {})
+
+    result = run_dispatch(tmp_path, "repair", "--write")
+
+    assert result.returncode == 0, result.stderr
+    data = json.loads(state.read_text(encoding="utf-8"))
+    assert data["tickets"]["03-real"]["state"] == "done"
+    assert data["tickets"]["03-real"]["status_source"] == "evidence"
+
+
+def test_repair_records_status_source_for_non_done_states(tmp_path: Path) -> None:
+    """Non-done states record run.json as their source."""
+    run_id = "04-probe-20261102T000000Z-dddddd"
+    make_run(tmp_path, run_id, "04-probe", state="running")
+    state = write_state(tmp_path, {})
+
+    result = run_dispatch(tmp_path, "repair", "--write")
+
+    assert result.returncode == 0, result.stderr
+    data = json.loads(state.read_text(encoding="utf-8"))
+    assert data["tickets"]["04-probe"]["status_source"] == "run.json"
