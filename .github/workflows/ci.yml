@@ -40,12 +40,23 @@ jobs:
         run: python scripts/acceptance.py --json
 
   # 分支保护要求存在名为 "test" 的检查；矩阵 job 改名后由这个聚合 job 兜住。
+  #
+  # if: always() 不能省：默认 needs 里任一 job 失败时本 job 会变成 **skipped**，
+  # 而 skipped 的必需检查在 GitHub 上「不阻拦合并」。2026-11-02 实测踩过：
+  # #48 的 tests 在 ubuntu/macOS 双红，test 变 skipped，PR 照样合进 main，main 变红。
+  # 加 always() + 显式判 result，这个 job 才会真 failure，门禁才真挡得住。
   test:
     needs: tests
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Matrix summary
-        run: echo "ubuntu-latest and macos-latest passed"
+        run: |
+          if [ "${{ needs.tests.result }}" != "success" ]; then
+            echo "::error::tests matrix result: ${{ needs.tests.result }} — required gate is not green"
+            exit 1
+          fi
+          echo "ubuntu-latest and macos-latest passed"
 
   wrap:
     # 独立 job：wrap 自己的 smoke（健康仓 CLEAN / 缺 tickets 目录给明确错误）
