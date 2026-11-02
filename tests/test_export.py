@@ -12,6 +12,7 @@ def ticket(
     *,
     depends_on: tuple[str, ...] = (),
     write_scope: tuple[str, ...] = ("src/agent_dispatch/export.py",),
+    status: str = "",
 ) -> Ticket:
     return Ticket(
         id=ticket_id,
@@ -24,6 +25,7 @@ def ticket(
         write_scope=write_scope,
         verify=("python -m pytest -q",),
         acceptance=(f"{ticket_id} works.",),
+        status=status,
     )
 
 
@@ -123,3 +125,38 @@ def test_export_includes_failed_tickets_for_a_retry() -> None:
     payload = json.loads(export_text([ticket("A")], "dsh-team", {"A": "failed"}))
 
     assert [item["subject"] for item in payload] == ["Ticket A"]
+
+
+def test_declared_done_does_not_unlock_dependents() -> None:
+    """A ticket file claiming done must not satisfy depends_on (SKILL.md:276)."""
+    document = status_document(
+        [ticket("A", status="done"), ticket("B", depends_on=("A",))],
+        {},
+    )
+
+    rows = {row["id"]: row for row in document["tickets"]}
+    assert rows["A"]["state"] == "done", "display still reflects what the author wrote"
+    assert rows["B"]["state"] == "blocked", "declared-done must not unlock B"
+    assert document["frontier"] == ["A"]
+
+
+def test_declared_done_unlocks_dependents_when_explicitly_allowed() -> None:
+    """The migration escape hatch restores the old behaviour."""
+    document = status_document(
+        [ticket("A", status="done"), ticket("B", depends_on=("A",))],
+        {},
+        include_declared_done=True,
+    )
+
+    rows = {row["id"]: row for row in document["tickets"]}
+    assert rows["B"]["state"] == "ready"
+    assert document["frontier"] == ["B"]
+
+
+def test_stored_done_still_unlocks_dependents() -> None:
+    """state.json remains the fact source and still satisfies depends_on."""
+    document = status_document([ticket("A"), ticket("B", depends_on=("A",))], {"A": "done"})
+
+    rows = {row["id"]: row for row in document["tickets"]}
+    assert rows["B"]["state"] == "ready"
+    assert document["frontier"] == ["B"]
