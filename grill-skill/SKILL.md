@@ -23,7 +23,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 1. 出问卷（**最低集 + 留痕文件**）：`python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py align <slug> --level standard`（quick 3 / standard 6 / thorough 10）。下文所有 `dispatch xxx` 都指这条完整路径——`dispatch` 不一定在 PATH 上。
    - 问卷是**起点不是全部**：前沿里问卷没覆盖的问题，按下面「追加轮次」继续问，并写回同一个文件。
 2. 出角色 brief（**注意：`select` 生成的是 brief，不是证据**；执行者要把 `01/02/03` 原地改写成证据；重跑 `select` 会重写 `99-summary.md`，先备份）：`python ...\dispatch.py select <slug> --mode team`（写域受限时省略 `--with`；有 teammate 工具时默认 `team`，见下节）
-3. 派三个执行者填三份证据（`spawn_worker` + `message` 槽可用就走 team；不可用就自己写，文件里标注"主代理代做"）：
+3. 派三个执行者填三份证据（`spawn_once` 或 `spawn_worker` 槽可用就走 team；都不可用就自己写，文件里标注"主代理代做"）：
    - `01-oss.md`：≥2 个开源参照，指到 `文件:函数` 或 commit，并写**不采用的理由**
    - `02-sources.md`：每条事实带 URL + 原文摘录 + 抓取日期 + 版本
    - `03-adversary.md`：没说出口的假设，每条给可证伪实验（≤7 条）
@@ -34,7 +34,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 
 `select --mode team` 把证据包标记成"每份证据由独立子会话产出"。之后：
 
-1. **用 `spawn_worker` 槽起三个 fresh 执行者**（一个角色一个，不共享上下文；DSH=`spawn_teammate({name, description, prompt, context:"fresh"})`，千问办公=`task` 带 `subagent_type`，映射见 `references/harness-adapters.md`）：
+1. **起三个 fresh 执行者**（一个角色一个，不共享上下文）。选槽按 `references/harness-adapters.md`：三个角色**只回报一份证据、不做中途协作**，优先用一次性槽 `spawn_once`（DSH=`subagent`，千问办公=`Agent` 带 `subagent_type`），不占常驻名额；`spawn_worker` 槽（DSH=`spawn_teammate({name, description, prompt, context:"fresh"})`）只在需要后续改派/交叉评审来回沟通时才用：
    - `name`：`grill-oss` / `grill-search` / `grill-adversary`
    - `prompt` = ①该角色 persona 正文（`agents/personas/<id>.md` 全文）②自己的 brief（mission + 证据门槛 + **只许写自己的文件**）③下面的信息源隔离表 ④回收格式
 2. **信息源隔离**（否则三个都会去搜同一批东西）：
@@ -45,7 +45,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    | search-scout | 官方文档、changelog、issue、release notes | 读源码代替文档；凭记忆给版本 |
    | adversary | 读方案 + 另两份证据（交叉质疑） | 自己再做检索（那就变回搜索员） |
 
-3. **回收格式**（每个 teammate 结束时只回这五行）：
+3. **回收格式**（每个执行者结束时只回这五行；用一次性槽时说"子智能体"，用常驻槽时说"teammate"）：
    ```
    文件：docs/selection/<slug>/01-oss.md
    结论：建议采用 X（或 建议不采用 / 证据不足）
@@ -54,7 +54,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    未证实：<逐条，没有写"无">
    ```
 4. **等齐再往下**：如果有 `wait` 槽就等到三个都结束（DSH=`wait_agent`；千问办公的 `task` 同步返回，不用等）；任何一个超时/失败，就把它那份标 `未产出` 并在 99-summary 写明，不许主代理悄悄补写成"已完成"。
-5. **交叉评审（必做一轮，只读）**：三份齐了之后，让每个 teammate **只读另外两份**，回一条反驳；**本轮任何人都不许改文件**（包括自己那份），要改由 Lead 汇总后单独开一轮：
+5. **交叉评审（必做一轮，只读）**：三份齐了之后，让每个执行者（一次性槽=子智能体 / 常驻槽=teammate）**只读另外两份**，回一条反驳；**本轮任何人都不许改文件**（包括自己那份），要改由 Lead 汇总后单独开一轮：
    ```
    质疑对象：02-sources.md 的 <结论>
    反驳：<一句话 + 依据>
@@ -63,7 +63,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    Lead 把三条反驳写进 `docs/selection/<slug>/06-cross-review.md`，分歧结论回填 `99-summary.md` 的"决策"段。
 6. **签字门会验**：`sign` 在 team 模式下要求每份证据①存在 ②带 `Persona: <角色 persona>` 行 ③不再是 `## What to produce` 模板 ④`06-cross-review.md` 存在且非空 ⑤评审窗口已开且已关、无改动 ⑥没有 `panel --set <role>=missing/failed` 的角色（有的话 `pass` 必须带 `--note`）；缺一条就拒绝签字。**证据矛盾门（v1.9.2）**：`03-adversary.md` 的结论行写着"证据不足"时，`sign` 拒绝 `pass`（除非带 `--note` 写明要补的证据）；默认签 `--hold`。另外 team 模式签字前必须 `review-window <slug> --open`（评审前）→ `--close`（评审后无改动），并且 `06-cross-review.md` 必须存在且非空，否则 `sign` 拒绝。
 
-**没有 teammate 工具 / spawn 失败时**：退回 `--mode solo`，三份证据由主代理代做，每份文件头写 `Persona: <角色 persona>（主代理代做）`，并在 99-summary 标注 `模式：solo`。降级可以，但必须留痕。
+**两个 worker 槽都没有 / spawn 失败时**：退回 `--mode solo`，三份证据由主代理代做，每份文件头写 `Persona: <角色 persona>（主代理代做）`，并在 99-summary 标注 `模式：solo`。降级可以，但必须留痕。
 
 ## 追加轮次（grilling 的轮次怎么落盘）
 
