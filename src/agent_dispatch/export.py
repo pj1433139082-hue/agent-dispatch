@@ -33,13 +33,18 @@ def status_document(
     tickets: list[Ticket],
     states: dict[str, str] | None = None,
     done: set[str] | None = None,
+    include_declared_done: bool = False,
 ) -> dict[str, object]:
     states = dict(states or {})
     done = done if done is not None else _done(states)
-    # 票据文件自己声明的 done 也算数：不然「文件里写了 done、但没有 run」会一直显示 ready
-    done = set(done) | {
-        ticket.id for ticket in tickets if str(getattr(ticket, "status", "")).strip().lower() == "done"
-    }
+    # 票面 **Status:** 是作者标记，不是事实（SKILL.md:276）。done 集合默认只来自
+    # state.json；票面自述不得解锁下游依赖。迁移场景可显式打开 include_declared_done。
+    if include_declared_done:
+        done = set(done) | {
+            ticket.id for ticket in tickets if str(getattr(ticket, "status", "")).strip().lower() == "done"
+        }
+    else:
+        done = set(done)
     plan = build_plan(tickets, done=done)
     ready_frontier = [
         ticket_id
