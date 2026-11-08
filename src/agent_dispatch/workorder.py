@@ -127,7 +127,7 @@ Every criterion needs at least one evidence item. Evidence kinds:
 - `file`: a path relative to the run directory, or to the execution root (worktree) — the verifier tries the run directory first, then the worktree; it hashes whatever it finds.
 - `inline`: literal content; include an optional sha256 to bind it.
 - `absent`: a path that must not exist.
-- `command`: a command and exit_code the executor observed (not rerun by verify).
+- `command`: a command and exit_code the executor observed (not rerun by verify); it does not count as recomputable evidence. Without file/inline/absent evidence, the criterion is degraded.
 - `note`: an attested human/agent statement; a criterion supported only by notes is degraded.
 
 If the ticket has a persona, copy `persona` from `run.json` into the receipt

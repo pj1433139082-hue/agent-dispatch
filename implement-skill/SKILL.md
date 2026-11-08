@@ -14,7 +14,7 @@ description: 按票执行：brief 审批 → render（一票一 worktree）→ �
 ## 单票流程
 
 ```bash
-python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py brief <id>                     # 填五段（理解/计划/要改的文件/风险/疑问）
+python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py brief <id>                     # 填六段（理解/计划/要改的文件/写域自检/风险/疑问）
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py brief <id> --approve <你>       # 不批，render 不放行（配置默认开）
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py render <id> --agent <执行者>     # 一票一 worktree，产出 work-order.md
 python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py start <id>
@@ -28,8 +28,8 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id
 
 - `criteria` 的 `id` 必须**正好覆盖**票面 `## Acceptance` 的 `1..N`，多一条少一条都判失败
 - 证据只有 5 种：`file`（run 目录或 worktree 相对路径）/ `inline` / `absent` / `command` / `note`
-- **只有 `note` 一条证据** → 整票判 `degraded`（verify 退出码 2），还得 `review --accept-degraded` 才能往下走
-- `note` 可以**和可复算证据混用**（file/inline/command 都在时不会 degraded）；只有"**仅 note**"才降级
+- 某条 criterion **只有 `note`**，或**除去 `command` 后没有 `file` / `inline` / `absent`** → 整票判 `degraded`（verify 退出码 2），还得 `review --accept-degraded` 才能往下走
+- `command` 是执行者自述的命令与退出码，verify 不重跑，**不计作可复算证据**；它可以补充物证，但不能单独满足判据。`[command, file]` 这类组合不因 command 降级；`[command, note]` 仍降级
 - 完整 schema 在 `references/ticket-contract.md`，每次 `render` 也会写进 `work-order.md` 的 `## Receipt contract`
 
 ## brief 里的方案备选（Design It Twice 轻量版）
@@ -45,7 +45,7 @@ python C:\Users\14331\.agents\skills\agent-dispatch\scripts\dispatch.py land <id
 L4 或"新建模块/接口"时，升级为并行子代理各出一版（用 codebase-design 的 Design It Twice），再把对比写回 brief。**只写一个方案不算过**——批准人看不到取舍就没法批。
 ## brief 的判据
 
-`dispatch brief <id> --check` 只校验"五段非空、不是占位"（`<填写：…>`），**不判长度和内容质量**；写没写清楚由批准的人负责。
+`dispatch brief <id> --check` 只校验"六段非空、不是占位"（`<填写：…>`），并验「写域自检」逐条答了 ①②③（写「无」表示不适用），**不判内容质量**；写没写清楚由批准的人负责。
 
 ## 落地前后的小事
 
