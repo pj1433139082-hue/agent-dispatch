@@ -50,6 +50,8 @@ def test_receipt_schema_is_documented_in_the_work_order() -> None:
     assert "receipt.json" in text
     for field in RECEIPT_SCHEMA["required"]:
         assert f"\"{field}\"" in text or field in text
+    assert "it does not count as recomputable evidence" in text
+    assert "Without file/inline/absent evidence, the criterion is degraded" in text
 
 
 def test_work_order_tells_the_executor_not_to_edit_status() -> None:
