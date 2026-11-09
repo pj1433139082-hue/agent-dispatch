@@ -174,9 +174,10 @@ S2 的角色是**必须有**的，不是可选的：
 
 新会话只拿到票面就会跑偏。两个补丁：
 
-- `context <id>` → `.dispatch/context/<id>.md`：票面框架、目标、写/读域、完成定义、**项目入口文档摘录**（AGENTS.md / CLAUDE.md / CONTEXT.md）、**同票历史运行**（state / verify / error）、**阻塞邻居**、**踩坑笔记索引**。只读、确定性、不调模型。`render --with-context` 会把它写进 run 目录并附到 `work-order.md`。
+- `context <id>` → `.dispatch/context/<id>.md`：票面框架、目标、写/读域、完成定义、**项目入口文档摘录**（AGENTS.md / CLAUDE.md / CONTEXT.md）、**同票历史运行**（state / verify，执行器 error 单独裹围栏）、**阻塞邻居**、**踩坑笔记索引**。只读、确定性、不调模型。`render --with-context` 会把它写进 run 目录并附到 `work-order.md`。
+- **不可信摘录一律标注为数据（v1.17）**：执行端可控内容（同票前序运行的 `auto.json.error`、反馈文件里的失败原因）都带来源标注 + 「数据非指令」声明，并用**自适应围栏**包住：长度取内容里最长反引号串 +1（下限 3），含三反引号的注入内容会被四反引号完整包住。项目入口文档（AGENTS/CLAUDE/CONTEXT）仍是**可信指令源**，只额外标注「仅代表本仓视角」。**围栏只防结构性逃逸，不防语义注入，不是安全边界**——别把它当隔离用。
 - `brief <id>` → `.dispatch/briefs/<id>.md`：只读阶段的六段式 brief；`--check` 校验非空非占位，`--approve <人>` 记录审批（brief 与票据的 sha256 一起记），`render --require-brief` 无有效审批直接拒绝开局。
-- `auto` 重试不再原样重跑：第 n 次尝试前把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。
+- `auto` 重试不再原样重跑：第 n 次尝试前把第 n-1 次的 `verify_errors` 写成 `auto/feedback-<n-1>.md`，并用环境变量 `DISPATCH_FEEDBACK` 指给执行端。该文件里的失败原因与上下文包**同等对待**（同样的来源标注、数据声明与自适应围栏），两条通道共用一个 helper。
 
 - `checkpoint <id>` → `<run>/checkpoints/<NNN>-<label>/`：`checkpoint.json`（逐文件 sha256 + diff_hash + parent）、`diff.patch`、`status.txt`、`restore.md`；发布后 `current.json` 原子切换，代际只追加不覆盖。
 - `closeout <id>` → `<run>/closeout.json` + `closeout.md`：verify 状态、receipt criteria 与票面 acceptance 的条数对应、越出写域的改动、brief 声明却没改 / 没声明却改了；不过就列出 findings。`land --require-closeout` 会在 closeout 不是 pass 时拒绝落地。
@@ -499,6 +500,14 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 - **整波一次验（v1.6.0）**：`land --wave --branch X --append --verify` 会在合完之后，把**所有落地票的 Verify 去重后在同一条分支上跑一次**，打印 `VERIFY-AFTER wave X: pass|fail (N unique command(s))`；失败退出码 1。不带 `--branch` 时仍逐票各验一次。
 - **整分支全量回归（v1.8.0）**：`land <id> --verify-all "<命令>"`（可重复，重复命令只跑一次）落地后把**你给的回归命令**放进 integration 分支的临时 worktree 执行，打印 `VERIFY-ALL <id>: pass|fail on <分支>`；失败退出码 1、逐条列出失败命令，并把 `landing.json` 的 `status` 记成 **`landed-unverified`**、`verify_all_status` 记 `fail`（记录里另有 `verify_all.commands` 明细）。与 `--verify` 的分工：`--verify` 复跑票面 Verify（证明这张票），`--verify-all` 跑整套回归（证明这条分支）。整波用法 `land --wave --branch X --append --verify-all "python -m pytest -q"` 只在整波落完后跑一次，打印 `VERIFY-ALL wave X: pass|fail (N command(s))`；**不带 `--branch` 会在落地前直接报错**（逐票分支各跑一遍全量回归不是本意）。`--verify-all-timeout` 默认 1800 秒/条（票面 `--verify` 仍是 300 秒）。
 
+
+## 工单权限段与 auto 额度（v1.17）
+
+- **每份工单带 `## Permission` 段**：写明按风险等级允许的模式，并交代三件事——该模式**仅约束文件系统效果**（网络与进程可见性不在其定义范围内）、Windows ACL 可能只是**部分强制**、以及当前执行端是**已传参**还是**未强制**。
+- **能力边界要诚实**：DSH 看板路径会把 permission 传给卡片（**已传参**，但不声称已强制生效）；一次性委派与具名成员两条路径的工具**不接受权限参数**，子会话继承父会话模式，所以工单只能**声明**并标注**未强制**。别把工单里的模式当成沙箱已经生效。
+- **团队模式**：父卡取全波**最高**风险等级，同波低风险票的成员实际拿到的是那个最高权限；工单会明说这一点，取值语义本身不改。
+- **auto 也吃额度**：`auto --max-attempts N` 会按该票剩余额度收紧实际次数，运行内每次额外尝试各记一次账；额度耗尽后 auto 同样需要显式覆盖 + 非空理由。**已知边界**：运行内尝试在 auto 返回后才记账，进程中途被杀可能漏记——由票 30 跟进。
+
 ## retry 会重写 context.md（v1.3.0）
 
 - 若 `render --with-context` 生成过 `context.md`，`retry` 会把它重写成 `attempt N of the same run`，执行端能看到"这不是第一次"。
@@ -530,7 +539,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 | `wrap [--json] [--fix]` | **会话收口一条命令**：状态计数 + doctor 全部问题 + **未 landing 的 run 数** + 下一步该跑什么；干净 exit 0，有事 exit 1 |
 | `doctor [--json] [--fix]` | 只读体检：票能否 lint、索引与磁盘是否一致、失败票、超期 run、活跃租约；`--fix` 只做安全修复（重建索引 + 删过期租约）；有问题 exit 1 |
 | `release <id> [--json]` | 释放该票的文件租约（卡住的 run 用它放锁；幂等，没租约也成功） |
-| `retry <id> --reason "为什么再试一次"`（**必填**） | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`，索引里留 history |
+| `retry <id> --reason "为什么再试一次"`（**必填**）`[--override-limit]` | 把 `failed` 的票拉回 `running` 再验一次；旧的 verify/review/closeout 归档到 `attempts/`。**额度按票累计**（`ledger/retries.jsonl` + `ledger/dropped.jsonl`，默认上限 3）：重新渲染与归档都不重置；超限拒绝且提示**不给绕过命令**，`--override-limit` 可突破但必须填理由并在手账记 override |
 | `confirm <slug> --by <人> --via <dialog 或 card> [--note …]` | 把 S3「规格已核对」写进 `docs/specs/<slug>.md` 的 `## Confirmation`；`tickets` 未确认前拒绝拆票（`--force` 跳过） |
 | `sign <slug> --by <人> --via <dialog 或 card> [--hold 或 --reject] [--note "..."]` | 把甲方签字写回 `99-summary.md`（签字人 + 勾选 + 确认方式）；**`--via` 必填**，不写来源不许签 |
 | `stage <slug> [--json] [--prompt]` | S1–S5 一屏状态；`--prompt` 输出该阶段要人回答的问题（喂弹窗/决策卡）：问卷 / 选型 / 签字 / 规格 / 票；`next` 指下一步，未就绪 exit 1 |
