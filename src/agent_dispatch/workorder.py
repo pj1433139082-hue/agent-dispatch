@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from .export import PERMISSIONS
 from .persona import persona_section
 from .ticket import Ticket
 
@@ -74,6 +75,7 @@ def render_work_order(ticket: Ticket, run: dict[str, object]) -> str:
     persona_block = f"\n{persona}\n" if persona else ""
     execution_root = str(run.get("execution_root") or "(main checkout)")
     branch = str(run.get("worktree_branch") or "(none)")
+    permission = PERMISSIONS.get(ticket.risk or "L1", PERMISSIONS["L1"])
     return f"""# Work order: {ticket.id}: {ticket.title}
 
 Run ID: {run.get("run_id", "")}
@@ -92,6 +94,21 @@ Run directory: .dispatch/runs/{run.get("run_id", "")}
 - Owner: {ticket.owner}
 - Risk: {ticket.risk}
 {persona_block}
+## Permission
+
+- Allowed mode for this ticket's risk: `{permission}`. This is a declared
+  boundary; continue to obey the ticket's write scope.
+- The mode describes filesystem effects only; it does not promise network or
+  process visibility isolation. On Windows enforcement may be partial.
+- One-shot delegation and named teammates: **not enforced** by a per-ticket
+  permission parameter; those paths cannot pass one. The actual session may
+  inherit its parent's mode.
+- DSH board: the permission parameter is **passed**, but enforcement in the
+  execution session has not been established.
+- In board team mode, the parent card uses the highest risk level in the wave.
+  A lower-risk ticket's teammate may therefore receive the parent's higher
+  permission; the ticket's allowed mode above is not a per-teammate sandbox.
+
 ## Write scope
 
 {_bullets(ticket.write_scope)}
