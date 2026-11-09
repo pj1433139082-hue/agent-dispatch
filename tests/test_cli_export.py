@@ -191,3 +191,24 @@ def test_status_json_marks_failed_ticket_as_next(tmp_path: Path) -> None:
     assert row["state"] == "failed"
     assert row["next"] is True
     assert payload["frontier"] == ["01"]
+
+
+def test_exhausted_ticket_is_excluded_from_export_and_board(tmp_path: Path) -> None:
+    make_tickets(tmp_path)
+    ledger = tmp_path / ".dispatch" / "ledger"
+    ledger.mkdir(parents=True)
+    (ledger / "dropped.jsonl").write_text('{"ticket_id":"01"}\ninvalid\n', encoding="utf-8")
+    (ledger / "retries.jsonl").write_text('{"ticket_id":"01"}\n{"ticket_id":"01"}\n', encoding="utf-8")
+    exported = run_dispatch(tmp_path, "export", "--format", "dsh-team")
+    assert exported.returncode == 0, exported.stderr
+    assert json.loads(exported.stdout) == []
+    status = run_dispatch(tmp_path, "status", "--json")
+    assert status.returncode == 0, status.stderr
+    document = json.loads(status.stdout)
+    row = next(row for row in document["tickets"] if row["id"] == "01")
+    assert row["next"] is False
+    assert document["frontier"] == []
+    assert "human evaluation" in row["hint"]
+    pushed = run_dispatch(tmp_path, "dsh", "push", "--dry-run", "--json")
+    assert pushed.returncode == 0, pushed.stderr
+    assert json.loads(pushed.stdout)["planned"] == []

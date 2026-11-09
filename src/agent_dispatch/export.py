@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from .graph import build_plan
 from .persona import persona_section
@@ -34,6 +35,7 @@ def status_document(
     states: dict[str, str] | None = None,
     done: set[str] | None = None,
     include_declared_done: bool = False,
+    exhausted: set[str] | None = None,
 ) -> dict[str, object]:
     states = dict(states or {})
     done = done if done is not None else _done(states)
@@ -49,7 +51,7 @@ def status_document(
     ready_frontier = [
         ticket_id
         for ticket_id in plan.frontier
-        if _dispatchable(states.get(ticket_id))
+        if _dispatchable(states.get(ticket_id)) and ticket_id not in (exhausted or set())
     ]
     rows: list[dict[str, object]] = []
     for ticket in sorted(tickets, key=lambda item: item.id):
@@ -67,7 +69,8 @@ def status_document(
                 "id": ticket.id,
                 "title": ticket.title,
                 "state": state,
-                "hint": "dispatch retry " + ticket.id if state == "failed" else "",
+                "hint": ("retry limit reached; human evaluation required" if ticket.id in (exhausted or set())
+                         else "dispatch retry " + ticket.id if state == "failed" else ""),
                 "blocked_by": _blocked_by(ticket, done),
                 "next": ticket.id in ready_frontier,
                 "owner": ticket.owner,
@@ -81,8 +84,34 @@ def status_document(
     }
 
 
+RETRY_LIMIT = 3
+
+
+def retry_usage(root: Path) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for name in ("retries.jsonl", "dropped.jsonl"):
+        path = Path(root) / ".dispatch" / "ledger" / name
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    row = json.loads(line)
+                    ticket_id = row.get("ticket_id") if isinstance(row, dict) else None
+                    if isinstance(ticket_id, str) and ticket_id:
+                        counts[ticket_id] = counts.get(ticket_id, 0) + 1
+                except (ValueError, TypeError):
+                    continue
+    return counts
+
+
+def exhausted_tickets(root: Path) -> set[str]:
+    return {ticket_id for ticket_id, count in retry_usage(root).items() if count >= RETRY_LIMIT}
+
+
 def ready_tickets(
-    tickets: list[Ticket], states: dict[str, str] | None = None
+    tickets: list[Ticket], states: dict[str, str] | None = None,
+    exhausted: set[str] | None = None,
 ) -> list[Ticket]:
     states = dict(states or {})
     done = _done(states)
@@ -90,7 +119,7 @@ def ready_tickets(
     ready = [
         ticket_id
         for ticket_id in plan.frontier
-        if _dispatchable(states.get(ticket_id))
+        if _dispatchable(states.get(ticket_id)) and ticket_id not in (exhausted or set())
     ]
     by_id = {ticket.id: ticket for ticket in tickets}
     return [by_id[ticket_id] for ticket_id in sorted(ready)]
@@ -181,8 +210,9 @@ def export_text(
     fmt: str,
     states: dict[str, str] | None = None,
     project: str = "default",
+    exhausted: set[str] | None = None,
 ) -> str:
-    ready = ready_tickets(tickets, states)
+    ready = ready_tickets(tickets, states, exhausted)
     if fmt == "agent-team":
         return _agent_team(ready)
     if fmt == "dsh-team":

@@ -160,3 +160,19 @@ def test_stored_done_still_unlocks_dependents() -> None:
     rows = {row["id"]: row for row in document["tickets"]}
     assert rows["B"]["state"] == "ready"
     assert document["frontier"] == ["B"]
+
+
+def test_ready_filter_is_optional_and_excludes_exhausted() -> None:
+    from agent_dispatch.export import ready_tickets
+    tickets = [ticket("A"), ticket("B")]
+    assert [t.id for t in ready_tickets(tickets)] == ["A", "B"]
+    assert [t.id for t in ready_tickets(tickets, exhausted={"A"})] == ["B"]
+    assert "A" not in [row["subject"] for row in json.loads(export_text(tickets, "dsh-team", exhausted={"A"}))]
+    assert status_document(tickets)["frontier"] == ["A", "B"]
+    status = status_document(tickets, {"A": "failed"}, exhausted={"A"})
+    assert status["frontier"] == ["B"]
+    rows = {row["id"]: row for row in status["tickets"]}
+    assert rows["A"]["state"] == "failed"
+    assert rows["A"]["next"] is False
+    assert "human evaluation" in rows["A"]["hint"]
+    assert rows["B"]["next"] is True
