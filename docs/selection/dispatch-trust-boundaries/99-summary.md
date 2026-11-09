@@ -14,13 +14,14 @@
 
 - **采用**：A（不可信内容标注为数据）、B（工单带权限声明）、C（retry 有界）三个**方向**。三份证据一致支持，一手来源充足。
 - **不采用**：文章里的 checks.md/progress.md/graph.md 三件套（dispatch 已有机器可读 receipt/verify/state）；花费/轮数上限（Q3，无计量能力会做成假门禁）；「模型自评一律不能放行」绝对版（Q2 + sources F4-4 存在 Codex auto_review 官方反例）。
-- **暂不签字（打回回炉）**：adversary 7 条假设中 **6 条经 Lead 复核成立**，其中 4 条直接推翻已确认决策的字面形态：
-  - 假设 1 → Q6 的 per-run cap + 复用 failed **实际无上界**（render/drop 归零 + failed 可派）
-  - 假设 2 → Q5 的「按票收窄」在 team 路径被 `dsh.py:74` 取 max **放大**
-  - 假设 3 → Q7 围栏范围**漏了 feedback-N.md 活通道**，且摘录**不转义**可逃逸
-  - 假设 4/5 → trusted 入口可被合规种入；--force 报错**自带绕过命令**
+- **已回炉并修正**：adversary 7 条假设中 **6 条经 Lead 复核成立**，4 条推翻原决策字面；用户 2026-11-09 答「按照推荐」，A1–A4 全部采纳：
+  - 假设 1 → **A1**：cap 改按票累计（ledger/retries.jsonl + dropped.jsonl），超限票在 ready_tickets 过滤
+  - 假设 2 → **A2**：工单明示「team=波内最高权限」，不改 dsh.py 取 max
+  - 假设 3 → **A3**：动态 fence（已实测防逃逸）+ 范围含 context 摘录与 feedback-N.md
+  - 假设 4/5 → **A4**：报错不给绕过命令；入口摘录标注来源与本仓视角
 - **已驳回 1 条**：假设 6（循环 import）经 Lead 实测不成立——`graph.py` 只 import `.ticket`，依赖链单向，`import agent_dispatch.cli` 正常。B 无需把 PERMISSIONS 搬出 export.py。
-- **理由**：方向有据，但当前规格达不到声称的目标。**不为了推进而放宽检查**；4 个修正决策已写成第二轮前沿（A1-A4）落在 docs/questions/dispatch-trust-boundaries.md，**等用户回答后再签字**。
+- **理由**：方向有据（OWASP LLM01:2025 头号风险、Anthropic 官方范例几乎逐字等于文章主张）；4 条修正已获用户采纳，技术选型见 **07-tech-selection.md**（每项给选什么/为什么不选另一种/落点，T4 动态 fence 已本机实测）。
+- **可进 to-spec-dispatch**：前沿已空，A1–A4 已答，选型已定并验证。
 
 ## 分歧与处置（详见 06-cross-review.md）
 
@@ -28,7 +29,7 @@
 |---|---|
 | oss 建议 A 落点在 ENTRY_DOCS，但 Q4 定其 trusted、Q7 扩到 error | 以 Q4/Q7 为准；A 落点改为 error + feedback + 外部材料 |
 | oss 建议 B「派发点强制」，但实测 subagent 无权限参数 | 以实测为准；subagent 路径只能声明并标注「未强制」 |
-| oss 建议 C 超限置 blocked，Q6 定复用 failed | **待 A1 决策**；failed 可派是实测事实 |
+| oss 建议 C 超限置 blocked，Q6 定复用 failed | **A1 已决**：不改状态机，改在 ready_tickets 过滤超限票（唯一收口，两条路径同时生效） |
 | sources F2-1：三模式仅管文件系统 | Permission 段必须写明「不承诺网络/进程边界；Windows 可能 partial」 |
 | adversary 假设 6 循环 import | **实测驳回**，原样输出见 06-cross-review.md |
 
@@ -36,6 +37,6 @@
 
 - 签字人：lead
 - 日期：2026-11-09
-- 备注：三份证据齐备+交叉评审完成；adversary 6/7 成立且 4 条推翻已确认决策字面，A1-A4 待用户回答后回炉重签
-- 选择：☐ 通过　☑ 有保留通过　☐ 打回
+- 备注：A1-A4 已按推荐采纳；07-tech-selection.md 定选型，T4 动态 fence 实测防逃逸；adversary 假设6 已实测驳回
+- 选择：☑ 通过　☐ 有保留通过　☐ 打回
 - 确认方式：card

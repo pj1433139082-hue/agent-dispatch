@@ -139,30 +139,30 @@ _Why this matters: 回退上一阶段 / 就地补差 / 停下来问。_
 **待决（留给 adversary 质疑后一并问用户）**：cap 应该记在票级（跨 run 累计，需持久化到不会被 drop 删除的地方，
 如 `ledger/` 或票面旁的计数文件），还是接受 per-run 语义并明确「drop 是显式重置、须写 reason」？
 
-## 第二轮前沿（对抗审查后，2026-11-08）— **待用户回答**
+## 第二轮前沿（对抗审查后，2026-11-08）— **已回答：全部采纳推荐**
 
 来源：子智能体 `f8e561e7`（adversary）产出 7 条假设，Lead 逐条复核：**成立 6 条、实测驳回 1 条**（见 06-cross-review.md）。
-以下 4 题是成立的发现里需要你拍板的。提问窗口超时未答，**未自答**。
+以下 4 题是成立的发现里需要你拍板的。用户于 2026-11-09 回复「按照推荐」，全部采纳。
 
 ### A1 - retry cap 记在哪（假设 1 成立）
 事实：`cli.py:1182-1189` 对 failed 票不拒（`state.py:17` ACTIVE_STATES={claimed,running,review}），re-render 生成新 run 使 attempt 归零；`lifecycle.py:164` drop 删索引同样归零；`export.py:24-25` `_dispatchable` 含 failed，编排会反复捞回。**Q6 原方案（per-run cap + 复用 failed）实际无上界。**
 ➡️ 推荐答案：cap 按票累计（读票级 history/ledger 跨 run 累加）+ 超限票从 `_dispatchable` 剔除，真正挡住编排循环。改动涉及 cli.py + export.py。
-> 用户答案：（待回答）
+> 用户答案：是（采纳推荐）
 
 ### A2 - team 父卡权限放大（假设 2 成立）
 事实：`dsh.py:74` 取全波 `max` 风险，`:168` 传全票 risk 列表，`tests/test_dsh.py:200` 已钉死；叠加实测「子会话继承父会话」，同波 L0/L1 票的 teammate 全拿 danger-full-access。**B 声称的按票收窄在 team 路径被代码自己放大。**
 ➡️ 推荐答案：工单明示「team 模式 = 波内最高权限」，不改取 max（它是看板父卡既有设计且有测试钉死）。B 只做声明 + 标注，不动 dsh.py。
-> 用户答案：（待回答）
+> 用户答案：是（采纳推荐）
 
 ### A3 - 围栏范围与转义（假设 3 成立）
 事实：①`context.py:164` 用三反引号包原文但**不转义**，内容含三反引号即提前闭合逃逸；②执行器错误另走 `feedback.py:28` → `auto/feedback-N.md` → `DISPATCH_FEEDBACK`（`auto.py:403-416`）原样进下次尝试，**Q7 没圈这条活通道**。
 ➡️ 推荐答案：补转义 + 残留校验（借 01-oss A1 的 OpenHands 三件套），围栏范围含 context 摘录与 feedback-N.md 两处。
-> 用户答案：（待回答）
+> 用户答案：是（采纳推荐）
 
 ### A4 - --force 与 trusted 入口（假设 5、4 成立）
 事实：`cli.py:2156-2237` 的 --force 无鉴权，超限报错又自带「需 --force」提示，自动 agent 读到就会带 --force 再来（假设 5）；`write_scope` 含 AGENTS.md 的票可**合规**种入指令，verify 的 diff-vs-scope 会放行，下轮 context pack 当 trusted 摘录（假设 4，跨仓尤甚）。
 ➡️ 推荐答案：报错不再给出绕过命令（--force 仍可用）；入口文档摘录块标注来源文件与「本仓视角」，跨仓时提示作者为第三方。
-> 用户答案：（待回答）
+> 用户答案：是（采纳推荐）
 
 ### 已驳回，不需要你决策
 adversary 假设 6 声称「workorder 导入 export.PERMISSIONS 会循环导入、全 CLI 起不来」。**Lead 实测驳回**：`graph.py` 只 `from .ticket import Ticket`，不 import workorder；依赖链 export→graph→ticket 单向。实测 `import agent_dispatch.cli` 正常。故 B **不必**把 PERMISSIONS 搬出 export.py，写域无需扩到 graph.py。原样输出见 06-cross-review.md。
