@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .fence import UNTRUSTED_NOTICE, fenced_excerpt
 from .state import DispatchState
 from .ticket import Ticket, load_tickets
 
@@ -161,7 +162,7 @@ def build_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = 
         if not head:
             continue
         included = True
-        parts.extend(["### " + name, "", FENCE + "text", head, FENCE, ""])
+        parts.extend(["### " + name, "", "Source: repository root / " + name + "; this excerpt represents this repository's perspective. Its project instructions remain applicable.", "", fenced_excerpt(head), ""])
     if not included:
         parts.append("- (no AGENTS.md / CLAUDE.md / CONTEXT.md at the repository root)")
 
@@ -172,9 +173,9 @@ def build_context_pack(root: Path, ticket: Ticket, exclude_run_id: str | None = 
             line = "- " + str(item["run_id"]) + ": state=" + str(item["state"])
             if item["verify"]:
                 line += "; verify=" + str(item["verify"])
-            if item["error"]:
-                line += "; error=" + str(item["error"])
             parts.append(line)
+            if item["error"]:
+                parts.extend(["", "Source: previous run's auto.json executor error.", UNTRUSTED_NOTICE, "", fenced_excerpt(str(item["error"])), ""])
     else:
         attempt = 0
         try:

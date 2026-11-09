@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .fence import UNTRUSTED_NOTICE, fenced_excerpt
+
 FEEDBACK_DIR = Path("auto")
 
 
@@ -25,7 +27,12 @@ def render_feedback(attempt: int, errors: list[str], log_name: str = "") -> str:
     if errors:
         lines.append("## Findings")
         lines.append("")
-        lines.extend("- " + error for error in errors)
+        lines.extend([
+            "Source: previous attempt's verification failure reasons.",
+            UNTRUSTED_NOTICE,
+            "",
+            fenced_excerpt("\n".join("- " + error for error in errors)),
+        ])
     else:
         lines.extend([
             "## Findings",
