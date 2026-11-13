@@ -47,8 +47,8 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 |---|---|---|
 | 会话里有 teammate（`list_workers` 查得到） | `render` → `handoff` → `message` 槽发过去 | 真隔离，reviewer 能真换人 |
 | 只有 `spawn_once` 槽（一次性执行者） | `render` → 用一次性槽跑这一票 → 结果回报后由 Lead 记 `verify` / `review` | **没有 inbox、不能中途改派**；执行者回报完即结束，续不上 |
-| 什么都没有，但 `spawn_worker` 槽可用 | **先建职能队友**（见 `docs/team/README.md` 八个角色），再派活 | 名字永久占用，一个会话最多 `maxMembers` 个 |
-| 名额满了 / 要删旧成员 | `docs/team/roster-setup.md`：调 `maxMembers` 或装 `dsh-agent-team-roster` | 装插件要解 asar + 重启 |
+| 什么都没有，但 `spawn_worker` 槽可用 | **先建职能队友**（见 `docs/team/README.md` 八个角色），再派活 | DSH 0.2.2-rc.3 起成员即 subagent，人数受 subagent 树并发（每树 8、深度 1）约束，**没有 maxMembers** |
+| 名额满了 / 要删旧成员 | `docs/team/roster-setup.md`（**已作废**）：新版无 roster，要更多并行请分多棵树 | 旧 `delete_teammate`/`rename_teammate`/`cleanup_team` 已随 roster 移除 |
 | DSH 看板（票必须 L3+） | `dsh push --workspace <id>` → `dsh run` → `dsh outcome --mark-done --evidence` | 慢（十几分钟），要先有 workspace |
 | 都没有 | `render` → 自己在 worktree 干 → `verify` → `review --reviewer <名字>` | **主代理自执行**；review 只是换名字，不是真异体——交付说明里必须写清 |
 
@@ -372,11 +372,10 @@ dispatch install-hooks --force  # 覆盖已有的
 
 ## 团队名册：名额与删除（v1.0.0）
 
-- **名额**：官方 profile 写死 `maxMembers: 8`；建人时报 `Team member limit 8 reached` 就是这个。要更多就在**真正启用了 Agent Teams 的那个 profile**（本机是 `desktop`；`web` 没装，写进去静默无效）的 `cordis.patch.yml` 覆盖 `agent-team` 行（实测**不用重启**）。
-- **删除**：官方 roster 只增不减（`TeamRoster` 无 remove）。要删装 `dsh-agent-team-roster`（`delete_teammate` / `rename_teammate` / `cleanup_team`）。
-- ⚠️ `cleanup_team { scope: "teammates" }` 的判据是"当前没有回合在跑"——**空闲的职能队友也在射程内**（`scope:"all"` 还会删已完成任务）；要留队就逐个 `delete_teammate`。
-- **重启范围**：改 `maxMembers` 不用重启；**新增插件行（insert）需要重启**。`patchReload` 这个键在 0.2.1-rc.3 不存在。
-- `delete_teammate` 会**中断正在跑的回合**并丢弃未投递消息。
+- **名额**：DSH 0.2.2-rc.3 起**没有 `maxMembers`**——独立 roster 模型已并入 subagent 树（升级指南 `v0.2.1-rc.2/agent-team-subagents`）。人数受 subagent 树约束：**每树并发 8、深度 1**；要更多并行就分多棵树。旧的 `maxMembers` 键现在被 `REMOVED_CONFIG_KEYS` 硬编码拒绝，硬写会让 preset 挂载失败（全部会话「会话不可用」）。
+- **删除**：旧 `delete_teammate` / `rename_teammate` / `cleanup_team` **已随 roster 一起移除**；`dsh-agent-team-roster` 插件在新版下无对应物，应注释停用。
+- **名字**：成员即 subagent 树节点，`list_workers` 槽返回整棵树（root + 全部后代），不再是「只列 teammate」。
+- **重启范围**：改 `maxTasks` / `defaultEnabled` 不用重启；**新增插件行（insert）需要重启**。
 - 完整步骤（Windows 下解 asar、junction 必须叫 `node_modules`、新增 insert 行后要**完全退出进程**再打开）：`docs/team/roster-setup.md`。
 
 ## 团队

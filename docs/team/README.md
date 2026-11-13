@@ -25,7 +25,7 @@ fixer  → 根因           scribe   → 交接
 
 ## 三条硬规矩（ADR-0013）
 
-1. **常驻 8 个，重活派 fresh 实例**：常驻成员的上下文会腐烂；重要任务用 `spawn_teammate(context:"fresh")`，用完即删。
+1. **重活派 fresh 子智能体**：常驻成员的上下文会腐烂；重要任务用 `subagent`（fresh 上下文）起，任务完即结束。DSH 0.2.2-rc.3 起不再有 `spawn_teammate`，成员即 subagent 树节点。
 2. **队友是手，dispatch 是账**：teammate 产出"结论/证据/改动"，票的状态、verify、land 一律由 Lead 用 `dispatch` 管。
 3. **派活要写"边界"**：每次派活明确"只准动哪些文件 / 只准读不准写 / 回复只给几行"，否则队友会顺手改别的。
 
@@ -57,7 +57,7 @@ fixer  → 根因           scribe   → 交接
 ## 名额与删除
 
 - 名额默认 8（官方 profile）→ 要更多改 `maxMembers`（实测不用重启）
-- 旧成员删不掉 → 装 `dsh-agent-team-roster`，用 `delete_teammate` 逐个删
+- 旧成员删不掉 → **0.2.2-rc.3 起没有这个问题**：roster 模型已移除，成员即 subagent 树节点，任务结束即释放，不存在「删不掉」；`dsh-agent-team-roster` 插件应停用
 - 全部步骤与回滚：`docs/team/roster-setup.md`
 
 ## 派活模板
