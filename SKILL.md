@@ -232,6 +232,12 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 3. **外部执行器命令**
    `auto <id> --executor "<cmd>"`。没有 teammate、没接看板时，这条路等同**主代理自己执行**——要如实说明，不要包装成"已派给子智能体"。
 
+> **派活前先定权限，别让执行端中途提权**（2026-11-14 实测）：
+> - 这三条路径里凡是能指定权限的（看板卡、`subagent` 所在会话），**在创建/派活时一次说清**；
+> - `workspace-write` 会话中途请求提权 → 策略 `ask` → **等真人点弹窗，不自动超时**；无人值守时等于卡死；
+> - `danger-full-access` 会话请求提权 → 策略 `never` → **确定性立即拒绝**，白费一次尝试。
+> - 给自己的会话定权限时记牢：**权限是产物的一部分**，和写域、Verify 同级，不该临时补。
+
 ## 看板派单必须绑 workspace
 
 `dsh push` **必须**给 `--workspace <id>`：卡片在**那个 workspace** 里跑，不在你当前仓库。省略会在板上默认 workspace 执行——实测把 `hello.txt` 写进了另一个项目。
@@ -248,7 +254,9 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 对照组（prompt 写"只回复 X-OK，不调工具"）**18–20 秒正常落定**。所以：
 
 1. **prompt 写死边界**：要它只回一句话，就明写「只回复 X，不调用任何工具，不改任何文件」。
-2. **权限默认 `read-only`**：给 `workspace-write` 等于允许它真的动文件；只在确实要它改东西时才提权。
+2. **权限在创建时就声明对，别靠中途提权**（2026-11-14 实测，这是最常踩的坑）：`task_board_create` 的 `permission` 参数决定会话**从第一步起**的沙箱——给 `danger-full-access` 就一启动是 full-access、策略自动 `never`、**全程不需要人点**；给 `workspace-write` 却让子会话中途请求提权，策略是 `ask`，会**一直等真人点弹窗且不自动超时**（实测悬置 493 秒以上）。所以选权限要在建卡时一次说清，不要指望执行端自己提权。
+   - 不确定该给什么：只读探查用 `read-only`；要改本仓文件用 `workspace-write`；要写工作区外路径就直接 `danger-full-access`。
+   - `run_code` 里操作文件写 `const fs = await import('node:fs')`——用 `require` 会 `ReferenceError`，用顶层 `import` 语句会被拒（只接受函数体）。这两条各坑过一次。
 3. **执行会挂起时用 `settle` 收**：`task_board_manage {action:"settle"}` 把卡从 running 打回 todo，该次执行记 `cancelled` + `no verdict was recorded`——**等于这次白跑、没有任何结论**，别指望它产出。
 4. **`run` 只表示已受理**：立刻读 `result` 是拿不到的，要轮询 `task_board_get` / `list` 看 `executions[].result`。
 
@@ -370,13 +378,13 @@ dispatch install-hooks --force  # 覆盖已有的
 - 仓库里没有 `.dispatch/` 时钩子直接放行（不会拦住无关仓库）。
 - 绕法：`git commit --no-verify`。
 
-## 团队名册：名额与删除（v1.0.0）
+## 团队名册已作废：现在没有名额上限，也不能删除成员（0.2.2-rc.3）
 
 - **名额**：DSH 0.2.2-rc.3 起**没有 `maxMembers`**——独立 roster 模型已并入 subagent 树（升级指南 `v0.2.1-rc.2/agent-team-subagents`）。人数受 subagent 树约束：**每树并发 8、深度 1**；要更多并行就分多棵树。旧的 `maxMembers` 键现在被 `REMOVED_CONFIG_KEYS` 硬编码拒绝，硬写会让 preset 挂载失败（全部会话「会话不可用」）。
 - **删除**：旧 `delete_teammate` / `rename_teammate` / `cleanup_team` **已随 roster 一起移除**；`dsh-agent-team-roster` 插件在新版下无对应物，应注释停用。
 - **名字**：成员即 subagent 树节点，`list_workers` 槽返回整棵树（root + 全部后代），不再是「只列 teammate」。
 - **重启范围**：改 `maxTasks` / `defaultEnabled` 不用重启；**新增插件行（insert）需要重启**。
-- 完整步骤（Windows 下解 asar、junction 必须叫 `node_modules`、新增 insert 行后要**完全退出进程**再打开）：`docs/team/roster-setup.md`。
+- 历史步骤（解 asar、junction 等）在 `docs/team/roster-setup.md`，**该文已整篇标作废**，仅作存档，不要照做。
 
 ## 团队
 
@@ -503,7 +511,7 @@ dispatch land --wave --branch wave/all --append   # 整波一条分支
 ## 工单权限段与 auto 额度（v1.17）
 
 - **每份工单带 `## Permission` 段**：写明按风险等级允许的模式，并交代三件事——该模式**仅约束文件系统效果**（网络与进程可见性不在其定义范围内）、Windows ACL 可能只是**部分强制**、以及当前执行端是**已传参**还是**未强制**。
-- **能力边界要诚实**：DSH 看板路径会把 permission 传给卡片（**已传参**，但不声称已强制生效）；一次性委派与具名成员两条路径的工具**不接受权限参数**，子会话继承父会话模式，所以工单只能**声明**并标注**未强制**。别把工单里的模式当成沙箱已经生效。
+- **能力边界要诚实**（2026-11-14 实测修正）：**看板路径** `task_board_create` / `task_board_run` 接受 `permission` 参数（实测返回 `permission: read-only`），会话从第一步就在该沙箱里跑，标**已传参**。**`subagent` / `subagent_fork` 的工具签名里没有权限参数**，子会话继承父会话的模式，所以工单只能**声明**并标**未强制**。别把工单里写的模式当成子智能体真的被约束了。
 - **团队模式**：父卡取全波**最高**风险等级，同波低风险票的成员实际拿到的是那个最高权限；工单会明说这一点，取值语义本身不改。
 - **auto 也吃额度**：`auto --max-attempts N` 会按该票剩余额度收紧实际次数，运行内每次额外尝试各记一次账；额度耗尽后 auto 同样需要显式覆盖 + 非空理由。**已知边界**：运行内尝试在 auto 返回后才记账，进程中途被杀可能漏记——由票 30 跟进。
 
