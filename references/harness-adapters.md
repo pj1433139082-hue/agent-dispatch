@@ -30,7 +30,7 @@
 |---|---|---|
 | `ask` | `ask_user_question` | 必带 `questions: [{id, header, question, options}]` |
 | `shell` | `pwsh`，或 `run_code` 里 `child_process` | `run_code` 是唯一直接入口，其余工具都在 `tools.*` |
-| `spawn_worker` | **已并入 `subagent`** | 0.2.2-rc.3 起 `spawn_teammate` 已移除：Team 不再有独立名册，成员就是 subagent 树上的节点。要「具名常驻 + 任务板」就直接起 `subagent`，再用 `team_task_*` 建任务 |
+| `spawn_worker` | **已并入 `subagent`** | 0.2.2-rc.3 起 `spawn_teammate` 已移除：Team 不再有独立名册，成员就是 subagent 树上的节点。要任务板就直接起 `subagent`；**任务板工具需 Team 模式开启**（见下方配置侧，本机已设 `defaultEnabled: true`） |
 | `spawn_once` | `subagent`（或 `subagent_fork`，后者继承当前对话） | 返回 `{kind:"activation", subagentId}`，结束给「完成通知 + 最终回答」；每树并发 8、深度 1 |
 | `list_workers` | `list_agents` | **返回整棵 subagent 树**（root + 全部后代），不再只列 teammate。旧 teammate 也在其中 |
 | `message` | `send_message` | **参数名是 `agent`**（不是 `agent_id`）：`send_message({agent: "<name 或 session id>", message})`；inactive 目标会被唤醒 |
@@ -39,11 +39,15 @@
 > **旧 Team API 已整体移除（2026-11-13 实测）**：`spawn_teammate` / `delete_teammate` / `rename_teammate` / `cleanup_team` 四个工具在 0.2.2-rc.3 的 80 项工具清单里**全都不存在**。
 > `list_agents` 现返整棵树，`interrupt_agent` / `send_message` 都按 `agent` 参数工作（同一个字段名）。
 > 旧的「两个 worker 槽不能互换」结论**作废**：现在没有两个槽——只有一套 subagent 树，`send_message`/`interrupt_agent` 对子智能体直接可用。
-> 判据：**要任务板/来回沟通 → 起 `subagent` + `team_task_*`；只要一份报告 → `subagent` 不给任务板即可。**
+> 判据：**要任务板/来回沟通 → 起 `subagent` + 任务板；只要一份报告 → `subagent` 不给任务板即可。**
+>
+> **实测（2026-11-13，起真实任务板会话验证）**：`team_task_*` 四个工具由 `ctx.agentTeams.isEnabled(agent)` 门控，**默认不注册**——`defaultEnabled` 默认 `false` 时子会话里 `tools.team_task_list` 直接不存在（`is not a function`）。本机已在 profile 设为 `defaultEnabled: true`，实测新会话拿到全部 4 个工具。
 
 > **配置侧（0.2.2-rc.3）**：`@deepseek-ai/dsh-agent-team` 的 `static Config` 只接受 `maxTasks`（默认 256）与 `defaultEnabled`（默认 false）。
 > `maxMembers` / `maxMessageBytes` / `disposalTimeoutMs` 被 `REMOVED_CONFIG_KEYS` 硬编码拒绝——命中即抛 `TEAM_INVALID_CONFIG`，导致 preset 挂载失败（现象＝全部会话输入框「会话不可用」）。
 > 依赖旧 roster 语义的本地插件（如 `dsh-agent-team-roster`）在新版下没有对应物，应注释停用。
+>
+> **配 `defaultEnabled: true`**：否则所有会话默认**没有**任务板工具（`team_task_*` 由 `isEnabled` 门控），任何「起子智能体后用任务板协作」的流程都会失败。本机已设并实测通过。
 
 ### 千问办公 / QwenWork —— 已核实（本机 1.3.2-26101704，实测 2026-10-31）
 

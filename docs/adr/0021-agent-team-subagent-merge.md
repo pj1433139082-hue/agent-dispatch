@@ -86,5 +86,52 @@ static Config: z<Config> = z.object({
 
 ## 5. 未证实
 
-- 新版 Team 面板是否仍显示成员列表：客户端 UI 走 `dsh-client-ui-agent-team`，本轮只验了工具面与配置面，未开面板看。
+- 新版 Team 面板的 UI 呈现：只验了工具面与配置面，未在浏览器里开面板看。
 - 多棵树并行时任务板是否隔离：`agentTeams` 服务以 root Session 为 Team 边界（`rootOf(caller)`），理论上隔离，未做实证。
+
+## 6. 端到端实测（2026-11-13，起真实任务板会话）
+
+只验工具签名与 YAML 语法是不够的；本节记录**真起会话**的结果，其中两个坑是纸面验证发现不了的。
+
+### 6.1 任务板工具默认不注册
+
+`team_task_*` 四个工具由 `ctx.agentTeams.isEnabled(agent)` 门控（源码 `{ when: ({agent}) => enabled(agent) }`），
+而 `defaultEnabled` 默认 `false`。实测：`defaultEnabled: false` 时子会话里
+`tools.team_task_list is not a function`；设为 `true` 后同一探针拿到全部 4 个工具。
+
+**决策**：profile 配 `defaultEnabled: true`。否则任何「起子智能体后用任务板协作」的流程都会失败——
+而 dispatch 的 `spawn_worker` 槽语义正依赖任务板。
+
+### 6.2 工作区 ACL 授权失败导致 workspace-write 会话起不来（Win32 5）
+
+首次探针会话在 `workspace-write` 模式下报：
+
+```
+sandbox-local: windows-acl workspace grant failed:
+Win32Error: SetNamedSecurityInfoW failed (Win32 5):
+grantWrite(E:\beikong-code\agent-dispatch)
+```
+
+根因是工作区目录缺少当前用户的 `WRITE_OWNER`（`WRITE_DAC` 有），沙箱无法 provision 工作区授权。
+用 `diagnose-windows-sandbox-acl` 技能一次诊断+修复后（`writeOwner: false → true`、`GRANTED=1`、`verified`），
+后续会话正常。**注意**：这不是 agent-team 的问题，是 Windows ACL 的独立缺陷，
+但它的现象（会话不可用）与本 ADR 要修的「preset 挂载失败」极像，容易被误判。
+
+### 6.3 未预期的 harness 缺陷：提权请求挂死
+
+第二个探针请求写工作区外路径，触发 `sandbox_permissions: danger-full-access` 提权。
+该会话的 `approvalState.policy` 为 `never`，提权既未执行也**未返回错误**——
+`run_code` 永久挂起（实测 1019 秒仍在），且 `interrupt_agent` **无法终止**。
+
+**规避**：给子会话的工单里明确「不要请求提权，只在工作区内操作」；需要跨目录写时，
+先把目标路径纳入工作区或改由父会话执行。**这是 harness 缺陷，不是配置问题**，已记录待上游确认。
+
+### 6.4 修复后终验
+
+第三探针（显式 `permission: danger-full-access`、只写工作区内）结果为 `SMOKE3-OK`：
+
+```
+1. TEAM: team_task_create,team_task_list,team_task_get,team_task_update — 4 个工具可用
+2. TASKS: 0 — 共享任务板当前无任务
+3. WRITE_OK: ok — 工作区写入/读取/删除均正常
+```
