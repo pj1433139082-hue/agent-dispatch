@@ -36,20 +36,21 @@ static Config: z<Config> = z.object({
 | `subagent` / `subagent_fork` | 保留，成为唯一的成员创建路径 |
 | `list_agents` | 保留，语义变为**返回整棵 subagent 树** |
 | `send_message` / `interrupt_agent` | 保留，参数统一为 **`agent`** |
-| `team_task_*`（4 个） | 保留，任务板能力仍在 |
+| `team_task_*`（4 个） | 保留，但**受 Team 模式门控**（`isEnabled`，默认关）——详见 §6.1 |
 
 > 实测细节：给 `send_message` 传 `agent_id` 会报 `missing required property "agent"`——参数名是 `agent`。
 
 ## 2. 决策
 
 **D1 配置侧：恢复 `agent-team` override，只留新版接受的键。**
-不做「不要这个插件」的选择，因为 `maxTasks` 是真实需要的上限，且新版明确支持。
+不做「不要这个插件」的选择，因为 `maxTasks` 是真实需要的上限，且新版明确支持。`defaultEnabled` 必须设 `true`：不设的话任务板工具不注册（§6.1 实测），dispatch 的 `spawn_worker` 槽语义会失效。
 
 ```yaml
 - id: agent-team
   name: "@deepseek-ai/dsh-agent-team"
   config:
     maxTasks: 256
+    defaultEnabled: true   # 否则 team_task_* 不注册，见 §6.1
 ```
 
 **D2 停用 `dsh-agent-team-roster`。** 它依赖旧 roster API，新版无对应物；强挂会让 preset 挂载失败。整块注释而非留 `disabled: true`，因为包名解析本身在旧体系下才成立，注释更明确。
@@ -82,7 +83,7 @@ static Config: z<Config> = z.object({
 
 - **正面**：宿主不再因旧 override 挂载失败；dispatch 的指令与实际工具一致；能力槽抽象被验证是有效的（一个 harness 大改只需改映射表）。
 - **负面**：失去可调名额与成员删除能力；多智能体协作的并行度上限从「16 名常驻成员」降为「每树 8 个并发子智能体」。
-- **未改变**：任务板（`team_task_*`）仍在，判据级证据、写域、异体评审等 dispatch 核心门禁完全不受影响。
+- **未改变（前提是 `defaultEnabled: true`）**：任务板（`team_task_*`）仍在，判据级证据、写域、异体评审等 dispatch 核心门禁完全不受影响。**注意**：任务板工具受 Team 模式门控，`defaultEnabled: false` 时它们根本不注册（§6.1 实测），所以「任务板还在」这句话只在开 Team 模式时成立。
 
 ## 5. 未证实
 

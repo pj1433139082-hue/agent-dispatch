@@ -43,11 +43,11 @@
 >
 > **实测（2026-11-13，起真实任务板会话验证）**：`team_task_*` 四个工具由 `ctx.agentTeams.isEnabled(agent)` 门控，**默认不注册**——`defaultEnabled` 默认 `false` 时子会话里 `tools.team_task_list` 直接不存在（`is not a function`）。本机已在 profile 设为 `defaultEnabled: true`，实测新会话拿到全部 4 个工具。
 
-> **配置侧（0.2.2-rc.3）**：`@deepseek-ai/dsh-agent-team` 的 `static Config` 只接受 `maxTasks`（默认 256）与 `defaultEnabled`（默认 false）。
+> **配置侧（0.2.2-rc.3）**：`@deepseek-ai/dsh-agent-team` 的 `static Config` 只接受 `maxTasks`（默认 256）与 `defaultEnabled`（**默认 false，需显式设 true**）。
 > `maxMembers` / `maxMessageBytes` / `disposalTimeoutMs` 被 `REMOVED_CONFIG_KEYS` 硬编码拒绝——命中即抛 `TEAM_INVALID_CONFIG`，导致 preset 挂载失败（现象＝全部会话输入框「会话不可用」）。
 > 依赖旧 roster 语义的本地插件（如 `dsh-agent-team-roster`）在新版下没有对应物，应注释停用。
 >
-> **配 `defaultEnabled: true`**：否则所有会话默认**没有**任务板工具（`team_task_*` 由 `isEnabled` 门控），任何「起子智能体后用任务板协作」的流程都会失败。本机已设并实测通过。
+> **必须配 `defaultEnabled: true`**：否则所有会话默认没有任务板工具，任何「起子智能体后用任务板协作」的流程都会失败。本机已设并实测通过（探针拿到全部 4 个工具）。
 
 > **子会话工单必须写「不要请求提权」**（2026-11-13 实测）：提权行为由会话的 `approvalState.policy` 决定——
 > `never` 下确定性**立即拒绝**（源码在 dispatch 前短路），`ask` 下会**一直等真人点弹窗、不自动超时**（实测 493s 仍在等）。
