@@ -118,37 +118,51 @@ grantWrite(E:\beikong-code\agent-dispatch)
 后续会话正常。**注意**：这不是 agent-team 的问题，是 Windows ACL 的独立缺陷，
 但它的现象（会话不可用）与本 ADR 要修的「preset 挂载失败」极像，容易被误判。
 
-### 6.3 提权请求的真实行为：策略决定一切（含一次 Lead 误判，已更正）
+### 6.3 沙箱提权的真实链路（三轮实测，前两轮是我自己的代码错）
 
-**先说结论**：提权不是「挂死」，也不是「自动拒绝」，而是**取决于会话的 `approvalState.policy`**。
-源码 `dsh-user-approval/src/index.ts` 写得很明确：
+**结论先行**：提权机制本身**没问题**。完整链路是 `approval/asked` → 人工批准 `allowed-once` → 程序在放宽的沙箱里执行。
+前两次「没成功」都是**探针代码写错**，不是 harness 缺陷。
+
+从探针5 的会话日志可直接读到（一手证据）：
+
+```
+[21] approval/asked    {"id":"b0fec520…","toolName":"run_code","reason":"escalate sandbox to danger-full-access…"}
+[22] approval/decided  {"outcome":"allowed-once"}          ← 审批确实通过了
+[23] tool/result       ReferenceError: require is not defined  ← 我的代码错，不是提权失败
+```
+
+**三轮记录（全部是我的错，逐条列出以免再犯）**：
+
+| 轮次 | 错误 | 现象 | 真相 |
+|---|---|---|---|
+| 探针4 | prompt 里让子会话用顶层 `import` | `'import' cannot be used outside of module` | 语法错，**根本没触发提权** |
+| 探针5 | 让用 `require` | `allowed-once` 已批准，但 `ReferenceError: require is not defined` | **提权成功**，是我用错 API |
+| 探针6 | 改对了 `await import`，但策略是 `ask` | `approval/asked` 悬着，一直等 | 机制正常，**在等人点弹窗** |
+| 探针7 | 直接给 `full-access`，不请求提权 | `WROTE: ok` / `WROTE_OK`，文件确实落盘 | **写入本身没问题** |
+
+**`run_code` 里正确的文件写法**：`const fs = await import('node:fs')`。
+**不能用** `require`（PTC 运行时无此全局），**也不能**用顶层 `import` 语句（只接受函数体）。
+
+**策略决定是否需要人工介入**（源码 `dsh-user-approval/src/index.ts`）
 
 ```ts
 // 'never' — never prompt anyone: every ask resolves 'rejected' deterministically.
 if (this.effectivePolicy(session) === 'never') return 'rejected'   // 在 dispatch 之前短路
 ```
 
-| policy | 提权请求的行为 | 实测观察 |
+| policy | 请求提权时 | 实测 |
 |---|---|---|
-| `never` | **确定性地立即 `rejected`**（源码在 dispatch 前短路），不提示任何人 | 未复现「挂死」；此前那次是 `ask` 策略 |
-| `ask` | 交给应答者（本机 `hooks/settings.json` 的 `approvalMode: dialog` = **真人弹窗**）；无应答者则 fail-closed `unavailable` | **一直等待，不自动超时**：实测 493 秒仍在 `pending_tools`，`turnOpen: true` |
+| `never` | 确定性**立即 rejected**，不提示任何人 | 未复现「挂死」 |
+| `ask` | 交应答者；本机 `hooks/settings.json` 的 `approvalMode: dialog` = 真人弹窗；**不自动超时** | 悬置 493s+ 仍在 `pending_tools`，`turnOpen: true` |
 
-**本机实际情况**：`approvalMode` 为 `dialog`，所以 `ask` 策略下的提权会**等真人点弹窗**。
-用户确认：「是我同意之后手动改的」——即那次是**人工批准**后才变成 full-access 并写成功的。
+**曾经犯过的两个判断错误（保留记录）**：
+1. 看到「`elapsed_sec` 涨到 1019 秒没返回」就写「提权挂死 + `interrupt_agent` 无法终止」——**错**；那次 `result: succeeded`、输出 `SMOKE2-OK`，是在等我批准。
+2. 看到探针5 目标文件不存在就以为「提权没生效」——**错**；日志明确 `allowed-once`，失败原因是 `require` 未定义。
 
-**Lead 曾误判**：看到「`elapsed_sec` 涨到 1019 秒没返回」就写成「提权请求挂死 + `interrupt_agent` 无法终止」，
-并据此声称 harness 缺陷——**这是错的**。那次会话后来 `result: succeeded`、完整输出 `SMOKE2-OK`，
-提权确实生效（`WRITE_OK` / `READBACK: ok`）。等待时间是在等我批准。
-
-**更正后的判定口径**（两次踩坑的教训）：判定子会话是否卡住，必须看
-`approvalState.turnOpen`（`true` = 有回合没结束）与 `pending_tools` / `running_cmds`，
-**并且区分「等批准」与「卡死」**——本机 `policy=ask` 下长时间不返回通常就是**在等人**，不是 bug。
-
-**仍然成立的操作结论**：
-- 工作区外路径在 `workspace-write` 下必然 EPERM（预期行为，不是缺陷）
-- **给子会话的工单里不要请求提权**：`policy=never` 会被确定性拒绝（白费一次尝试），
-  `policy=ask` 会一直等人（无人值守时等于卡住）。要么把路径纳入工作区，要么由父会话代写。
-- 无人值守批量跑票时，应确认会话 `policy=never` 且工单里明确禁止 `sandbox_permissions`。
+**对 dispatch 的操作结论**：
+- **不要给子会话派「请求提权」的活**：`policy=never` 白费尝试，`policy=ask` 无人值守时等于卡住。
+- 需要写工作区外：**先把该路径纳入工作区**，或直接给卡片 `permission: danger-full-access`（探针7 已验证可行），不要让子会话中途提权。
+- 工单里别写 `require`，写 `await import(...)`。
 
 ### 6.4 两个探针的终验（都成功）
 
