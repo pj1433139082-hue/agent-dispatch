@@ -66,14 +66,14 @@
 - **不算**：领域人格（Agency Agents 那种 "Frontend Developer"）；领域人格只能干一类活。
 
 ## fresh 实例（fresh instance）
-- **定义**：`spawn_teammate({context:"fresh"})` 起来的一次性队友，没有 Lead 历史，任务完即删。
+- **定义**：**fresh 上下文**起的 subagent（`subagent` 或 `subagent_fork`），没有 Lead 历史，任务完即结束。DSH 0.2.2-rc.3 起不再有独立的 `spawn_teammate`，成员就是 subagent 树节点。
 - **用途**：重活、需要无偏见判断的活；避免常驻成员的上下文腐烂。
 
 ## 手账分离（hands vs ledger）
 - **定义**：teammate 是"手"（产出改动与证据），`dispatch` 是"账"（票状态、verify、review、land）。
 - **判据**：任何 teammate 都不写 `receipt.json`/`state.json`；写了的，一律判越界。
 
-## roster（成员表）
+## roster（成员表）—— 已随 0.2.2-rc.3 作废
 - **定义**：一支团队里已创建的 teammate 名单；**只增不减**，名字永久占用（官方文档原文：创建失败的 teammate 也保留名字）。
-- **判据**：`list_agents` 返回的成员数 = roster 大小；`maxMembers` 是上限（官方 profile 配 8，基础包默认 16）。
-- **可删**：官方无删除能力；装 `dsh-agent-team-roster` 插件后有 `delete_teammate`（删记录 + 释放名字）与 `rename_teammate`（改名保历史）。
+- **判据**：`list_agents` 返回**整棵 subagent 树**（root + 全部后代）。DSH 0.2.2-rc.3 起**没有 `maxMembers`**，人数受每树并发 8、深度 1 约束；要更多并行就分多棵树。
+- **可删**：旧 `delete_teammate` / `rename_teammate` / `cleanup_team` 已随 roster 模型移除（0.2.2-rc.3）；`dsh-agent-team-roster` 插件在新版无对应物，应停用。

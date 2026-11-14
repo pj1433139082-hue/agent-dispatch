@@ -1,6 +1,7 @@
 ---
 name: dispatch-flow
 description: 派单流程路由：判断手上的活该走「需求→票」「单票执行」「批量自动」「运维恢复」哪条流程，每一步该调哪个 skill、哪条 dispatch 命令，以及交给谁执行。触发：怎么派单、走哪条流程、dispatch 流程、这张票怎么推、票卡住了怎么办。
+disable-model-invocation: true
 ---
 
 # Dispatch Flow（自有流程路由，不改 ask-matt）
@@ -38,7 +39,7 @@ description: 派单流程路由：判断手上的活该走「需求→票」「�
 
 wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so far / Not yet specified / Out of scope），一次解一张，解完才 hand off。**决策票不是执行票**：不写 Write scope / Verify，也不进 dispatch plan 的波次；地图清了再回来走 A/B。
 
-## 阶段边界：continue / clear / handoff / subagent / teammate / compact
+## 阶段边界：continue / clear / handoff / subagent / compact
 
 **阶段**＝一个会话里的一块活（grilling、实现、验收），边界只在两块活之间。阶段中间不要 compact。
 
@@ -48,7 +49,7 @@ wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so 
 | clear | 这一阶段的一切（探索、死路）对下一阶段都没用 | 新开会话，不带走上下文 |
 | handoff | 换 harness / 换目录 / 交给别人 / 中途 fork 支线 | dispatch handoff 或 handoff 技能写文件 |
 | subagent | 任务能独立做完、**只要一份报告回来**（调研、跑测试、查资料、全量 verify） | `spawn_once` 槽（DSH=`subagent`；千问办公=`Agent`）；不占名册、不占队位 |
-| teammate | 需要**具名常驻成员**：共享任务板、中途来回沟通、多轮改派 | `spawn_worker` 槽（DSH=`spawn_teammate`；千问办公无，退 `spawn_once`）或 DSH 看板卡 |
+| subagent + 任务板 | 需要**来回沟通、多轮改派**：起 `subagent` 后用 `team_task_*` 建任务板 | `spawn_worker` 槽（DSH 0.2.2-rc.3 起与 `spawn_once` 同为 `subagent`；千问办公无，退 `spawn_once`） |
 | compact | 上下文过半、或已经压缩过一次，但下一阶段还要点背景 | handoff 文档压缩后喂新会话 |
 
 **硬提示**：上下文过半或已压缩过一次 → 优先 handoff / 新会话，别硬撑。
@@ -100,9 +101,15 @@ wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so 
 
 ## 执行端选谁（dispatch 不创建 agent）
 
+> **派活前先定权限**（2026-11-14 实测）：DSH 上 `task_board_create({permission: ...})` 决定会话**从第一步起**的沙箱；
+> 给 `danger-full-access` 就全程无需人工，给 `workspace-write` 却让子会话中途请求提权，会**一直等真人点弹窗且不自动超时**。
+> `subagent` / `subagent_fork` 的工具签名没有权限参数，子会话继承父会话模式。
+> 完整原理与各 harness 映射见 `references/harness-adapters.md` 的「派生会话的权限约定」。
+> （本技能决定「交给谁」，权限就该在选执行端时一起定）
+
 | 会话里有什么 | 用哪条 |
 |---|---|
-| `list_workers` 有目标 teammate | B4 `handoff --to <它>` + `message` 槽 |
+| `list_workers` 里有目标 | B4 `handoff --to <它>` + `message` 槽 |
 | DSH 看板在跑 | `dispatch dsh push` 建卡 → 板上点 run / `dsh run` → `dsh outcome` 回写 |
 | 都没有 | `auto --executor "<cmd>"`，**并说明这是主代理自执行** |
 

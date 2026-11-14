@@ -1,6 +1,13 @@
 # ADR-0013 八职能队友：按职能分、常驻 + fresh 实例、手账分离
 
 - 状态：Accepted（2026-10-25，grill-with-docs，甲方「按推」）
+
+> **部分被取代（2026-11-13）。** DSH 0.2.2-rc.3 把独立 Team 名册并入 subagent 树：
+> `spawn_teammate` 与本文的 `maxMembers: 16` tuning **都没有对应物了**——
+> 新版 `@deepseek-ai/dsh-agent-team` 的 Config 只接受 `maxTasks`（默认 256）与 `defaultEnabled`（默认 false），
+> 且对 `maxMembers`/`maxMessageBytes`/`disposalTimeoutMs` 抛 `TEAM_INVALID_CONFIG`（命中会让 preset 挂载失败）。
+> 迁移过程见 `docs/adr/0021-agent-team-subagent-merge.md`。
+> **仍然有效**：八个职能角色的职责划分（它们现在是 subagent 树上的角色，不是 roster 成员）、手账分离原则。
 - 触发：本工作区团队面板里 8 个名额被 6 个泵工作台遗留成员 + 2 个通用 scout 占满，`spawn_teammate` 直接报 `Team member limit 8 reached`；且 `search-scout` 以"只写一个文件"的人设约束拒绝了跨项目任务。根因是**用领域人格当常驻劳动力**。
 
 ## 1. 调研

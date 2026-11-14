@@ -20,16 +20,26 @@ def test_test_plan_warns_about_editing_during_a_run() -> None:
     assert "跑全量期间不要改仓库" in text
 
 
-def test_roster_setup_documents_the_three_sizes_and_the_rollback_trap() -> None:
+def test_roster_setup_documents_the_obsolete_model() -> None:
+    """0.2.2-rc.3 已移除独立 roster；文档应说明作废原因与正确配置，而不是继续教旧做法。"""
     text = read("docs/team/roster-setup.md")
-    assert "174.0 MB" in text and "401.5 MB" in text and "1,583" in text
-    assert "patchReload" in text  # 只在"这个键不存在"的说明里出现
-    assert "10 行" in text
-    assert "removed" in text and "回滚" in text
+    assert "已随 DSH 0.2.2-rc.3 作废" in text or "作废" in text
+    assert "REMOVED_CONFIG_KEYS" in text
+    assert "maxMembers" in text          # 只在「被拒绝」的说明里出现
+    assert "dsh-agent-team" in text      # 新包名
+    assert "dsh-experimental-agent-team" not in text   # 旧包名不该再出现
+    assert "不要照着做" in text
 
 
-def test_skill_mentions_roster_limits_and_cleanup_hazard() -> None:
+def test_skill_documents_the_roster_removal() -> None:
+    """SKILL.md 不能再教 maxMembers 扩容或 cleanup_team，要说明新模型。"""
     text = read("SKILL.md")
-    assert "团队名册：名额与删除" in text
-    assert "cleanup_team" in text
-    assert "team member limit" in text.lower()
+    assert "没有 `maxMembers`" in text or "没有 maxMembers" in text
+    assert "subagent 树" in text
+    assert "每树并发 8" in text or "每树并发" in text
+    # 旧工具名只允许出现在「已移除」的说明里
+    for legacy in ("cleanup_team", "delete_teammate", "rename_teammate"):
+        if legacy in text:
+            idx = text.index(legacy)
+            window = text[max(0, idx - 120): idx + 120]
+            assert ("移除" in window) or ("已随" in window), (legacy, window[:160])

@@ -1,6 +1,7 @@
 ---
 name: grill-dispatch
 description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问前沿 + 每题给推荐答案），上面加 dispatch 的三视角取证（开源借鉴/事实核查/对抗审查）与问卷、签字留痕。产出 docs/questions/<slug>.md 与 docs/selection/<slug>/ 证据包。触发：grill-dispatch、拷问需求、需求澄清加取证、技术选型前调研。
+disable-model-invocation: true
 ---
 
 # 1/4 · Grill（边问边取证）
@@ -32,6 +33,12 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 
 ## 三会话并行（team 模式，v1.9.0）
 
+> **派活前先定权限**（2026-11-14 实测）：DSH 上 `task_board_create({permission: ...})` 决定会话**从第一步起**的沙箱；
+> 给 `danger-full-access` 就全程无需人工，给 `workspace-write` 却让子会话中途请求提权，会**一直等真人点弹窗且不自动超时**。
+> `subagent` / `subagent_fork` 的工具签名没有权限参数，子会话继承父会话模式。
+> 完整原理与各 harness 映射见 `references/harness-adapters.md` 的「派生会话的权限约定」。
+> （三个取证会话默认只读，不要给它们写权限）
+
 `select --mode team` 把证据包标记成"每份证据由独立子会话产出"。之后：
 
 1. **起三个 fresh 执行者**（一个角色一个，不共享上下文）。选槽按 `references/harness-adapters.md`：三个角色**只回报一份证据、不做中途协作**，优先用一次性槽 `spawn_once`（DSH=`subagent`，千问办公=`Agent` 带 `subagent_type`），不占常驻名额；`spawn_worker` 槽（DSH=`spawn_teammate({name, description, prompt, context:"fresh"})`）只在需要后续改派/交叉评审来回沟通时才用：
@@ -45,7 +52,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    | search-scout | 官方文档、changelog、issue、release notes | 读源码代替文档；凭记忆给版本 |
    | adversary | 读方案 + 另两份证据（交叉质疑） | 自己再做检索（那就变回搜索员） |
 
-3. **回收格式**（每个执行者结束时只回这五行；用一次性槽时说"子智能体"，用常驻槽时说"teammate"）：
+3. **回收格式**（每个执行者结束时只回这五行；统一说"子智能体"（0.2.2-rc.3 起 Team 成员即 subagent，不再有独立 teammate 概念））：
    ```
    文件：docs/selection/<slug>/01-oss.md
    结论：建议采用 X（或 建议不采用 / 证据不足）
@@ -54,7 +61,7 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
    未证实：<逐条，没有写"无">
    ```
 4. **等齐再往下**：如果有 `wait` 槽就等到三个都结束（DSH=`wait_agent`；千问办公的 `task` 同步返回，不用等）；任何一个超时/失败，就把它那份标 `未产出` 并在 99-summary 写明，不许主代理悄悄补写成"已完成"。
-5. **交叉评审（必做一轮，只读）**：三份齐了之后，让每个执行者（一次性槽=子智能体 / 常驻槽=teammate）**只读另外两份**，回一条反驳；**本轮任何人都不许改文件**（包括自己那份），要改由 Lead 汇总后单独开一轮：
+5. **交叉评审（必做一轮，只读）**：三份齐了之后，让每个执行者（即子智能体）**只读另外两份**，回一条反驳；**本轮任何人都不许改文件**（包括自己那份），要改由 Lead 汇总后单独开一轮：
    ```
    质疑对象：02-sources.md 的 <结论>
    反驳：<一句话 + 依据>

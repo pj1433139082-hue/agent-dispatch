@@ -3,36 +3,84 @@
 技能正文只写**能力槽名**（`ask` / `shell` / `spawn_worker` / `spawn_once` / `list_workers` / `message` / `wait`），
 由这份表决定在每个 harness 里落到哪个具体工具。**换 harness 时改这张表，不改技能。**
 
+## 派生会话的权限约定（所有 harness 通用原则）
+
+> 源自 2026-11-14 本机实测（6 轮探针 + 会话 `f3f7882e` 日志）。这是**跨 harness 的原则**，具体开关看下面各节映射。
+
+**一句话**：**派活时就把权限定对，不要让执行端中途申请。**
+
+| 做法 | 结果 |
+|---|---|
+| 创建/派活时指定所需权限（如 DSH 的 `task_board_create({permission})`） | 会话**从第一步起**就在目标沙箱里，无需人工介入 |
+| 先给窄权限，让执行端中途请求提权 | 要么**等真人审批**（无人值守＝卡死），要么**被确定性拒绝**（白费一次尝试） |
+
+**为什么这是原则而不是技巧**：权限和写域、Verify 一样，是**派活契约的一部分**。执行端不知道自己的工作需要什么权限，只有派活的人知道。把权限判断推给执行端，等于让它在半路发现「我的写域在工作区外」——那时已经浪费了一个回合。
+
+**两个必查项**：
+1. **写域是否都在工作区内**？有工作区外路径，就在派活时提高权限，或把该路径纳入工作区。
+2. **目标是无人值守吗**？是的话，必须确保权限一次到位——任何需要人点的环节都会让整条流水线停在那里，而且**不会报错、不会超时**。
+
+**判活时注意区分「等批准」与「卡死」**：长时间无返回 + `approvalState.turnOpen: true` + `pending_tools` 有值，通常是**在等人**，不是 bug。
+
 ## 七个能力槽
 
 | 槽 | 用来干什么 | 缺席时怎么办 |
 |---|---|---|
 | `ask` | 把结构化问题（含 options）交给用户，等答复 | 退化成正文里的问题 + 明确写「等你回答」；不许自己代答 |
 | `shell` | 在本地跑命令（`dispatch` CLI、git、测试） | 没有就等于无法执行，直接说清 |
-| `spawn_worker` | 起一个**具名、常驻**的执行者跑一段活，拿回结果；它进名册，可再发消息 | 退到 `spawn_once`；再没有就走 solo：主代理自己做，文件里标「主代理代做」 |
-| `spawn_once` | 起一个**无名、一次性**的执行者跑一段活，拿回结果后即结束；不占名册、不占队位 | 退到 `spawn_worker`，或走 solo 并标注「主代理代做」 |
+| `spawn_worker` | 起一个**具名、常驻**的执行者跑一段活，拿回结果；能再发消息（DSH 0.2.2-rc.3 起与 `spawn_once` 同一实现，见下方映射表） | 退到 `spawn_once`；再没有就走 solo：主代理自己做，文件里标「主代理代做」 |
+| `spawn_once` | 起一个**无名、一次性**的执行者跑一段活，拿回结果后即结束；不占常驻名额 | 退到 `spawn_worker`，或走 solo 并标注「主代理代做」 |
 | `list_workers` | 查当前有哪些执行者、叫什么 | 按「已知没有」处理（不要假装有） |
 | `message` | 给某个执行者发消息（派活/追问/交叉评审） | 走文件交接：把内容写进文件，让执行者自己读 |
 | `wait` | 等执行者结束 | `spawn_worker` 同步返回时不需要；异步时必须轮询或用完成通知 |
 
+> **槽位会随 harness 版本合并（2026-11-13 实例）**：DSH 0.2.2-rc.3 把旧的独立 Team 名册并入 subagent 树，
+> `spawn_worker` 与 `spawn_once` 在该 harness 上落到**同一个 `subagent` 工具**。
+> 技能正文继续用槽名书写即可，映射由本表负责——这正是「换 harness 改表不改技能」的价值。
+
 ## 映射表
 
-### DSH（DeepSeek Harness）—— 已核实
+### DSH（DeepSeek Harness）—— 已核实（0.2.2-rc.3，2026-11-13 实测）
 
-证据：会话内 `Object.keys(tools)` 返回 60+ 项。
+证据：会话内 `Object.keys(tools)` 返回 80 项；本机宿主 `app.asar/dsh/package.json` 版本 0.2.2-rc.3；
+`@deepseek-ai/dsh-agent-team` 的 `src/index.ts` 里 `static Config` 与 `REMOVED_CONFIG_KEYS` 已直读。
 
 | 槽 | 工具 | 备注 |
 |---|---|---|
 | `ask` | `ask_user_question` | 必带 `questions: [{id, header, question, options}]` |
 | `shell` | `pwsh`，或 `run_code` 里 `child_process` | `run_code` 是唯一直接入口，其余工具都在 `tools.*` |
-| `spawn_worker` | `spawn_teammate` | 具名常驻，进 roster；`context: "fresh"` 才是干净上下文。上限 16 人，名字永久占用 |
-| `spawn_once` | `subagent`（或 `subagent_fork`，后者继承当前对话） | 无名一次性：返回 `{kind:"activation", subagentId}`，结束给「完成通知 + 最终回答」；每树并发 8、深度 1 |
-| `list_workers` | `list_agents` | 判据：能调它才算有队友。**只列 teammate，子智能体不在名册里** |
-| `message` | `send_message` | 给 target 发；inactive 目标会被唤醒 |
-| `wait` | `wait_agent` | 返回 `{timedOut}`；超时后要重新 `list_agents` |
+| `spawn_worker` | **已并入 `subagent`** | 0.2.2-rc.3 起 `spawn_teammate` 已移除：Team 不再有独立名册，成员就是 subagent 树上的节点。要任务板就直接起 `subagent`；**任务板工具需 Team 模式开启**（见下方配置侧，本机已设 `defaultEnabled: true`） |
+| `spawn_once` | `subagent`（或 `subagent_fork`，后者继承当前对话） | 返回 `{kind:"activation", subagentId}`，结束给「完成通知 + 最终回答」；每树并发 8、深度 1 |
+| `list_workers` | `list_agents` | **返回整棵 subagent 树**（root + 全部后代），不再只列 teammate。旧 teammate 也在其中 |
+| `message` | `send_message` | **参数名是 `agent`**（不是 `agent_id`）：`send_message({agent: "<name 或 session id>", message})`；inactive 目标会被唤醒 |
+| `wait` | `wait_agent` | 返回 `{timedOut}` |
 
-> **两个 worker 槽不能互换（2026-11-01 实测）**：`send_message` / `interrupt_agent` / `team_task_update --reassign` 对子智能体的 `subagentId` 一律回 `active teammate "<id>" not found`——团队工具只认 teammate 名字。子智能体只能从「子智能体对话目录」（`palimpsest_list` 带 `includeSubagents`）看到；「可续聊」也只能走它自己的会话入口，别拿团队三件套去找它。
-> 判据：**需要名册 / 任务板 / 来回沟通 → `spawn_worker`；只想要一份报告 → `spawn_once`。**
+> **旧 Team API 已整体移除（2026-11-13 实测）**：`spawn_teammate` / `delete_teammate` / `rename_teammate` / `cleanup_team` 四个工具在 0.2.2-rc.3 的 80 项工具清单里**全都不存在**。
+> `list_agents` 现返整棵树，`interrupt_agent` / `send_message` 都按 `agent` 参数工作（同一个字段名）。
+> 旧的「两个 worker 槽不能互换」结论**作废**：现在没有两个槽——只有一套 subagent 树，`send_message`/`interrupt_agent` 对子智能体直接可用。
+> 判据：**要任务板/来回沟通 → 起 `subagent` + 任务板；只要一份报告 → `subagent` 不给任务板即可。**
+>
+> **实测（2026-11-13，起真实任务板会话验证）**：`team_task_*` 四个工具由 `ctx.agentTeams.isEnabled(agent)` 门控，**默认不注册**——`defaultEnabled` 默认 `false` 时子会话里 `tools.team_task_list` 直接不存在（`is not a function`）。本机已在 profile 设为 `defaultEnabled: true`，实测新会话拿到全部 4 个工具。
+
+> **配置侧（0.2.2-rc.3）**：`@deepseek-ai/dsh-agent-team` 的 `static Config` 只接受 `maxTasks`（默认 256）与 `defaultEnabled`（**默认 false，需显式设 true**）。
+> `maxMembers` / `maxMessageBytes` / `disposalTimeoutMs` 被 `REMOVED_CONFIG_KEYS` 硬编码拒绝——命中即抛 `TEAM_INVALID_CONFIG`，导致 preset 挂载失败（现象＝全部会话输入框「会话不可用」）。
+> 依赖旧 roster 语义的本地插件（如 `dsh-agent-team-roster`）在新版下没有对应物，应注释停用。
+>
+> **必须配 `defaultEnabled: true`**：否则所有会话默认没有任务板工具，任何「起子智能体后用任务板协作」的流程都会失败。本机已设并实测通过（探针拿到全部 4 个工具）。
+
+> **子会话工单：不要中途请求提权**（2026-11-13 三轮实测）：提权机制本身正常——
+> `approval/asked` → 人工批准 `allowed-once` → 程序在放宽沙箱里执行（会话日志可查）。
+> 坑在于**是否需要人**：`policy=never` 下确定性立即拒绝（白费一次尝试），
+> `policy=ask` 下会一直等真人点弹窗、**不自动超时**（实测 493s+ 悬置）。
+> 所以无人值守跑票要写工作区外时，**直接把卡片设 `permission: danger-full-access`**，别让子会话中途提权。
+>
+> **`run_code` 里操作文件用 `await import('node:fs')`**——不能用 `require`（运行时无此全局，报 `ReferenceError`），
+> 也不能用顶层 `import` 语句（只接受函数体）。这两条语法坑各坑过一次，写工单时直接给正确样例。
+
+> **正确做法：创建卡片/派活时就声明权限**（2026-11-14 会话 `f3f7882e` 日志确认）——
+> `task_board_create({ permission: "danger-full-access" })` 会让会话**一启动就是 full-access、策略 `never`**，
+> 全程无需人工点击。反过来，「先给 `workspace-write`、再让子会话中途提权」才需要人守着点弹窗。
+> 所以这不是「绕过审批」，而是**本来就该在创建时说清所需权限**。
 
 ### 千问办公 / QwenWork —— 已核实（本机 1.3.2-26101704，实测 2026-10-31）
 
