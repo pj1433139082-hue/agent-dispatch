@@ -32,6 +32,12 @@ description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问�
 
 ## 三会话并行（team 模式，v1.9.0）
 
+> **派活前先定权限**（2026-11-14 实测）：DSH 上 `task_board_create({permission: ...})` 决定会话**从第一步起**的沙箱；
+> 给 `danger-full-access` 就全程无需人工，给 `workspace-write` 却让子会话中途请求提权，会**一直等真人点弹窗且不自动超时**。
+> `subagent` / `subagent_fork` 的工具签名没有权限参数，子会话继承父会话模式。
+> 完整原理与各 harness 映射见 `references/harness-adapters.md` 的「派生会话的权限约定」。
+> （三个取证会话默认只读，不要给它们写权限）
+
 `select --mode team` 把证据包标记成"每份证据由独立子会话产出"。之后：
 
 1. **起三个 fresh 执行者**（一个角色一个，不共享上下文）。选槽按 `references/harness-adapters.md`：三个角色**只回报一份证据、不做中途协作**，优先用一次性槽 `spawn_once`（DSH=`subagent`，千问办公=`Agent` 带 `subagent_type`），不占常驻名额；`spawn_worker` 槽（DSH=`spawn_teammate({name, description, prompt, context:"fresh"})`）只在需要后续改派/交叉评审来回沟通时才用：

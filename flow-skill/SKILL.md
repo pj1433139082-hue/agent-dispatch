@@ -100,6 +100,12 @@ wayfinder 把"决策票"画成一张地图（Destination / Notes / Decisions so 
 
 ## 执行端选谁（dispatch 不创建 agent）
 
+> **派活前先定权限**（2026-11-14 实测）：DSH 上 `task_board_create({permission: ...})` 决定会话**从第一步起**的沙箱；
+> 给 `danger-full-access` 就全程无需人工，给 `workspace-write` 却让子会话中途请求提权，会**一直等真人点弹窗且不自动超时**。
+> `subagent` / `subagent_fork` 的工具签名没有权限参数，子会话继承父会话模式。
+> 完整原理与各 harness 映射见 `references/harness-adapters.md` 的「派生会话的权限约定」。
+> （本技能决定「交给谁」，权限就该在选执行端时一起定）
+
 | 会话里有什么 | 用哪条 |
 |---|---|
 | `list_workers` 里有目标 | B4 `handoff --to <它>` + `message` 槽 |
