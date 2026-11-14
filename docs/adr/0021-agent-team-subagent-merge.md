@@ -117,18 +117,49 @@ grantWrite(E:\beikong-code\agent-dispatch)
 后续会话正常。**注意**：这不是 agent-team 的问题，是 Windows ACL 的独立缺陷，
 但它的现象（会话不可用）与本 ADR 要修的「preset 挂载失败」极像，容易被误判。
 
-### 6.3 未预期的 harness 缺陷：提权请求挂死
+### 6.3 关于「提权」的两次观察（含一次 Lead 误判，已更正）
 
-第二个探针请求写工作区外路径，触发 `sandbox_permissions: danger-full-access` 提权。
-该会话的 `approvalState.policy` 为 `never`，提权既未执行也**未返回错误**——
-`run_code` 永久挂起（实测 1019 秒仍在），且 `interrupt_agent` **无法终止**。
+第二个探针在 `workspace-write` 下写工作区外路径 `C:\Users\14331\.dsh\probes`，被 EPERM 拒绝；
+随后它带上 `sandbox_permissions: danger-full-access` 重试。Lead 观察到该 `run_code` 长时间无返回，
+**曾误判为「提权请求挂死、且 `interrupt_agent` 无法终止」，并据此写成 harness 缺陷——这个结论是错的**。
 
-**规避**：给子会话的工单里明确「不要请求提权，只在工作区内操作」；需要跨目录写时，
-先把目标路径纳入工作区或改由父会话执行。**这是 harness 缺陷，不是配置问题**，已记录待上游确认。
+事实（该会话最终完整跑完，`boundary: end`、`answer` 有全文）：
 
-### 6.4 修复后终验
+```
+WRITE_FAIL: EPERM ... mkdir 'C:\Users\14331\.dsh\probes'   ← workspace-write 下按预期拒绝
+（请求提权）
+WRITE_OK
+READBACK: ok                                                  ← 提权实际生效并完成写入
+```
 
-第三探针（显式 `permission: danger-full-access`、只写工作区内）结果为 `SMOKE3-OK`：
+该次工具调用累计 1122 秒，其中绝大部分是在**等待批准**，而非卡死。
+
+**真实观察（仍然成立）**：该会话的 `approvalState.policy` 为 `never`，
+却仍产生了需要批准才能继续的提权请求。策略语义与实际行为不一致，值得记录；
+但**不能表述为「挂死」**。
+
+**仍然成立的操作结论**：工作区外路径在 `workspace-write` 下会被拒（EPERM），这是**预期行为**；
+要跨目录写，先把目标纳入工作区，或由父会话代写。给子会话的工单里写明这条可以省掉一轮往返。
+
+**教训**：判定「挂死」不能只看「多久没返回」。本机判定会话是否活着的正确口径是
+`subagentTiming`（`settledMs > 0` = 已落定；有 `active` 且 `settledMs == 0` = 仍在跑）与
+`running_cmds`（工具名＋已耗时）——`openStep == null` 和「长时间无新事件」都会把
+**正在等批准**误判成已结束或卡死。
+
+### 6.4 两个探针的终验（都成功）
+
+**探针二**（ACL 修复后，`workspace-write` 起始、经一次提权完成跨目录写）—— `SMOKE2-OK`：
+
+```
+1) team_task_* 存在: team_task_create,team_task_list,team_task_get,team_task_update
+2) team_task_list: {"tasks":[]}  → 调用成功，0 条任务（空板，非报错）
+3) 工作区外写入: workspace-write 下 EPERM → 提权后 WRITE_OK / READBACK: ok
+```
+
+这一探针顺带证明了三件事：ACL 修复后 `workspace-write` 会话**能起来**；
+`defaultEnabled: true` 后任务板工具**已注册**；提权**确实生效**（不是挂死）。
+
+**探针三**（显式 `permission: danger-full-access`、只写工作区内）—— `SMOKE3-OK`：
 
 ```
 1. TEAM: team_task_create,team_task_list,team_task_get,team_task_update — 4 个工具可用
