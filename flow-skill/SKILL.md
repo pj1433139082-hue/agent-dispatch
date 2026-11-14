@@ -1,6 +1,7 @@
 ---
 name: dispatch-flow
 description: 派单流程路由：判断手上的活该走「需求→票」「单票执行」「批量自动」「运维恢复」哪条流程，每一步该调哪个 skill、哪条 dispatch 命令，以及交给谁执行。触发：怎么派单、走哪条流程、dispatch 流程、这张票怎么推、票卡住了怎么办。
+disable-model-invocation: true
 ---
 
 # Dispatch Flow（自有流程路由，不改 ask-matt）

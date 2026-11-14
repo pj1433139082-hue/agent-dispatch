@@ -1,6 +1,7 @@
 ---
 name: setup-agent-dispatch
 description: 给一个仓库做一次性 dispatch 配置（票目录、执行端模式、默认评审人、AGENTS.md 入口、健康基线），之后 agent-dispatch 的所有命令都按这份配置工作。触发：初始化 dispatch、给项目接 dispatch、dispatch setup、配票目录、配执行端。
+disable-model-invocation: true
 ---
 
 # Setup agent-dispatch

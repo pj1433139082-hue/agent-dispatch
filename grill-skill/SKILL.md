@@ -1,6 +1,7 @@
 ---
 name: grill-dispatch
 description: 我们的拷问阶段：底座是 grilling（设计树 + 分轮问前沿 + 每题给推荐答案），上面加 dispatch 的三视角取证（开源借鉴/事实核查/对抗审查）与问卷、签字留痕。产出 docs/questions/<slug>.md 与 docs/selection/<slug>/ 证据包。触发：grill-dispatch、拷问需求、需求澄清加取证、技术选型前调研。
+disable-model-invocation: true
 ---
 
 # 1/4 · Grill（边问边取证）
