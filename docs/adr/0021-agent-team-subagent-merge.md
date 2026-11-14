@@ -140,6 +140,29 @@ grantWrite(E:\beikong-code\agent-dispatch)
 | 探针6 | 改对了 `await import`，但策略是 `ask` | `approval/asked` 悬着，一直等 | 机制正常，**在等人点弹窗** |
 | 探针7 | 直接给 `full-access`，不请求提权 | `WROTE: ok` / `WROTE_OK`，文件确实落盘 | **写入本身没问题** |
 
+**两种用法的本质区别（2026-11-14 复核会话 `f3f7882e` 日志后确认）**：
+
+| 用法 | 会话启动时沙箱 | 审批策略 | 是否需人 | 实测 |
+|---|---|---|---|---|
+| 卡片创建时指定 `permission: danger-full-access` | **一启动就是 full-access** | `never`（随之确定） | **不需要** | 直接 `WROTE: ok`，无任何 `approval/asked` |
+| 卡片 `workspace-write` + 子会话中途请求提权 | workspace-write | `ask` | **需要点弹窗** | `approval/asked` 悬置，等到点为止 |
+
+会话 `f3f7882e` 的日志事件序列是这条结论的一手证据：
+
+```
+[1] permission/preset  workspace-write
+[3] approval/policy    ask
+[7] permission/preset  danger-full-access   ← 卡片创建时指定，会话初始化即应用
+[8] sandbox/mode       danger-full-access
+[9] approval/policy    never                ← 随之切换
+[26] tool/call         （未带 sandbox_permissions）
+[27] tool/result       WROTE: ok / WROTE_OK
+```
+
+**所以正确做法不是「绕过审批」，而是本来就该在创建卡片时声明所需权限**——
+用中途提权去补一个本可以在创建时说清的权限，才是可疑用法。
+
+
 **`run_code` 里正确的文件写法**：`const fs = await import('node:fs')`。
 **不能用** `require`（PTC 运行时无此全局），**也不能**用顶层 `import` 语句（只接受函数体）。
 
