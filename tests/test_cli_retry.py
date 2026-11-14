@@ -98,3 +98,65 @@ def test_retry_refuses_a_done_ticket(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "done" in (result.stdout + result.stderr).lower()
+
+
+def test_budget_survives_rerender_and_archive(tmp_path: Path) -> None:
+    start_failed_run(tmp_path)
+    # A failed run can be replaced repeatedly; each replacement consumes a retry.
+    for _ in range(2):
+        result = run_dispatch(tmp_path, "render", "01", "--agent", "lead")
+        assert result.returncode == 0, result.stderr
+        assert run_dispatch(tmp_path, "start", "01").returncode == 0
+        assert run_dispatch(tmp_path, "verify", "01").returncode != 0
+    dropped = run_dispatch(tmp_path, "drop", "01", "--reason", "reopen")
+    assert dropped.returncode == 0, dropped.stderr
+    denied = run_dispatch(tmp_path, "render", "01", "--agent", "lead")
+    assert denied.returncode != 0
+    assert "human evaluation" in denied.stderr
+    assert "--override-limit" not in denied.stderr
+    missing = run_dispatch(tmp_path, "render", "01", "--override-limit")
+    assert missing.returncode != 0
+    allowed = run_dispatch(tmp_path, "render", "01", "--agent", "lead", "--override-limit", "--reason", "tool outage")
+    assert allowed.returncode == 0, allowed.stderr
+    ledger = tmp_path / ".dispatch" / "ledger" / "retries.jsonl"
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert [row["override"] for row in rows] == [False, False, True]
+    assert rows[-1]["reason"] == "tool outage"
+
+
+def test_retry_budget_and_override(tmp_path: Path) -> None:
+    start_failed_run(tmp_path)
+    for _ in range(3):
+        assert run_dispatch(tmp_path, "retry", "01", "--reason", "failure").returncode == 0
+        assert run_dispatch(tmp_path, "verify", "01").returncode != 0
+    denied = run_dispatch(tmp_path, "retry", "01", "--reason", "again")
+    assert denied.returncode != 0 and "human evaluation" in denied.stderr
+    assert "--override-limit" not in denied.stderr
+    auto = run_dispatch(tmp_path, "auto", "01", "--executor", "unused", "--resume")
+    assert auto.returncode != 0 and "human evaluation" in auto.stderr
+    assert run_dispatch(tmp_path, "retry", "01", "--reason", " ", "--override-limit").returncode != 0
+    assert run_dispatch(tmp_path, "retry", "01", "--reason", "external failure", "--override-limit").returncode == 0
+
+
+def test_auto_attempts_consume_budget_and_exhaustion_blocks_resume(tmp_path: Path) -> None:
+    start_failed_run(tmp_path)
+    result = run_dispatch(tmp_path, "auto", "01", "--executor", "python -c pass", "--max-attempts", "10", "--json")
+    assert result.returncode != 0
+    data = json.loads(result.stdout)
+    # One unit replaces the failed run; two more pay for attempts 2 and 3.
+    assert len(data["attempts"]) == 3
+    ledger = tmp_path / ".dispatch" / "ledger" / "retries.jsonl"
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 3
+    assert all(not row["override"] for row in rows)
+    denied = run_dispatch(tmp_path, "auto", "01", "--executor", "python -c pass", "--max-attempts", "2", "--resume")
+    assert denied.returncode != 0 and "human evaluation" in denied.stderr
+    assert "--override-limit" not in denied.stderr
+    missing = run_dispatch(tmp_path, "auto", "01", "--executor", "python -c pass", "--override-limit", "--reason", " ")
+    assert missing.returncode != 0
+    override = run_dispatch(tmp_path, "auto", "01", "--executor", "python -c pass", "--max-attempts", "2", "--override-limit", "--reason", "tool outage", "--json")
+    assert override.returncode != 0
+    assert len(json.loads(override.stdout)["attempts"]) == 2
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 5
+    assert all(row["override"] and row["reason"] == "tool outage" for row in rows[-2:])

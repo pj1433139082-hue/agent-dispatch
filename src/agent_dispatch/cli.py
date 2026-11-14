@@ -27,7 +27,7 @@ from .dsh import (
     run_card,
     update_card,
 )
-from .export import export_text, status_document
+from .export import export_text, status_document, ready_tickets, exhausted_tickets, retry_usage, RETRY_LIMIT
 from .align import (
     delivery_diagnosis,
     delivery_items,
@@ -94,6 +94,8 @@ def _parser() -> argparse.ArgumentParser:
     render_parser.add_argument("ticket_id")
     render_parser.add_argument("--tickets", type=Path, default=None)
     render_parser.add_argument("--root", type=Path, default=Path("."))
+    render_parser.add_argument("--override-limit", action="store_true")
+    render_parser.add_argument("--reason", default="")
     render_parser.add_argument("--agent", default="", help="Agent claiming the run.")
     render_parser.add_argument(
         "--allow-unassigned-persona",
@@ -305,6 +307,7 @@ def _parser() -> argparse.ArgumentParser:
     retry_parser = subparsers.add_parser("retry", help="Put a failed ticket back to running so it can be verified again.")
     retry_parser.add_argument("ticket_id")
     retry_parser.add_argument("--reason", required=True, help="Why you are retrying; recorded on the run.")
+    retry_parser.add_argument("--override-limit", action="store_true")
     retry_parser.add_argument("--root", type=Path, default=Path("."))
     retry_parser.add_argument("--json", action="store_true", dest="as_json")
 
@@ -481,6 +484,8 @@ def _parser() -> argparse.ArgumentParser:
         "--max-attempts", type=int, default=1,
         help="Total executor attempts before failing (default: 1).",
     )
+    auto_parser.add_argument("--override-limit", action="store_true")
+    auto_parser.add_argument("--reason", default="", help="Reason for overriding the retry limit.")
     auto_parser.add_argument(
         "--timeout", type=int, default=1800,
         help="Seconds allowed per executor or reviewer command.",
@@ -810,7 +815,7 @@ def _cmd_status_all(args: argparse.Namespace) -> int:
         if not tickets_dir.is_dir():
             continue
         tickets = load_tickets(tickets_dir)
-        document = status_document(tickets, _state_map(root))
+        document = status_document(tickets, _state_map(root), exhausted=exhausted_tickets(root))
         print(f"== {root} ({len(tickets)} ticket(s)) ==")
         for row in document["tickets"]:
             suffix = f" (blocked by {', '.join(row['blocked_by'])})" if row["blocked_by"] else ""
@@ -825,7 +830,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
         return code
-    document = status_document(tickets, _state_map(args.root))
+    document = status_document(tickets, _state_map(args.root), exhausted=exhausted_tickets(args.root))
     if args.as_json:
         print(json.dumps(document, indent=2, ensure_ascii=False))
         return 0
@@ -888,7 +893,8 @@ def _cmd_export(args: argparse.Namespace) -> int:
     if tickets is None:
         return code
     text = export_text(
-        tickets, args.export_format, _state_map(args.root), project=args.root.resolve().name
+        tickets, args.export_format, _state_map(args.root), project=args.root.resolve().name,
+        exhausted=exhausted_tickets(args.root)
     )
     if args.output:
         args.output.write_text(text, encoding="utf-8")
@@ -1137,6 +1143,25 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 def _find_ticket(tickets: list[Ticket], ticket_id: str) -> Ticket | None:
     return next((ticket for ticket in tickets if ticket.id == ticket_id), None)
 
+def _retry_allowed(root: Path, ticket_id: str, override: bool, reason: str) -> bool:
+    if override and not reason.strip():
+        print("An override requires a non-empty reason.", file=sys.stderr)
+        return False
+    if ticket_id in exhausted_tickets(root) and not override:
+        print(f"ticket {ticket_id}: retry limit reached; human evaluation required", file=sys.stderr)
+        return False
+    return True
+
+
+def _record_retry(root: Path, ticket_id: str, run_id: str, reason: str, override: bool) -> None:
+    ledger = Path(root) / ".dispatch" / "ledger" / "retries.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    row = {"ticket_id": ticket_id, "run_id": run_id, "reason": reason,
+           "override": override, "at": datetime.now(timezone.utc).isoformat()}
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def _cmd_render(args: argparse.Namespace) -> int:
     tickets, code = _load_and_lint(_tickets_dir(args), getattr(args, "root", None))
     if tickets is None:
@@ -1188,6 +1213,10 @@ def _cmd_render(args: argparse.Namespace) -> int:
                 )
                 return 1
 
+    is_retry = bool(existing and str(existing.get("state")) == "failed")
+    if not _retry_allowed(args.root, ticket.id, args.override_limit, args.reason):
+        return 1
+
     missing = sorted(dep for dep in ticket.depends_on if dep not in store.done_ids())
     if missing:
         print(
@@ -1219,6 +1248,8 @@ def _cmd_render(args: argparse.Namespace) -> int:
     except ValueError as error:
         print(f"RENDER {error}", file=sys.stderr)
         return 7
+    if is_retry or args.override_limit:
+        _record_retry(args.root, ticket.id, run.id, args.reason or "re-render failed run", args.override_limit)
     store.set_ticket(ticket.id, run.id, "claimed")
     if getattr(args, "with_context", False):
         pack_text = build_context_pack(args.root, ticket, exclude_run_id=run.id)
@@ -1637,7 +1668,7 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
     fix_summary = _wrap_fix(root) if getattr(args, "fix", False) else None
     report = _health_report(root, directory)
     tickets, _ = _load_and_lint(directory, root)
-    document = status_document(tickets or [], _state_map(root))
+    document = status_document(tickets or [], _state_map(root), exhausted=exhausted_tickets(root))
     counts: dict[str, int] = {}
     for row in document["tickets"]:
         counts[str(row["state"])] = counts.get(str(row["state"]), 0) + 1
@@ -2174,6 +2205,12 @@ def _cmd_retry(args: argparse.Namespace) -> int:
     except Exception:
         print(f"ticket {args.ticket_id}: run {entry.get('run_id')!r} is missing", file=sys.stderr)
         return 1
+    if not args.reason.strip():
+        print("A non-empty reason is required.", file=sys.stderr)
+        return 1
+    if not _retry_allowed(args.root, args.ticket_id, args.override_limit, args.reason):
+        return 1
+    _record_retry(args.root, args.ticket_id, run.id, args.reason, args.override_limit)
     attempts = run.directory / "attempts"
     attempts.mkdir(parents=True, exist_ok=True)
     number = len(list(attempts.glob("verify-*.json"))) + 1
@@ -3033,6 +3070,14 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     if ticket is None:
         print(f"unknown ticket: {args.ticket_id} (tickets_dir = {_tickets_dir(args)})", file=sys.stderr)
         return 1
+    auto_entry = DispatchState(args.root).ticket(args.ticket_id)
+    override = args.override_limit
+    if not _retry_allowed(args.root, args.ticket_id, override, args.reason):
+        return 1
+    used = retry_usage(args.root).get(args.ticket_id, 0)
+    replacing = bool(auto_entry and auto_entry.get("state") == "failed")
+    remaining = max(0, RETRY_LIMIT - used - int(replacing))
+    max_attempts = args.max_attempts if override else min(args.max_attempts, 1 + remaining)
     auto_policy = str(load_config(Path(args.root)).get("persona_policy", "l2")).lower()
     if not getattr(args, "allow_unassigned_persona", False) and persona_required(ticket.risk, auto_policy) and not ticket.persona:
         print(
@@ -3056,7 +3101,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             allow_unassigned_persona=bool(getattr(args, "allow_unassigned_persona", False)),
             persona_required=persona_required(ticket.risk, auto_policy),
             agent=args.agent,
-            max_attempts=args.max_attempts,
+            max_attempts=max_attempts,
             timeout=args.timeout,
             verify_timeout=args.verify_timeout,
             until=args.until,
@@ -3072,6 +3117,22 @@ def _cmd_auto(args: argparse.Namespace) -> int:
     except AutoError as exc:
         print(f"AUTO {exc}", file=sys.stderr)
         return 1
+    finally:
+        new_entry = DispatchState(args.root).ticket(args.ticket_id)
+        if (auto_entry and auto_entry.get("state") == "failed" and new_entry
+                and new_entry.get("run_id") != auto_entry.get("run_id")):
+            _record_retry(args.root, args.ticket_id, str(new_entry.get("run_id", "")),
+                          args.reason if override else "automatic re-dispatch", override)
+
+    attempts = result.get("attempts", [])
+    if isinstance(attempts, list):
+        run_id = str(result.get("run_id", ""))
+        # An override of an already exhausted ticket also authorizes its first attempt.
+        if attempts and override and used >= RETRY_LIMIT and not replacing:
+            _record_retry(args.root, args.ticket_id, run_id, args.reason, True)
+        for _ in attempts[1:]:
+            _record_retry(args.root, args.ticket_id, run_id,
+                          args.reason if override else "automatic retry", override)
 
     if args.as_json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -3141,7 +3202,7 @@ def _cmd_dsh_push(args: argparse.Namespace) -> int:
         return code
     try:
         report = push(
-            tickets,
+            ready_tickets(tickets, _state_map(args.root), exhausted_tickets(args.root)),
             _state_map(args.root),
             root=args.root,
             base_url=args.url,
