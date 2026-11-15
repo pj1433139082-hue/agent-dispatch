@@ -142,35 +142,45 @@ def test_retry_is_ledgered_before_the_attempt_runs(tmp_path: Path) -> None:
     for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
         subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@e.com", *args], cwd=tmp_path, check=True, capture_output=True)
 
-    process = subprocess.Popen(
-        [sys.executable, "-m", "agent_dispatch", "auto", "01", "--executor", "python exec.py", "--max-attempts", "2"],
-        cwd=tmp_path, env=executor_env(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
-    try:
-        # Wait until attempt 2 has actually started, then kill the whole tree.
-        runs = tmp_path / ".dispatch" / "runs"
-        marker: Path | None = None
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            for started in runs.glob("*/auto/started-2.txt"):
-                marker = started
-                break
-            if marker is not None:
-                break
-            if process.poll() is not None:
-                break
-            time.sleep(0.2)
-        assert marker is not None, "第二次尝试没有开始，测试前提不成立"
-        kill_tree(process.pid)
-        process.wait(timeout=60)
-    finally:
-        if process.poll() is None:
-            process.kill()
+    # Redirect to files, never pipes: a killed process tree leaves unread pipe
+    # buffers behind and wait() can block forever on CI (this hung the suite).
+    out_log = tmp_path / "auto.out.log"
+    err_log = tmp_path / "auto.err.log"
+    with out_log.open("w", encoding="utf-8") as out_fh, err_log.open("w", encoding="utf-8") as err_fh:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "agent_dispatch", "auto", "01", "--executor", "python exec.py", "--max-attempts", "2"],
+            cwd=tmp_path, env=executor_env(), text=True,
+            stdout=out_fh, stderr=err_fh,
+        )
+        try:
+            runs = tmp_path / ".dispatch" / "runs"
+            marker: Path | None = None
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                for started in runs.glob("*/auto/started-2.txt"):
+                    marker = started
+                    break
+                if marker is not None or process.poll() is not None:
+                    break
+                time.sleep(0.2)
+            assert marker is not None, "第二次尝试没有开始，测试前提不成立"
+            kill_tree(process.pid)
+            process.wait(timeout=60)
+        finally:
+            if process.poll() is None:
+                kill_tree(process.pid)
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=30)
 
     # The dispatcher died inside attempt 2. Because the retry was ledgered
     # BEFORE that attempt ran, it must already be on the books.
     rows = ledger_rows(tmp_path, "01")
     assert len(rows) == 1, rows
+
+
 def test_first_attempt_is_not_ledgered_as_a_retry(tmp_path: Path) -> None:
     """max-attempts=1 consumes no retry budget at all."""
     passing = """import json, os, pathlib
