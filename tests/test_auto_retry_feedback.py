@@ -56,14 +56,22 @@ def executor_env() -> dict[str, str]:
 
 
 def kill_tree(pid: int) -> None:
-    """Kill a process and all its children (the dispatcher spawns the executor)."""
+    """Kill the dispatcher process and its children.
+
+    On POSIX the child is spawned with start_new_session=True, so it leads its
+    own process group: killing that group cannot reach the pytest worker
+    itself (an earlier version used getpgid(pid) and killed the worker, which
+    hung CI).
+    """
     if os.name == "nt":
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
-    else:
-        try:
-            os.killpg(os.getpgid(pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+        return
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_dispatch(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
@@ -151,6 +159,7 @@ def test_retry_is_ledgered_before_the_attempt_runs(tmp_path: Path) -> None:
             [sys.executable, "-m", "agent_dispatch", "auto", "01", "--executor", "python exec.py", "--max-attempts", "2"],
             cwd=tmp_path, env=executor_env(), text=True,
             stdout=out_fh, stderr=err_fh,
+            start_new_session=(os.name != "nt"),
         )
         try:
             runs = tmp_path / ".dispatch" / "runs"
