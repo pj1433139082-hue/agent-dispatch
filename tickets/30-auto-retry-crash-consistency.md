@@ -6,6 +6,8 @@
 
 票 29 已把普通重派、失败后重新渲染、归档后重开三条路径的额度做实，并让自动流程按剩余额度收紧次数、逐次记账；本票补的是**崩溃窗口**这一段，属票 29 写域之外（要改自动流程本身），故单独开票。
 
+**写域修正（2026-11-14，Lead）**：原票只把 `cli.py` 列为 Read scope，但事后记账那段（`attempts[1:]` 循环）必须在同一票里删除，否则与事前记账重复计数（验收 2 明令禁止）。已把 `cli.py` 加入 Write scope。
+
 来源：票 29 第三轮独立评审（codex-reviewer）提出，Lead 复核成立但判定属票外范围，见 .dispatch/runs/29-…/auto/review-fix-2.md 与本轮评审记录。
 
 **Blocked by:** 29
@@ -21,7 +23,7 @@
 - Write scope: src/agent_dispatch/export.py
 - Write scope: tests/test_cli_auto.py
 - Write scope: tests/test_auto_retry_feedback.py
-- Read scope: src/agent_dispatch/cli.py
+- Write scope: src/agent_dispatch/cli.py
 - Read scope: docs/specs/dispatch-trust-boundaries.md
 - Verify: python -m pytest -q tests/test_cli_auto.py tests/test_auto_retry_feedback.py tests/test_cli_retry.py
 
