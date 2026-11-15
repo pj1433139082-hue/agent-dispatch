@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -276,6 +277,7 @@ def auto_run(
     env_hint: str = "",
     require_brief: bool = False,
     resume: bool = False,
+    on_attempt: Callable[[int, str], None] | None = None,
 ) -> dict[str, object]:
     """Run a ticket through an external executor and the dispatch gates.
 
@@ -399,6 +401,11 @@ def auto_run(
         if attempt_number > 1:
             run.set_state("running")
             store.set_ticket(ticket.id, run.id, "running")
+            # Ledger the retry BEFORE the executor runs: a crash or timeout inside
+            # this attempt must still consume the ticket's budget. Attempt 1 is not a
+            # retry, so it is never recorded here.
+            if on_attempt is not None:
+                on_attempt(attempt_number, str(run.data.get("run_id", run.id)))
         feedback_path = ""
         if attempt_number > 1 and last_errors:
             written = write_feedback(

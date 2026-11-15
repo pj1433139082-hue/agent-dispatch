@@ -3093,6 +3093,15 @@ def _cmd_auto(args: argparse.Namespace) -> int:
                 print("  - " + problem, file=sys.stderr)
             print("  try: dispatch doctor --fix  (or pass --force)", file=sys.stderr)
             return 1
+    # Every retry is ledgered BEFORE the executor runs: if the process dies
+    # mid-attempt, the budget is already spent. Attempt 1 is not a retry.
+    def _ledger_attempt(attempt_number: int, run_id: str) -> None:
+        _record_retry(
+            args.root, args.ticket_id, run_id,
+            args.reason if override else f"automatic retry (attempt {attempt_number})",
+            override,
+        )
+
     try:
         result = auto_run(
             args.root,
@@ -3113,6 +3122,7 @@ def _cmd_auto(args: argparse.Namespace) -> int:
             env_hint=args.env_hint,
             require_brief=args.require_brief,
             resume=getattr(args, "resume", False),
+            on_attempt=_ledger_attempt,
         )
     except AutoError as exc:
         print(f"AUTO {exc}", file=sys.stderr)
@@ -3130,9 +3140,6 @@ def _cmd_auto(args: argparse.Namespace) -> int:
         # An override of an already exhausted ticket also authorizes its first attempt.
         if attempts and override and used >= RETRY_LIMIT and not replacing:
             _record_retry(args.root, args.ticket_id, run_id, args.reason, True)
-        for _ in attempts[1:]:
-            _record_retry(args.root, args.ticket_id, run_id,
-                          args.reason if override else "automatic retry", override)
 
     if args.as_json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
