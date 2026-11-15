@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
+import signal
 import sys
 from pathlib import Path
 
@@ -45,6 +47,31 @@ run.joinpath("receipt.json").write_text(json.dumps({
 """
 
 
+
+
+def executor_env() -> dict[str, str]:
+    value = os.environ.copy()
+    value["PYTHONPATH"] = str(ROOT / "src")
+    return value
+
+
+def kill_tree(pid: int) -> None:
+    """Kill the dispatcher process and its children.
+
+    On POSIX the child is spawned with start_new_session=True, so it leads its
+    own process group: killing that group cannot reach the pytest worker
+    itself (an earlier version used getpgid(pid) and killed the worker, which
+    hung CI).
+    """
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
+        return
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_dispatch(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
@@ -73,7 +100,11 @@ def test_auto_feeds_previous_failure_into_the_next_attempt(tmp_path: Path) -> No
 
 # Executor that is killed while running attempt 2: it records that it started,
 # writes nothing, and exits non-zero. The retry must already be ledgered.
-KILLING_EXECUTOR = """import os, pathlib, signal
+# Attempt 2 parks here so the TEST can kill the whole dispatcher process tree,
+# which is what actually probes the crash window. A merely-dead executor child
+# still lets the CLI reach its own post-hoc ledger write -- the very bug this
+# ticket fixes -- so killing only the child proves nothing.
+PARKING_EXECUTOR = """import os, pathlib, time
 run = pathlib.Path(os.environ["DISPATCH_RUN_DIR"])
 attempt = os.environ.get("DISPATCH_ATTEMPT", "1")
 auto = run / "auto"
@@ -81,8 +112,8 @@ auto.mkdir(parents=True, exist_ok=True)
 (auto / ("started-" + attempt + ".txt")).write_text("started", encoding="utf-8")
 if attempt == "1":
     raise SystemExit(1)
-# Attempt 2 dies in flight: kill our own process group without finishing.
-os.kill(os.getpid(), signal.SIGTERM)
+# Stay alive until the test kills the dispatcher process tree.
+time.sleep(120)
 """
 
 
@@ -106,21 +137,57 @@ def ledger_rows(root: Path, ticket_id: str) -> list[dict[str, object]]:
 
 
 def test_retry_is_ledgered_before_the_attempt_runs(tmp_path: Path) -> None:
-    """A crash during attempt 2 must still leave the retry recorded."""
+    """Killing the DISPATCHER mid-attempt must still leave the retry recorded.
+
+    The kill has to land on `python -m agent_dispatch auto` itself. Killing only
+    the executor child leaves the CLI alive to run its post-hoc ledger write, so
+    such a test passes even with the bug present (reviewer proved this with a
+    mutant: post-hoc accounting restored -> all 4 tests still green).
+    """
     (tmp_path / "tickets").mkdir()
     (tmp_path / "tickets" / "01.md").write_text(TICKET, encoding="utf-8")
-    (tmp_path / "exec.py").write_text(KILLING_EXECUTOR, encoding="utf-8")
+    (tmp_path / "exec.py").write_text(PARKING_EXECUTOR, encoding="utf-8")
     for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
         subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@e.com", *args], cwd=tmp_path, check=True, capture_output=True)
 
-    run_dispatch(tmp_path, "auto", "01", "--executor", "python exec.py", "--max-attempts", "2")
+    # Redirect to files, never pipes: a killed process tree leaves unread pipe
+    # buffers behind and wait() can block forever on CI (this hung the suite).
+    out_log = tmp_path / "auto.out.log"
+    err_log = tmp_path / "auto.err.log"
+    with out_log.open("w", encoding="utf-8") as out_fh, err_log.open("w", encoding="utf-8") as err_fh:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "agent_dispatch", "auto", "01", "--executor", "python exec.py", "--max-attempts", "2"],
+            cwd=tmp_path, env=executor_env(), text=True,
+            stdout=out_fh, stderr=err_fh,
+            start_new_session=(os.name != "nt"),
+        )
+        try:
+            runs = tmp_path / ".dispatch" / "runs"
+            marker: Path | None = None
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                for started in runs.glob("*/auto/started-2.txt"):
+                    marker = started
+                    break
+                if marker is not None or process.poll() is not None:
+                    break
+                time.sleep(0.2)
+            assert marker is not None, "第二次尝试没有开始，测试前提不成立"
+            kill_tree(process.pid)
+            process.wait(timeout=60)
+        finally:
+            if process.poll() is None:
+                kill_tree(process.pid)
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=30)
 
-    # The run fails, but the retry that started must be in the ledger already.
+    # The dispatcher died inside attempt 2. Because the retry was ledgered
+    # BEFORE that attempt ran, it must already be on the books.
     rows = ledger_rows(tmp_path, "01")
     assert len(rows) == 1, rows
-    assert "attempt" in str(rows[0].get("reason", "")).lower(), rows[0]
-    run_dir = sorted((tmp_path / ".dispatch" / "runs").iterdir())[0]
-    assert (run_dir / "auto" / "started-2.txt").is_file(), "第二次尝试应该真的开始了"
 
 
 def test_first_attempt_is_not_ledgered_as_a_retry(tmp_path: Path) -> None:
