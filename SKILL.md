@@ -243,7 +243,45 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 `dsh push` **必须**给 `--workspace <id>`：卡片在**那个 workspace** 里跑，不在你当前仓库。省略会在板上默认 workspace 执行——实测把 `hello.txt` 写进了另一个项目。
 确需默认 workspace 时显式加 `--allow-default-workspace`。
 
-**别猜 workspace id**：先 `task_board_list --includeArchived`，看本仓历史卡落在哪个 id 上（agent-dispatch 的测试卡历来在同一个 workspace），拿证据再 push。
+**别猜 workspace id**：**按路径**取（读 `~/.dsh/storages/workspace.json` 的 `tables.workspaces.*.path` 匹配本仓库绝对路径），别按「历史卡落在哪个 id」抄——见下面坑 ②，看板上可能有别的项目的 `Dispatch wave` 卡。
+
+### 三个实测坑（2026-11-15，走通 push → run → outcome → archive 全链路时踩到）
+
+**① 默认端口已过期，不传 `--url` 直接连不上**
+
+`dispatch dsh *` 默认连 `http://127.0.0.1:50567`，但当前 Desktop 的 GUI 端口会变（这次是 `62388`）。现象：
+
+```
+DSH: cannot reach DSH task board at http://127.0.0.1:50567/api/task-board: [WinError 10061] 目标计算机积极拒绝
+```
+
+**每次都要显式传 `--url http://127.0.0.1:<当前端口>`**，端口以会话 runtime context 的 DSH Web GUI URL 为准。别假设 50567。
+
+**② 别照「本仓历史卡落在哪个 id」抄 workspace**
+
+上面的建议有陷阱：看板上可能残留**别的项目**用 dispatch 推的卡（标题同样叫 `Dispatch wave: N ticket(s)`），照它抄会把卡推到**另一个仓库**去跑。
+
+这次实测：`8fd62bbc…` 有 4 张 `Dispatch wave` 卡，但它的 `path` 是「水质预测方法体系」项目；本仓真正的 workspace 是 `db3b20d9…`。
+
+**可靠的取证方式**是直接读 DSH 的 workspace 表：
+
+```powershell
+# C:\Users\<你>\.dsh\storages\workspace.json  →  tables.workspaces.<id>.path
+python -c "import json,os;d=json.load(open(os.path.expanduser('~/.dsh/storages/workspace.json'),encoding='utf-8'));w=d['tables']['workspaces'];[print(k,v['path']) for k,v in w.items() if 'agent-dispatch' in v['path']]"
+```
+
+按 `path` 匹配本仓库绝对路径，别按标题猜。
+
+**③ L1/L2 票经看板跑会在 `workspace-write` 里等提权（真机复现）**
+
+`task_board_create` 的 `permission` 参数**确实被传了也生效了**：票 Risk L1 → `PERMISSIONS["L1"] = workspace-write` → 卡的 `permission` 字段是 `workspace-write` → 会话 `sandboxMode` 也是 `workspace-write`。这部分没问题。
+
+**问题在于**：若该票的任务需要写工作区**外**的路径（或遇到 Windows ACL 受限的 `%TEMP%`），会话会在 `workspace-write` 沙箱里申请提权 → `approvalState.policy = "ask"`（本机 `approvalMode: dialog`）→ **等真人点弹窗，不自动超时**。实测空转 20+ 分钟，步数一直在涨，看着像在干活。
+
+处置：
+- 认准这是**等批准**不是卡死：`turnOpen: true` + `pendingCalls` 为 0 且步数不涨，才是等批准；步数还在涨说明它在跑（别急着 settle）。
+- 要么给 L3+（`danger-full-access`）让策略变 `never`，要么把工单改成**只写工作区内**的路径。
+- 收尾用 `task_board_manage {action:"settle"}`：卡回 todo，该次执行记 `cancelled`、**无结论**，不是失败也不是成功。
 
 ## 看板卡必须自包含且有边界（2026-11-02 实测踩坑）
 
