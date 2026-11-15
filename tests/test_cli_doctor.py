@@ -74,3 +74,21 @@ def test_doctor_reports_an_empty_ticket_folder(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["issues"], payload
     assert result.returncode != 0
+
+
+def test_doctor_reports_state_evidence_mismatch(tmp_path: Path) -> None:
+    """doctor 读的是 repair 的 evidence_mismatch（此前误读 rows/action，是死代码）。"""
+    repo(tmp_path)
+    assert run_dispatch(tmp_path, "render", "01", "--no-worktree").returncode == 0
+    state_path = tmp_path / ".dispatch" / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    run_id = str(state["tickets"]["01"]["run_id"])
+    run_dir = tmp_path / ".dispatch" / "runs" / run_id
+    (run_dir / "verify.json").write_text(json.dumps({"status": "passed"}), encoding="utf-8")
+    # run.json 说 running，证据说 review —— 这就是 mismatch
+    state["tickets"]["01"]["state"] = "running"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    result = run_dispatch(tmp_path, "doctor")
+
+    assert "state/evidence mismatches" in result.stdout, result.stdout + result.stderr
