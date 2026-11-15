@@ -9,6 +9,34 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+TICKET_PREFLIGHT = """# 01: preflight
+
+## What to build
+
+写 out.txt。
+
+**Blocked by:** None
+**Status:** ready-for-agent
+
+## Dispatch
+
+- Owner: implementer
+- Risk: L1
+- Write scope: out.txt
+- Verify: python -c "import pathlib,sys; sys.exit(0 if pathlib.Path('out.txt').exists() else 1)"
+
+## Acceptance
+
+- [ ] out.txt 存在。"""
+
+EXECUTOR_PREFLIGHT = """import json, os, pathlib
+run = pathlib.Path(os.environ["DISPATCH_RUN_DIR"])
+pathlib.Path("out.txt").write_text("ok", encoding="utf-8")
+run.joinpath("receipt.json").write_text(json.dumps({
+    "ticket_id": "01", "run_id": os.environ["DISPATCH_RUN_ID"], "status": "done", "summary": "ok",
+    "criteria": [{"id": 1, "verdict": "pass", "evidence": [{"kind": "inline", "content": "ok"}]}],
+}), encoding="utf-8")"""
+
 
 def run_dispatch(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
@@ -160,3 +188,105 @@ def test_repair_records_status_source_for_non_done_states(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stderr
     data = json.loads(state.read_text(encoding="utf-8"))
     assert data["tickets"]["04-probe"]["status_source"] == "run.json"
+
+
+def test_status_reports_evidence_mismatch_but_stays_exit_0(tmp_path: Path) -> None:
+    """status 是只读查询：列出不一致，但退出码必须仍是 0。"""
+    (tmp_path / "tickets").mkdir()
+    (tmp_path / "tickets" / "01-probe.md").write_text(
+        "# 01-probe: probe\n\n**What to build:** x\n**Blocked by:** None\n**Status:** ready-for-agent\n\n"
+        "## Dispatch\n\n- Owner: implementer\n- Risk: L1\n- Write scope: out.txt\n"
+        "- Verify: python -c \"print(1)\"\n\n## Acceptance\n\n- [ ] x\n",
+        encoding="utf-8",
+    )
+    run_id = "01-probe-20261022T030000Z-jjjjjj"
+    run_dir = make_run(tmp_path, run_id, "01-probe", state="failed")
+    (run_dir / "verify.json").write_text(json.dumps({"status": "passed"}), encoding="utf-8")
+    write_state(tmp_path, {"01-probe": {"run_id": run_id, "state": "failed", "updated_at": "2026-10-22T00:00:00+00:00"}})
+
+    result = run_dispatch(tmp_path, "status")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "EVIDENCE-MISMATCH" in result.stdout, result.stdout
+    assert "state=failed" in result.stdout
+    assert "evidence=review" in result.stdout
+
+
+def test_status_json_carries_evidence_mismatch(tmp_path: Path) -> None:
+    (tmp_path / "tickets").mkdir()
+    (tmp_path / "tickets" / "01-probe.md").write_text(
+        "# 01-probe: probe\n\n**What to build:** x\n**Blocked by:** None\n**Status:** ready-for-agent\n\n"
+        "## Dispatch\n\n- Owner: implementer\n- Risk: L1\n- Write scope: out.txt\n"
+        "- Verify: python -c \"print(1)\"\n\n## Acceptance\n\n- [ ] x\n",
+        encoding="utf-8",
+    )
+    run_id = "01-probe-20261022T030500Z-kkkkkk"
+    run_dir = make_run(tmp_path, run_id, "01-probe", state="failed")
+    (run_dir / "verify.json").write_text(json.dumps({"status": "passed"}), encoding="utf-8")
+    write_state(tmp_path, {"01-probe": {"run_id": run_id, "state": "failed", "updated_at": "2026-10-22T00:00:00+00:00"}})
+
+    result = run_dispatch(tmp_path, "status", "--json")
+
+    assert result.returncode == 0, result.stderr
+    document = json.loads(result.stdout)
+    rows = document["evidence_mismatch"]
+    assert len(rows) == 1, rows
+    assert rows[0]["ticket_id"] == "01-probe"
+    assert rows[0]["state_run"] == "failed"
+    assert rows[0]["evidence"] == "review"
+
+
+def test_repair_reports_evidence_blocked(tmp_path: Path) -> None:
+    """done 但缺 passing review 的票：repair 文本模式要打 EVIDENCE-BLOCKED。"""
+    run_id = "01-probe-20261022T031000Z-llllll"
+    make_run(tmp_path, run_id, "01-probe", state="done")
+    write_state(tmp_path, {"01-probe": {"run_id": run_id, "state": "done", "updated_at": "2026-10-22T00:00:00+00:00"}})
+
+    result = run_dispatch(tmp_path, "repair")
+
+    assert "EVIDENCE-BLOCKED" in result.stdout, result.stdout + result.stderr
+    assert "01-probe" in result.stdout
+
+
+def test_status_mismatch_appends_to_existing_hint(tmp_path: Path) -> None:
+    """mismatch 提示必须追加，不能把「未落地」等既有 hint 覆盖掉。"""
+    (tmp_path / "tickets").mkdir()
+    (tmp_path / "tickets" / "01-probe.md").write_text(
+        "# 01-probe: probe\n\n**What to build:** x\n**Blocked by:** None\n**Status:** ready-for-agent\n\n"
+        "## Dispatch\n\n- Owner: implementer\n- Risk: L1\n- Write scope: out.txt\n"
+        "- Verify: python -c \"print(1)\"\n\n## Acceptance\n\n- [ ] x\n",
+        encoding="utf-8",
+    )
+    for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
+        subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@e.com", *args], cwd=tmp_path, check=True, capture_output=True)
+    # 造一个 done 但未落地的 run，同时让它与证据不一致（state=done 而证据=review）。
+    run_id = "01-probe-20261022T040000Z-mmmmmm"
+    run_dir = make_run(tmp_path, run_id, "01-probe", state="done")
+    (run_dir / "verify.json").write_text(json.dumps({"status": "passed"}), encoding="utf-8")
+    write_state(tmp_path, {"01-probe": {"run_id": run_id, "state": "done", "updated_at": "2026-10-22T00:00:00+00:00"}})
+
+    result = run_dispatch(tmp_path, "status")
+
+    assert result.returncode == 0, result.stderr
+    assert "EVIDENCE-MISMATCH" in result.stdout, result.stdout
+    assert "未落地" in result.stdout, "既有 hint 被覆盖了: " + result.stdout
+
+
+def test_auto_preflight_does_not_block_on_evidence_mismatch(tmp_path: Path) -> None:
+    """auto 的 preflight 不该因证据不一致拒跑（_health_report 是 doctor/auto 共用的）。"""
+    (tmp_path / "tickets").mkdir()
+    (tmp_path / "tickets" / "01.md").write_text(TICKET_PREFLIGHT, encoding="utf-8")
+    (tmp_path / "exec.py").write_text(EXECUTOR_PREFLIGHT, encoding="utf-8")
+    for args in (("init", "-q"), ("add", "."), ("commit", "-q", "-m", "base")):
+        subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@e.com", *args], cwd=tmp_path, check=True, capture_output=True)
+    run_id = "01-20261022T050000Z-nnnnnn"
+    run_dir = make_run(tmp_path, run_id, "01", state="failed")
+    (run_dir / "verify.json").write_text(json.dumps({"status": "passed"}), encoding="utf-8")
+    write_state(tmp_path, {"01": {"run_id": run_id, "state": "failed", "updated_at": "2026-10-22T00:00:00+00:00"}})
+
+    result = run_dispatch(tmp_path, "auto", "01", "--executor", "python exec.py")
+
+    combined = (result.stdout + result.stderr).lower()
+    assert "preflight failed" not in combined, "auto 被 mismatch 拦住了: " + result.stdout + result.stderr
+
+
