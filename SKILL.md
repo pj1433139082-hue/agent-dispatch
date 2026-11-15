@@ -55,7 +55,7 @@ description: 用票据契约、依赖分波、一票一 worktree、判据级证�
 最后一条**不是错误用法**，是单 agent 环境的正常用法，只要如实标注。dispatch 的价值（写域、证据、验收、可回溯的 landing）在只有一个 agent 时同样成立。
 
 > 判据：**`list_workers` 槽能查到目标才算有队友**。具体工具名见 `references/harness-adapters.md`（DSH / 千问办公 / Claude Code / Codex 各一张表）。
-> **两个 worker 槽别混用**：一次性执行者（`spawn_once`）不在名册里，`list_workers` / `message` 查不到也发不到它，别拿团队工具去找它；它只回报一份结果，账由 Lead 记。
+> **worker 槽的区别只剩「要不要任务板」**（2026-11-15 纠正）：DSH 0.2.2-rc.3 起两个槽落到同一个 `subagent` 工具，`list_workers` 槽返回**整棵 subagent 树**，一次性执行者也**看得见、发得进消息**。旧说法「一次性执行者不在名册里、别拿团队工具找它」**已作废**。唯一的实质区别：要共享任务板就开 Team 模式（`team_task_*`），只要一份报告就不开。
 > 探测要按本 harness 的方式：DSH 用 `Object.keys(tools)`，别用 `globalThis.tools`（工具是词法注入的，会得到 undefined）；其他 harness 用各自的工具发现入口。
 ## 自带框架
 
@@ -226,7 +226,7 @@ ADR-0010 里 `auto` 是**单票推进器**，不是批量编排器。2026-10-22 
 
 1. **teammate（harness 的 spawn provider）**
    `dispatch handoff <id> --to <agent>` 打出交接内容 → 你用 `message` 槽发过去 → 它交 brief → 批准 → 在 worktree 执行 → `dispatch verify` → **另一个** reviewer 跑 `dispatch review`。
-   ⚠️ `render --agent X` 只是把名字写进工作单，**不会创建 teammate**。`list_workers` 里没有这个 target 就发不出去——这时别假装派了。
+   ⚠️ `render --agent X` 只是把名字写进工作单，**不会创建任何 agent**。派活前先用 `list_workers` 槽确认目标确实在树里——不在就别假装派了。
 2. **DSH 看板**
    `dsh push --project <p>` 建卡 → 人在板上点 run（或 `dsh run <id>`）→ 结果用 `dsh outcome` 回写。看板地址以会话 runtime context 里的 **DSH Web GUI URL** 为准（端口每次可能不同），请求要带 `sec-fetch-site: same-origin`。
 3. **外部执行器命令**
