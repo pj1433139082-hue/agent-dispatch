@@ -831,7 +831,24 @@ def _cmd_status(args: argparse.Namespace) -> int:
     if tickets is None:
         return code
     document = status_document(tickets, _state_map(args.root), exhausted=exhausted_tickets(args.root))
+    # state 与证据打架的票：只读查询，发现不一致也用退出码 0（--json 与文本都带）。
+    try:
+        repair_report = repair_state(args.root, write=False)
+    except Exception:  # noqa: BLE001 - 只读体检失败不该让 status 挂掉
+        repair_report = {}
+    mismatched = {
+        str(item.get("ticket_id", "")): item
+        for item in (repair_report.get("evidence_mismatch", []) if isinstance(repair_report, dict) else [])
+    }
     if args.as_json:
+        document["evidence_mismatch"] = [
+            {
+                "ticket_id": str(item.get("ticket_id", "")),
+                "state_run": str(item.get("state_run", "")),
+                "evidence": str(item.get("evidence", "")),
+            }
+            for item in mismatched.values()
+        ]
         print(json.dumps(document, indent=2, ensure_ascii=False))
         return 0
     store = DispatchState(args.root)
@@ -871,6 +888,17 @@ def _cmd_status(args: argparse.Namespace) -> int:
             run_id = str(entry.get("run_id", ""))
             if run_id and not (runs_root / run_id / "landing.json").is_file():
                 hint = f"   -> 未落地（dispatch land {row['id']}）"
+        mismatch = mismatched.get(str(row["id"]))
+        if mismatch is not None:
+            # 追加而不是覆盖：既有 hint（未落地 / persona / 票被改过）同样是有效信息，
+            # 直接覆盖会让用户看不到"这张票还没 land"。
+            detail = (
+                "EVIDENCE-MISMATCH state="
+                + str(mismatch.get("state_run", ""))
+                + " evidence="
+                + str(mismatch.get("evidence", ""))
+            )
+            hint = (hint + "; -> " + detail) if hint.strip() else ("   -> " + detail)
         print(f"{row['id']}  {row['state']:<10} {row['title']}{suffix}{hint}")
     print(f"Frontier: {', '.join(document['frontier']) or '-'}")
     counts = {"failed": 0, "running": 0, "claimed": 0}
@@ -2035,9 +2063,7 @@ def _health_report(root: Path, directory: Path) -> dict[str, object]:
     else:
         if isinstance(report, dict):
             conflicts = report.get("conflicts", [])
-            mismatches = [
-                row for row in report.get("rows", []) if str(row.get("action", "")) == "mismatch"
-            ]
+            mismatches = report.get("evidence_mismatch", [])
             if conflicts:
                 issues.append(f"index/disk conflicts: {len(conflicts)}")
             if mismatches:
@@ -2404,6 +2430,8 @@ def _cmd_repair(args: argparse.Namespace) -> int:
             print("CONFLICT " + conflict["ticket_id"] + ": index=" + str(conflict["state_run"]) + " disk=" + str(conflict["disk_run"]), file=sys.stderr)
         for item in report.get("evidence_mismatch", []):
             print("EVIDENCE-MISMATCH " + item["ticket_id"] + ": state=" + str(item["state_run"]) + " evidence=" + str(item["evidence"]))
+        for item in report.get("evidence_blocked", []):
+            print("EVIDENCE-BLOCKED " + item["ticket_id"] + ": state=" + str(item["state_run"]))
         if report["written"] and report["conflicts"]:
             print("Written: partial (conflicts skipped; see CONFLICT above)")
         elif report["written"]:
@@ -3059,7 +3087,13 @@ def _auto_exit_code(result: dict[str, object]) -> int:
 def _preflight(root: Path, tickets_dir: Path) -> list[str]:
     """开跑前的最小体检：只挡会让 auto 在烂索引上瞎跑的问题。"""
     health = _health_report(Path(root), Path(tickets_dir))
-    return [issue for issue in health["issues"] if "retry" not in issue]
+    # mismatch 不是"烂索引"：它表示 run.json 与证据各执一词，执行器改了也没用，
+    # 该由人在 doctor/repair 里裁决。auto 因此不拦（票面只要求 doctor 报）。
+    return [
+        issue
+        for issue in health["issues"]
+        if "retry" not in issue and "state/evidence mismatches" not in issue
+    ]
 
 
 def _cmd_auto(args: argparse.Namespace) -> int:
