@@ -42,7 +42,7 @@
 
 ### DSH（DeepSeek Harness）—— 已核实（0.2.2-rc.3，2026-11-13 实测）
 
-证据：会话内 `Object.keys(tools)` 返回 80 项；本机宿主 `app.asar/dsh/package.json` 版本 0.2.2-rc.3；
+证据：会话内 `Object.keys(tools)` 返回 81 项，其中 **29 项是 MCP 外挂**（blender 15 + rea 14），核心工具 **52 项**；本机宿主 `app.asar/dsh/package.json` 版本 0.2.2-rc.3；
 `@deepseek-ai/dsh-agent-team` 的 `src/index.ts` 里 `static Config` 与 `REMOVED_CONFIG_KEYS` 已直读。
 
 | 槽 | 工具 | 备注 |
@@ -68,11 +68,14 @@
 >
 > **必须配 `defaultEnabled: true`**：否则所有会话默认没有任务板工具，任何「起子智能体后用任务板协作」的流程都会失败。本机已设并实测通过（探针拿到全部 4 个工具）。
 
-> **子会话工单：不要中途请求提权**（2026-11-13 三轮实测）：提权机制本身正常——
-> `approval/asked` → 人工批准 `allowed-once` → 程序在放宽沙箱里执行（会话日志可查）。
-> 坑在于**是否需要人**：`policy=never` 下确定性立即拒绝（白费一次尝试），
-> `policy=ask` 下会一直等真人点弹窗、**不自动超时**（实测 493s+ 悬置）。
-> 所以无人值守跑票要写工作区外时，**直接把卡片设 `permission: danger-full-access`**，别让子会话中途提权。
+> **权限：派活时一次给够，别让子会话中途提权**（2026-11-15 两组对照实测 + 源码复核，**更正 2026-11-13 的旧结论**）：
+> - **给 `danger-full-access`**：会话 `sandboxMode=danger-full-access`、`policy=never`，全程无需人点。
+>   同任务（写工作区外文件）**成功**。
+> - **给 `workspace-write`**：`policy=ask`，但同任务**直接失败**——`turnOpen` 照常收尾，**不是「卡住等弹窗」**。
+>   全库 1523 个会话里 `approval/asked` 事件**一条真实记录都没有**，所以旧结论里「实测 493s+ 悬置」不可靠，已撤回。
+> - **源码依据**：`dsh-user-approval/src/index.ts` L301 —— `policy === 'never'` 时在**派发前**直接 `return 'rejected'`（确定性，与注册顺序无关）；`ask` 才走 answerer 瀑布。
+> - **最危险的坑：卡状态 ≠ 任务达成**。对照组越界写入失败、会话如实回 `FAIL`，但**卡片仍记 `succeeded`**（判据是「会话正常答复完毕」）。所以验收看会话自述与产物，别只看卡。
+> - 所以正确做法是**创建时说清所需权限**（见下条），而不是「先给窄的、让它中途提权」。
 >
 > **`run_code` 里操作文件用 `await import('node:fs')`**——不能用 `require`（运行时无此全局，报 `ReferenceError`），
 > 也不能用顶层 `import` 语句（只接受函数体）。这两条语法坑各坑过一次，写工单时直接给正确样例。
